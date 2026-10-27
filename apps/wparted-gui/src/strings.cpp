@@ -325,6 +325,9 @@ const Entry kStrings[] = {
     {S::ValDetection, L"%1 (detection: %2)", L"%1 (Erkennung: %2)"},
     {S::ValProtected, L"yes - protected from changes", L"ja – vor Änderungen geschützt"},
     {S::InfoDiagnostics, L"Diagnostics", L"Diagnosen"},
+    {S::ChipManaged, L"Managed by Windows", L"Von Windows verwaltet"},
+    {S::HintManaged, L"Windows manages this disk itself (dynamic disk or Storage Spaces). WParted shows it but does not change it; use Disk Management or Storage Spaces.",
+                     L"Windows verwaltet diesen Datenträger selbst (dynamischer Datenträger oder Speicherplätze). WParted zeigt ihn an, ändert ihn aber nicht; bitte die Datenträgerverwaltung bzw. Speicherplätze verwenden."},
     // Applying a plan to a disk image file
     {S::ApplyImageReady, L"The plan passed all checks for this image file. Applying it changes the file; physical disks are never written.",
                          L"Der Plan hat alle Prüfungen für diese Image-Datei bestanden. Anwenden verändert die Datei; physische Datenträger werden nie geschrieben."},

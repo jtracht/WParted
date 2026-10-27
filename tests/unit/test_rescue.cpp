@@ -162,6 +162,20 @@ TEST("validation: disks managed by Windows (LDM, Storage Spaces) are refused") {
     }
     CHECK(managed);
     CHECK(critical);
+    CHECK(isManagedByWindows(l));
+
+    Image mbr(64 * MiB, 512);  // msdos dynamic disk: partition type 0x42
+    mbr.b(446 + 4) = 0x42;
+    mbr.put32(446 + 8, 2048);
+    mbr.put32(446 + 12, 20480);
+    mbr.b(510) = 0x55;
+    mbr.b(511) = 0xAA;
+    const DiskLayout ml = parse(mbr);
+    REQUIRE(ml.type == TableType::Mbr);
+    CHECK(isManagedByWindows(ml));
+    Image plain(64 * MiB, 512);
+    plain.gpt({{kLinux, 2048, 4095, "x", 0}});
+    CHECK(!isManagedByWindows(parse(plain)));
 }
 
 TEST("validation: diagnostics carry operation number and arguments for translations") {

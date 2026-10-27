@@ -404,6 +404,20 @@ DiskLayout parseDiskLayout(BlockReader& r, bool detectContents) {
     return l;
 }
 
+bool isManagedByWindows(const DiskLayout& l) {
+    static const char* kTypes[] = {"5808C8AA-7E8F-42E0-85D2-E1E90434CFB3", "AF9B60A0-1431-4F62-BC68-3311714A69AD",
+                                   "E75CAF8F-F680-4CEE-AFA3-B001E56EFC2D"};
+    for (const auto& p : l.partitions) {
+        if (l.type == TableType::Mbr && p.mbrType == 0x42) return true;
+        if (l.type == TableType::Gpt)
+            for (const char* t : kTypes) {
+                Guid g;
+                if (Guid::parse(t, g) && p.typeGuid == g) return true;
+            }
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // Partition type names and flags
 

@@ -82,8 +82,9 @@ int cmdList(bool json) {
     if (!r.elevated)
         std::printf("Note: not elevated. Partition tables cannot be read; run from an administrator prompt for full details.\n\n");
     for (const auto& d : r.disks) {
-        std::printf("%s  %s  %s  %s%s\n", d.displayName().c_str(), d.modelName().c_str(), formatSize(d.sizeBytes).c_str(),
-                    d.busType.c_str(), d.containsWindows() ? "  [contains Windows]" : "");
+        std::printf("%s  %s  %s  %s%s%s\n", d.displayName().c_str(), d.modelName().c_str(), formatSize(d.sizeBytes).c_str(),
+                    d.busType.c_str(), d.containsWindows() ? "  [contains Windows]" : "",
+                    d.layoutAvailable && isManagedByWindows(d.layout) ? "  [managed by Windows: dynamic disk / Storage Spaces]" : "");
         std::printf("  Sectors: logical %u, physical %s; SSD: %s; removable media: %s; write protected: %s\n",
                     d.logicalSectorSize, d.physicalSectorSize ? std::to_string(d.physicalSectorSize).c_str() : "unknown",
                     yesNo(d.solidState), d.removableMedia ? "yes" : "no", yesNo(d.writeProtected));

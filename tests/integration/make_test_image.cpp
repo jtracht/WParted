@@ -15,12 +15,17 @@ int main(int argc, char** argv) {
     // --demo: 128 MiB GPT, #1 unformatted, #2 ext4 "demo", free space behind #2
     // (input for image_tool plan gpt-demo).
     const bool demo = argc == 3 && std::strcmp(argv[2], "--demo") == 0;
-    if (argc != 2 && !lost && !demo) {
-        std::fprintf(stderr, "usage: make_test_image <output.img> [--lost|--demo]\n");
+    // --ldm: GPT dynamic disk (LDM metadata + LDM data), for the "managed by Windows" path.
+    const bool ldm = argc == 3 && std::strcmp(argv[2], "--ldm") == 0;
+    if (argc != 2 && !lost && !demo && !ldm) {
+        std::fprintf(stderr, "usage: make_test_image <output.img> [--lost|--demo|--ldm]\n");
         return 2;
     }
     wptest::Image im((demo ? 128ull : 64ull) * 1024 * 1024, 512);
-    if (demo) {
+    if (ldm) {
+        im.gpt({{"5808C8AA-7E8F-42E0-85D2-E1E90434CFB3", 34, 2081, "LDM metadata partition", 0},
+                {"AF9B60A0-1431-4F62-BC68-3311714A69AD", 4096, 100351, "LDM data partition", 0}});
+    } else if (demo) {
         im.gpt({{"0FC63DAF-8483-4772-8E79-3D69D8477DE4", 2048, 34815, "data", 0},
                 {"0FC63DAF-8483-4772-8E79-3D69D8477DE4", 40960, 73727, "demo", 0}});
         wptest::writeExt4(im, 40960ull * 512, "demo");
@@ -31,7 +36,7 @@ int main(int argc, char** argv) {
                 {"E3C9E316-0B5C-4DB8-817D-F92DF00215AE", 34816, 67583, "Microsoft reserved partition", 0},
                 {"EBD0A0A2-B9E5-4433-87C0-68B6B72699C7", 67584, 100351, "Basic data partition", 0},
                 {"0FC63DAF-8483-4772-8E79-3D69D8477DE4", 100352, 131038, "linux", 0}});
-    if (!demo) {
+    if (!demo && !ldm) {
         wptest::writeFat32(im, 2048ull * 512, "ESP        ");
         wptest::writeNtfs(im, 67584ull * 512);
         wptest::writeExt4(im, 100352ull * 512, "rootfs");

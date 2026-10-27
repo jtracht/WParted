@@ -99,6 +99,11 @@ struct DiskLayout {
 // If `detectContents` is set, each partition is probed for a file system.
 DiskLayout parseDiskLayout(BlockReader& reader, bool detectContents = true);
 
+// True if Windows manages the disk itself: dynamic disk (LDM metadata/data
+// partitions, MBR type 0x42) or a Storage Spaces member. Such disks are shown
+// but never changed by WParted.
+bool isManagedByWindows(const DiskLayout& layout);
+
 // Human-readable partition type description ("EFI System", "Microsoft basic data", ...).
 std::string partitionTypeDescription(const DiskLayout& layout, const PartitionEntry& p);
 

@@ -358,10 +358,8 @@ ValidationContext MainWindow::validationContext(ValidationMode mode) const {
     ctx.deviceWriteProtected = d->writeProtected == win::Tristate::Yes;
     for (const auto& v : d->volumes)
         if (v.extentCount > 1) ctx.managedByWindows = true;
+    if (isManagedByWindows(q.original())) ctx.managedByWindows = true;
     for (const auto& p : q.original().partitions) {
-        const std::string type = partitionTypeDescription(q.original(), p);
-        if (type.find("dynamic disk") != std::string::npos || type.find("Storage Spaces") != std::string::npos)
-            ctx.managedByWindows = true;
         PartitionState st;
         if (const auto* vol = win::volumeForPartition(*d, p)) {
             st.mounted = !vol->mountPoints.empty();
@@ -455,6 +453,9 @@ void MainWindow::updateInspector() {
         add(S::InsPartitions, std::to_wstring(l->partitions.size()));
         if (!view_.tableRead) {
             d.hint = tr(S::ErrNeedsTable);
+            d.warnHint = true;
+        } else if (isManagedByWindows(*l)) {
+            d.hint = tr(S::HintManaged);
             d.warnHint = true;
         } else {
             d.hint = disk->busType == "Image file" ? std::wstring(tr(S::HintImage)) + L" " + tr(S::HintSelect) : tr(S::HintSelect);

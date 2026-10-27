@@ -180,6 +180,9 @@ void drawHeader(HDC dc, MapState& s, const RECT& card, UINT dpi) {
     if (d.solidState == win::Tristate::Yes) chips.push_back({L"SSD", pal.mutedText});
     if (d.solidState == win::Tristate::No) chips.push_back({L"HDD", pal.mutedText});
     if (!v.tableRead) chips.push_back({tr(S::StatusNotReadable), pal.caution});
+    bool spanned = false;
+    for (const auto& vol : d.volumes) spanned = spanned || vol.extentCount > 1;
+    if (spanned || (v.layout && isManagedByWindows(*v.layout))) chips.push_back({tr(S::ChipManaged), pal.caution});
     int cx = card.right - pad;
     SelectObject(dc, s.caption);
     for (const auto& c : chips) {
