@@ -1,17 +1,17 @@
 {
   "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue.",
   "updated": "2026-10-27",
-  "milestone": "v0.1.0-alpha",
+  "milestone": "v0.2.0-alpha (planning UI)",
   "packages": [
     {"key": "WP-001", "area": "Architecture", "weight": 3, "state": "tested", "title": "GParted analysis and parity matrix"},
     {"key": "WP-002", "area": "Architecture", "weight": 1, "state": "tested", "title": "Licence and third-party baseline"},
     {"key": "WP-003", "area": "Architecture", "weight": 2, "state": "tested", "title": "Technology decision and support matrix"},
-    {"key": "WP-023", "area": "Architecture", "weight": 3, "state": "planned", "title": "Privileged helper and IPC design"},
-    {"key": "WP-070", "area": "Architecture", "weight": 3, "state": "planned", "title": "Recovery/offline mode concept"},
+    {"key": "WP-023", "area": "Architecture", "weight": 3, "state": "implemented", "title": "Privileged helper and IPC design"},
+    {"key": "WP-070", "area": "Architecture", "weight": 3, "state": "implemented", "title": "Recovery/offline mode concept"},
 
     {"key": "WP-004", "area": "CI/CD", "weight": 2, "state": "tested", "title": "Windows builds without Windows runner (MinGW cross build + Wine)"},
     {"key": "WP-005", "area": "CI/CD", "weight": 1, "state": "tested", "title": "Use existing instance runner (ubuntu-latest)"},
-    {"key": "WP-006", "area": "CI/CD", "weight": 3, "state": "implemented", "title": "CI and release pipelines"},
+    {"key": "WP-006", "area": "CI/CD", "weight": 3, "state": "tested", "title": "CI and release pipelines"},
     {"key": "WP-008", "area": "CI/CD", "weight": 1, "state": "in_progress", "title": "GitHub push mirror"},
     {"key": "WP-009", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Code signing"},
     {"key": "WP-016", "area": "CI/CD", "weight": 2, "state": "released", "title": "Portable packaging and v0.1 release"},
@@ -43,10 +43,10 @@
     {"key": "WP-022", "area": "User Interface", "weight": 3, "state": "implemented", "title": "Planning UI: dialogs, layout preview, queue, Apply summary"},
     {"key": "WP-024", "area": "User Interface", "weight": 1, "state": "implemented", "title": "Operation log export"},
 
-    {"key": "WP-018", "area": "Testing", "weight": 2, "state": "in_progress", "title": "Performance baseline"},
+    {"key": "WP-018", "area": "Testing", "weight": 2, "state": "tested", "title": "Performance baseline"},
     {"key": "WP-031", "area": "Testing", "weight": 4, "state": "implemented", "title": "Image write harness (CI) + manual VHDX gate"},
 
-    {"key": "WP-090", "area": "Documentation", "weight": 4, "state": "planned", "title": "Website (SEO/GEO/AEO)"},
-    {"key": "WP-091", "area": "Documentation", "weight": 3, "state": "in_progress", "title": "User and developer documentation"}
+    {"key": "WP-090", "area": "Documentation", "weight": 4, "state": "implemented", "title": "Website (SEO/GEO/AEO)"},
+    {"key": "WP-091", "area": "Documentation", "weight": 3, "state": "implemented", "title": "User and developer documentation"}
   ]
 }
