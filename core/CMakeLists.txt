@@ -8,5 +8,9 @@ add_library(wparted_core STATIC
     src/partition_table.cpp
     src/layout_view.cpp
     src/json.cpp
-    src/log.cpp)
+    src/log.cpp
+    src/json_value.cpp
+    src/operations.cpp
+    src/validation.cpp
+    src/layout_writer.cpp)
 target_include_directories(wparted_core PUBLIC include)

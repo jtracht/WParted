@@ -113,6 +113,7 @@ std::string layoutToJson(const DiskLayout& l) {
     JsonWriter w;
     w.beginObject();
     w.key("table").value(tableTypeName(l.type));
+    if (!l.foreignTable.empty()) w.key("foreignTable").value(l.foreignTable);
     w.key("sectorSize").value(l.sectorSize);
     w.key("sizeBytes").value(l.diskBytes);
     if (l.type == TableType::Gpt) {

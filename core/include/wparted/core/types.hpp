@@ -47,6 +47,13 @@ std::uint32_t crc32(const std::uint8_t* data, std::size_t len, std::uint32_t see
 // first NUL. Unpaired surrogates are replaced with U+FFFD.
 std::string utf16leToUtf8(const std::uint8_t* p, std::size_t maxUnits);
 
+// Encodes UTF-8 as UTF-16LE into `out` (maxUnits code units, zero padded).
+// Returns false if the text is not valid UTF-8 or does not fit.
+bool utf8ToUtf16le(const std::string& text, std::uint8_t* out, std::size_t maxUnits);
+
+// Random version-4 GUID (RFC 4122), stored in GPT on-disk order.
+Guid randomGuid();
+
 // Formats a byte count like GParted does: binary units with two decimals
 // ("512.00 MiB"). Values below 1 KiB are shown as plain bytes.
 std::string formatSize(std::uint64_t bytes);

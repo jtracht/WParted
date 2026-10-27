@@ -3,6 +3,8 @@
 #include "wparted/core/types.hpp"
 
 #include <cstdio>
+#include <random>
+#include <vector>
 
 namespace wparted {
 
@@ -109,6 +111,52 @@ std::string utf16leToUtf8(const std::uint8_t* p, std::size_t maxUnits) {
         appendUtf8(out, u);
     }
     return out;
+}
+
+bool utf8ToUtf16le(const std::string& text, std::uint8_t* out, std::size_t maxUnits) {
+    std::vector<std::uint16_t> units;
+    for (std::size_t i = 0; i < text.size();) {
+        unsigned char c = static_cast<unsigned char>(text[i]);
+        std::uint32_t cp;
+        std::size_t n;
+        if (c < 0x80) { cp = c; n = 1; }
+        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; n = 2; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; n = 3; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; n = 4; }
+        else return false;
+        if (i + n > text.size()) return false;
+        for (std::size_t k = 1; k < n; ++k) {
+            unsigned char cc = static_cast<unsigned char>(text[i + k]);
+            if ((cc & 0xC0) != 0x80) return false;
+            cp = (cp << 6) | (cc & 0x3F);
+        }
+        i += n;
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            units.push_back(static_cast<std::uint16_t>(0xD800 + (cp >> 10)));
+            units.push_back(static_cast<std::uint16_t>(0xDC00 + (cp & 0x3FF)));
+        } else {
+            units.push_back(static_cast<std::uint16_t>(cp));
+        }
+    }
+    if (units.size() > maxUnits) return false;
+    for (std::size_t i = 0; i < maxUnits; ++i) {
+        std::uint16_t u = i < units.size() ? units[i] : 0;
+        out[2 * i] = static_cast<std::uint8_t>(u & 0xFF);
+        out[2 * i + 1] = static_cast<std::uint8_t>(u >> 8);
+    }
+    return true;
+}
+
+Guid randomGuid() {
+    static std::random_device rd;
+    Guid g;
+    for (auto& b : g.bytes) b = static_cast<std::uint8_t>(rd() & 0xFF);
+    // Version 4 / RFC 4122 variant. On disk, the version lives in byte 7
+    // (high byte of the little-endian third field), the variant in byte 8.
+    g.bytes[7] = static_cast<std::uint8_t>((g.bytes[7] & 0x0F) | 0x40);
+    g.bytes[8] = static_cast<std::uint8_t>((g.bytes[8] & 0x3F) | 0x80);
+    return g;
 }
 
 std::string formatSize(std::uint64_t bytes) {

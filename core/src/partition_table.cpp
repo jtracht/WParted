@@ -240,6 +240,32 @@ void parseMbr(BlockReader& r, DiskLayout& l, const std::uint8_t* sec0) {
     }
 }
 
+std::uint32_t be32At(const std::vector<std::uint8_t>& b, std::size_t off) {
+    return off + 4 <= b.size() ? be32(&b[off]) : 0;
+}
+
+// Partition table formats that libparted supports besides msdos/gpt. They are
+// recognised by their published magic numbers so that WParted never mistakes
+// such a disk for an empty one.
+std::string detectForeignTable(BlockReader& r, std::uint32_t ss) {
+    std::vector<std::uint8_t> head(16 * 512, 0);
+    const std::size_t n = static_cast<std::size_t>(std::min<std::uint64_t>(r.size(), head.size()));
+    if (n < 1024 || !r.read(0, head.data(), n)) return {};
+    head.resize(n);
+    if (head[0] == 'E' && head[1] == 'R') {  // Apple driver descriptor map, then partition map entries
+        const std::uint32_t bs = static_cast<std::uint32_t>((head[2] << 8) | head[3]);
+        if ((bs == 512 || bs == ss) && bs + 2 <= head.size() && head[bs] == 'P' && head[bs + 1] == 'M') return "mac";
+    }
+    if (be32At(head, 0) == 0x0BE5A941u) return "dvh";
+    if (be32At(head, 0) == 0xC9C2D4C1u) return "aix";
+    if (head.size() >= 510 && ((head[508] << 8) | head[509]) == 0xDABE) return "sun";
+    for (std::size_t off : {std::size_t{512}, std::size_t{512 + 64}})
+        if (off + 4 <= head.size() && le32(&head[off]) == 0x82564557u) return "bsd";
+    for (std::size_t blk = 0; blk + 4 <= head.size(); blk += 512)
+        if (std::memcmp(&head[blk], "RDSK", 4) == 0) return "amiga";
+    return {};
+}
+
 bool validMbrEntries(const std::uint8_t* sec0, bool& anyUsed) {
     anyUsed = false;
     for (int i = 0; i < 4; ++i) {
@@ -329,6 +355,14 @@ DiskLayout parseDiskLayout(BlockReader& r, bool detectContents) {
             l.partitions.push_back(p);
             diag(l, Severity::Info, "layout.whole_device_fs",
                  std::string("No partition table; the whole device contains a ") + fsTypeName(fs.type) + " file system.");
+            return l;
+        }
+        const std::string foreign = detectForeignTable(r, l.sectorSize);
+        if (!foreign.empty()) {
+            l.type = TableType::Unknown;
+            l.foreignTable = foreign;
+            diag(l, Severity::Info, "table.foreign",
+                 "The device uses a \"" + foreign + "\" partition table. WParted can detect but not display or change it.");
             return l;
         }
         if (bootSig && entriesValid) {

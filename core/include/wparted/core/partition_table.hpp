@@ -52,6 +52,10 @@ struct PartitionEntry {
     // Content detected inside the partition
     FsDetection fs;
 
+    // Stable identity while planning operations (assigned by OperationQueue;
+    // 0 = not part of a plan). Not stored on disk.
+    std::uint32_t planId = 0;
+
     std::uint64_t lastLba() const noexcept { return sectorCount ? firstLba + sectorCount - 1 : firstLba; }
 };
 
@@ -69,6 +73,10 @@ struct DiskLayout {
     std::uint64_t lastUsableLba = 0;
     bool gptPrimaryValid = false;
     bool gptBackupValid = false;
+
+    // Name of a recognised but unsupported table format ("mac", "bsd", "sun",
+    // "dvh", "amiga", "aix"); empty otherwise. Only set with TableType::Unknown.
+    std::string foreignTable;
 
     std::vector<PartitionEntry> partitions;   // Primary/extended/logical in on-disk order
     std::vector<Diagnostic> diagnostics;
