@@ -27,6 +27,17 @@ jobs:
             echo "possible secret committed"; exit 1; fi
       - name: Markdown relative links
         run: python3 tools/ci/check_links.py
+      - name: Website (build EN/DE, SEO/structure check)
+        run: |
+          python3 tools/website/build.py --out build/site-check --base-url https://site.invalid/
+          python3 tools/website/check.py build/site-check --expect-base
+          python3 tools/website/build.py --out build/site
+          python3 tools/website/check.py build/site
+      - name: Upload website
+        uses: actions/upload-artifact@v3
+        with:
+          name: wparted-website
+          path: build/site
 
   core-linux:
     name: core + unit tests (Linux, GCC)
@@ -41,6 +52,11 @@ jobs:
         run: cmake --build build/linux
       - name: Test
         run: ctest --test-dir build/linux --output-on-failure
+      - name: Detection against real mkfs images (ext2/3/4, FAT16/32, exFAT, NTFS, btrfs, XFS, F2FS, swap)
+        run: |
+          apt-get install -y -qq --no-install-recommends \
+            e2fsprogs dosfstools exfatprogs ntfs-3g btrfs-progs xfsprogs f2fs-tools util-linux >/dev/null
+          bash tools/ci/mkfs-fixtures.sh build/linux/tests/wparted_detect_fs
 
   windows-cross:
     name: Windows ${{ matrix.arch }} (MinGW cross build, tests under Wine)

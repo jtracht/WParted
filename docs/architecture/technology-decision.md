@@ -44,9 +44,9 @@ comparison.
    privileged executor.
 6. **Privilege separation** (from v0.3): unelevated GUI, elevated helper (`wparted-helper.exe`) started
    on demand via UAC, named-pipe IPC with a restrictive DACL, server-side validation of a declarative
-   operation plan. See `security-architecture.md`.
+   operation plan. See `security-architecture.md` and [ADR-0002](adr-0002-privileged-helper-ipc.md).
 7. **Linux file system modification** only in an optional offline/recovery environment
-   (ADR to follow in WP-070).
+   (see [ADR-0003](adr-0003-recovery-offline-mode.md)).
 
 8. **Two compilers, one code base** (amended 2026-10-27, ADR-0001a). The Gitea instance has exactly
    one Actions runner - a Linux Docker runner (`ubuntu-latest`) - and no Windows runner will be added.

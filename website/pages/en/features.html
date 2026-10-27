@@ -1,0 +1,53 @@
+<!--
+SPDX-License-Identifier: GPL-2.0-or-later
+title: WParted features and status – what works today
+description: Honest feature status of WParted: GPT/MBR analysis, detection of 31 file systems, GParted-style planning and a read-only rescue scan. Writing is not available yet.
+-->
+<h1>Features and status</h1>
+<p class="lead">This page lists what WParted can do <strong>today</strong>. Anything not listed as
+available is planned and will only be enabled after tests on disk images and virtual disks.</p>
+
+<h2>Available in {{version}}</h2>
+<table>
+  <thead><tr><th>Feature</th><th>Details</th></tr></thead>
+  <tbody>
+    <tr><td>Disk overview</td><td>Physical disks with model, interface, sector sizes, SSD/HDD, write protection, volumes and mount points.</td></tr>
+    <tr><td>Partition tables</td><td>GPT (CRC check, backup header), MBR with extended/logical partitions, detection of Apple, BSD, Sun and other tables.</td></tr>
+    <tr><td>File systems</td><td>Signature detection for 31 types incl. NTFS, FAT, exFAT, ReFS, BitLocker, ext2/3/4, btrfs, XFS, LUKS, LVM, APFS and HFS+.</td></tr>
+    <tr><td>Diagnostics</td><td>Damaged GPT headers, overlaps, sector-size mismatch of USB enclosures, differences to the Windows view.</td></tr>
+    <tr><td>Reports</td><td>JSON report export; command line tool <code>wparted-cli</code> with JSON output.</td></tr>
+    <tr><td>Interface</td><td>GParted-style layout, light and dark theme, English and German, high-DPI.</td></tr>
+  </tbody>
+</table>
+
+<h2>In development builds (v0.2, not released)</h2>
+<table>
+  <thead><tr><th>Feature</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Planning: new, delete, resize/move, copy/paste, format, label, name, flags, new table</td><td>Plans and validates; <strong>does not execute</strong>.</td></tr>
+    <tr><td>Future-layout preview, pending operations, undo</td><td>Available</td></tr>
+    <tr><td>Apply summary with safety checks, plan export (JSON), details (HTML)</td><td>Available; nothing is written</td></tr>
+    <tr><td>Disk images (.img) for safe trials</td><td>Opened read-only</td></tr>
+    <tr><td>Data rescue scan for lost file systems</td><td>Read-only; tested on images, not yet on real disks</td></tr>
+  </tbody>
+</table>
+
+<h2>Planned</h2>
+<p>Executing operations (through a separate, elevated helper process), NTFS/FAT/exFAT resizing,
+offline mode for system partitions, Linux file systems. The roadmap and every work package are
+public on Gitea.</p>
+
+<h2>Progress by area</h2>
+{{areas_table}}
+<p class="small">Computed from <code>status/progress.json</code>: planned 0, in progress 25 %,
+implemented 50 %, tested 80 %, released 100 %, weighted by size.</p>
+
+<h2>Windows compatibility</h2>
+<table>
+  <thead><tr><th>System</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Windows 11 x64</td><td>Verified (unelevated)</td></tr>
+    <tr><td>Windows 7 SP1, 8.1, 10 (x64/x86)</td><td>Built for, not yet verified</td></tr>
+    <tr><td>Windows on ARM64</td><td>Not built yet</td></tr>
+  </tbody>
+</table>

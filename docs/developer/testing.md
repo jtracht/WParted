@@ -36,15 +36,23 @@ build\x64-release\tests\wparted_core_tests.exe
 
 ## Benchmarks
 
-Reference system: Windows 11 Pro 10.0.26300, Samsung PM981 1 TB NVMe + SanDisk Portable SSD (USB),
-x64 Release build, unelevated.
+Reproduce with `python tools/benchmark.py --build build/x64-release --runs 5 --image-gib 16`
+(read-only; synthetic images in a temporary directory; `--json` for machine-readable output).
+
+Baseline 2026-10-27, v0.2.0-alpha.dev (commit after 6328b35): Windows 11 Pro 10.0.26300, Samsung
+PM981 1 TB NVMe + SanDisk Portable SSD (USB), MSVC x64 Release, unelevated. Times include process
+start-up; median of 5 runs unless stated.
 
 | Metric | Method | Result |
 |---|---|---|
-| Discovery time | `wparted-cli list` (reported) | 2–3 ms for 2 disks (volumes-only mode) |
-| GUI private memory 3 s after start | `Get-Process` PrivateMemorySize64 | 2.2 MB |
-| GUI working set | `Get-Process` WorkingSet64 | 15.7 MB |
-| GUI CPU time to idle | `TotalProcessorTime` 3 s after start | 0.11 s |
-| Executable size | `wparted.exe` x64 | 467 KiB (static CRT) |
+| Disk discovery (unelevated, volumes only) | `wparted-cli list --json` | 10.4 ms |
+| Analyse 64 MiB GPT image (4 partitions) | `wparted-cli inspect-image` | 9.3 ms |
+| Rescue scan of 16 GiB unallocated space | `wparted-cli rescue-scan-image` | 116 ms |
+| GUI start until the main window exists | window polling, 1 run | 21 ms |
+| GUI private memory 3 s after start | `GetProcessMemoryInfo` PrivateUsage | 2.6 MiB |
+| Executable sizes | `wparted.exe` / `wparted-cli.exe` x64 | 714 KiB / 345 KiB (static CRT) |
 
-Elevated discovery (raw table reads) has not been benchmarked yet (WP-018).
+The rescue scan reads a few probe sectors per MiB step, and the benchmark image is a sparse file
+served from the cache. The figure therefore measures the scan logic, not disk throughput; on a real
+disk seek latency dominates. Elevated discovery and scans of physical disks are not benchmarked: the
+maintainer decided against hardware tests for now (WP-014).

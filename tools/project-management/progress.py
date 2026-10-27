@@ -14,8 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SCORE = {"planned": 0.0, "in_progress": 0.25, "implemented": 0.5, "tested": 0.8, "released": 1.0}
 
 
-def main() -> int:
-    data = json.loads((ROOT / "status" / "progress.json").read_text(encoding="utf-8"))
+def compute(data):
+    """Returns (overall %, OrderedDict area -> %, counts per state)."""
     areas = OrderedDict()
     total_w = total_s = 0.0
     counts = {k: 0 for k in SCORE}
@@ -27,11 +27,17 @@ def main() -> int:
         total_w += w
         total_s += w * s
         counts[p["state"]] += 1
+    return 100 * total_s / total_w, OrderedDict((n, 100 * s / w) for n, (w, s) in areas.items()), counts
+
+
+def main() -> int:
+    data = json.loads((ROOT / "status" / "progress.json").read_text(encoding="utf-8"))
+    overall, areas, counts = compute(data)
     print("WParted Development Status")
     print(f"(computed from status/progress.json, {data['updated']})\n")
-    print(f"Overall progress towards v1.0: {100 * total_s / total_w:.0f} %\n")
-    for name, (w, s) in areas.items():
-        print(f"{name + ':':<20}{100 * s / w:>4.0f} %")
+    print(f"Overall progress towards v1.0: {overall:.0f} %\n")
+    for name, pct in areas.items():
+        print(f"{name + ':':<20}{pct:>4.0f} %")
     print("\nWork packages: " + ", ".join(f"{v} {k}" for k, v in counts.items()))
     print(f"Current milestone: {data['milestone']}")
     return 0

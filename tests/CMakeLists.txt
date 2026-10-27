@@ -16,3 +16,7 @@ if(WIN32 AND TARGET wparted-cli)
             "-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/cli_image_roundtrip.cmake)
 endif()
+
+# Detection probe for images made by the real mkfs tools (tools/ci/mkfs-fixtures.sh, Linux CI).
+add_executable(wparted_detect_fs integration/detect_fs.cpp)
+target_link_libraries(wparted_detect_fs PRIVATE wparted_core)

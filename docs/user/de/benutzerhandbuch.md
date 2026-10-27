@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted Benutzerhandbuch (v0.1.0-alpha)
+# WParted Benutzerhandbuch (v0.1.0-alpha; Planung und Rettung: Entwicklungs-Builds von v0.2)
 
 ## Was ist WParted?
 
@@ -27,8 +27,43 @@ starten*).
 | Geräteauswahl | Datenträger wählen. `[Windows]` kennzeichnet den Datenträger mit dem laufenden Windows. |
 | Datenträgergrafik | Jedes Feld ist eine Partition in proportionaler Größe. Randfarbe = Dateisystem, gelbe Füllung = belegter Platz, grau = nicht zugeordnet, schraffiert = unbekannt. ←/→ wechselt, Eingabe zeigt Details. |
 | Partitionsliste | Partition, Name, Dateisystem, Einhängepunkt, Bezeichnung, Größe, belegt, frei, Flags und Status. Doppelklick/Eingabe zeigt Details, Rechtsklick öffnet das Partitionsmenü. |
-| Ausstehende Operationen | Zeigt in späteren Versionen geplante Änderungen an. |
+| Detailbereich | Eigenschaften der gewählten Partition bzw. des freien Bereichs und warum eine Aktion nicht verfügbar ist. |
+| Ausstehende Operationen | Die geplanten Änderungen in Reihenfolge mit Risiko und Prüfstatus (Entwicklungs-Builds). |
 | Statuszeile | Suchergebnis, gefundene Tabellenwarnungen und ob WParted mit Administratorrechten läuft. |
+
+## Operationen planen (Entwicklungs-Builds von v0.2)
+
+Entwicklungs-Builds können Änderungen wie in GParted **planen**. Es wird nichts geschrieben: Diese
+Version kann Operationen nicht ausführen, *Anwenden* zeigt nur die Prüfungen.
+
+1. Partition oder nicht zugeordneten Bereich in der Datenträgergrafik oder Liste wählen.
+2. Aktion wählen: *Neu*, *Löschen*, *Größe ändern/Verschieben*, *Kopieren*/*Einfügen*, *Formatieren als*,
+   *Partition benennen*, *Dateisystembezeichnung*, *Neue UUID*, *Flags verwalten*, *Prüfen* oder
+   *Gerät → Partitionstabelle erstellen*. Die Dialoge zeigen eine Vorschau des Ergebnisses; Größen in MiB,
+   Ausrichtung standardmäßig 1 MiB (*Ausrichten an: Keine* verzichtet auf das Aufrunden auf eine MiB-Grenze).
+3. Die Datenträgergrafik zeigt das **künftige Layout**; *Ausstehende Operationen* listet jeden Schritt.
+   *Rückgängig* (Strg+Z) entfernt den letzten, *Bearbeiten → Alle Operationen verwerfen* alle.
+4. *Anwenden* (Strg+Eingabe) prüft den Plan und zeigt eine Zusammenfassung mit Risiken und blockierenden
+   Fehlern (z. B. Systempartitionen, belegte oder verschlüsselte Volumes, Partitionen kleiner als ihre
+   Daten, Überlappungen, MBR-Grenzen). Dort lässt sich der **Plan exportieren** (JSON) oder **Details
+   speichern (HTML)**.
+5. *Bearbeiten → Plan speichern* (Strg+S) speichert den Plan. Er enthält die Identität des Datenträgers
+   (Seriennummer, Größe, Tabellen-GUID/-Signatur), damit ein Plan nicht unbemerkt auf einen anderen
+   Datenträger angewendet werden kann.
+
+Zum gefahrlosen Ausprobieren *WParted → Datenträger-Image öffnen* (Strg+O) mit einer Rohabbild-Datei
+(`.img`) verwenden. Abbilder werden nur lesend geöffnet.
+
+## Datenrettung (nur lesend)
+
+*Gerät → Datenrettung versuchen* durchsucht den nicht zugeordneten Bereich des gewählten Datenträgers oder
+Abbilds nach Dateisystemen, die keine Partition mehr abdeckt (z. B. nach dem Löschen einer Partition).
+Geprüft werden 1-MiB-Schritte und alte Zylindergrenzen; die Suche läuft im Hintergrund und liest nur.
+
+Das Ergebnis nennt Startsektor, Dateisystem, Größe, Bezeichnung und ob der Beginn MiB-ausgerichtet ist.
+Die Wiederherstellung ist **nicht automatisiert**: Sie können in diesem Bereich eine *neue* Partition
+planen und prüfen; sie wird aber in ganzen MiB platziert und passt nur zu einem Dateisystem mit
+MiB-ausgerichtetem Beginn. Für physische Datenträger sind Administratorrechte nötig.
 
 ## Nützliche Funktionen
 
@@ -47,6 +82,7 @@ starten*).
 wparted-cli list [--json]                        Datenträger, Partitionen, Volumes
 wparted-cli inspect-image disk.img [--sector-size 4096] [--json]
 wparted-cli fs-support [--json]
+wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
 wparted-cli version
 ```
 
@@ -55,8 +91,9 @@ Für Partitionstabellen aus einer Administrator-Eingabeaufforderung starten.
 ## Häufige Fragen
 
 **Ist WParted kostenlos?** Ja, GPL-2.0-or-later.
-**Kann WParted Partitionen verkleinern oder löschen?** Noch nicht. Diese Operationen sind geplant und werden
-erst freigeschaltet, wenn sie Tests auf virtuellen Datenträgern bestanden haben.
+**Kann WParted Partitionen verkleinern oder löschen?** Noch nicht. Entwicklungs-Builds können diese
+Operationen planen und prüfen, aber nicht ausführen. Die Ausführung wird erst freigeschaltet, wenn sie
+Tests auf virtuellen Datenträgern bestanden hat.
 **Unterstützt WParted Windows 7?** Windows 7 SP1 ist Build-Ziel, wurde aber noch nicht auf einem echten
 Windows-7-System geprüft.
 **Kann WParted Linux-Partitionen lesen?** Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM u. a. und zeigt

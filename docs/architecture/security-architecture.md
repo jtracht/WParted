@@ -24,6 +24,9 @@
   4. executes step by step with calibration,
   5. streams progress and a structured log back, then exits.
 
+  Protocol details: [ADR-0002](adr-0002-privileged-helper-ipc.md). Offline/recovery mode for system
+  partitions: [ADR-0003](adr-0003-recovery-offline-mode.md).
+
 ## Read-only guarantees in v0.1
 
 - All device handles: `GENERIC_READ` at most, `FILE_SHARE_READ | FILE_SHARE_WRITE`.

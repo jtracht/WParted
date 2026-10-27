@@ -1,0 +1,54 @@
+<!--
+SPDX-License-Identifier: GPL-2.0-or-later
+title: WParted Funktionen und Stand – was heute funktioniert
+description: Funktionsstand von WParted: GPT/MBR-Analyse, 31 erkannte Dateisysteme, Planung wie in GParted und lesender Rettungs-Scan. Schreiben ist noch nicht möglich.
+-->
+<h1>Funktionen und Stand</h1>
+<p class="lead">Diese Seite zeigt, was WParted <strong>heute</strong> kann. Alles, was nicht als
+verfügbar aufgeführt ist, ist geplant und wird erst nach Tests auf Abbildern und virtuellen
+Datenträgern freigeschaltet.</p>
+
+<h2>Verfügbar in {{version}}</h2>
+<table>
+  <thead><tr><th>Funktion</th><th>Details</th></tr></thead>
+  <tbody>
+    <tr><td>Datenträgerübersicht</td><td>Physische Datenträger mit Modell, Schnittstelle, Sektorgrößen, SSD/HDD, Schreibschutz, Volumes und Einhängepunkten.</td></tr>
+    <tr><td>Partitionstabellen</td><td>GPT (CRC-Prüfung, Backup-Header), MBR mit erweiterten/logischen Partitionen, Erkennung von Apple-, BSD-, Sun- und anderen Tabellen.</td></tr>
+    <tr><td>Dateisysteme</td><td>Signaturerkennung für 31 Typen, u. a. NTFS, FAT, exFAT, ReFS, BitLocker, ext2/3/4, btrfs, XFS, LUKS, LVM, APFS und HFS+.</td></tr>
+    <tr><td>Diagnose</td><td>Beschädigte GPT-Header, Überlappungen, abweichende Sektorgrößen von USB-Gehäusen, Unterschiede zur Windows-Sicht.</td></tr>
+    <tr><td>Berichte</td><td>JSON-Berichtsexport; Kommandozeilenwerkzeug <code>wparted-cli</code> mit JSON-Ausgabe.</td></tr>
+    <tr><td>Oberfläche</td><td>Aufbau wie GParted, helles und dunkles Design, Deutsch und Englisch, High-DPI.</td></tr>
+  </tbody>
+</table>
+
+<h2>In Entwicklungs-Builds (v0.2, nicht veröffentlicht)</h2>
+<table>
+  <thead><tr><th>Funktion</th><th>Stand</th></tr></thead>
+  <tbody>
+    <tr><td>Planung: neu, löschen, Größe ändern/verschieben, kopieren/einfügen, formatieren, Bezeichnung, Name, Flags, neue Tabelle</td><td>Plant und prüft; <strong>führt nicht aus</strong>.</td></tr>
+    <tr><td>Vorschau des künftigen Layouts, ausstehende Operationen, Rückgängig</td><td>Verfügbar</td></tr>
+    <tr><td>Anwenden-Zusammenfassung mit Sicherheitsprüfungen, Planexport (JSON), Details (HTML)</td><td>Verfügbar; es wird nichts geschrieben</td></tr>
+    <tr><td>Datenträger-Abbilder (.img) zum gefahrlosen Ausprobieren</td><td>Nur lesend geöffnet</td></tr>
+    <tr><td>Rettungs-Scan nach verlorenen Dateisystemen</td><td>Nur lesend; auf Abbildern getestet, noch nicht auf echten Datenträgern</td></tr>
+  </tbody>
+</table>
+
+<h2>Geplant</h2>
+<p>Ausführen von Operationen (über einen getrennten, erhöhten Hilfsprozess), Größenänderung von
+NTFS/FAT/exFAT, Offline-Modus für Systempartitionen, Linux-Dateisysteme. Roadmap und alle
+Arbeitspakete sind öffentlich auf Gitea.</p>
+
+<h2>Fortschritt nach Bereich</h2>
+{{areas_table}}
+<p class="small">Berechnet aus <code>status/progress.json</code>: geplant 0, in Arbeit 25 %,
+umgesetzt 50 %, getestet 80 %, veröffentlicht 100 %, gewichtet nach Umfang.</p>
+
+<h2>Windows-Kompatibilität</h2>
+<table>
+  <thead><tr><th>System</th><th>Stand</th></tr></thead>
+  <tbody>
+    <tr><td>Windows 11 x64</td><td>Geprüft (ohne Administratorrechte)</td></tr>
+    <tr><td>Windows 7 SP1, 8.1, 10 (x64/x86)</td><td>Dafür gebaut, noch nicht geprüft</td></tr>
+    <tr><td>Windows on ARM64</td><td>Noch nicht gebaut</td></tr>
+  </tbody>
+</table>
