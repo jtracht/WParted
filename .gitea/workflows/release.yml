@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Builds and publishes a release for a version tag (v0.1.0-alpha, v1.0.0, ...).
+# Fails without creating a release if any step or artefact is missing.
+# Required secret: RELEASE_TOKEN (Gitea token with write:repository).
+# Optional secrets: SIGNING_CERT_PFX_BASE64, SIGNING_CERT_PASSWORD (Authenticode).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: windows-modern
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag matches project version
+        shell: powershell
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $cm = Get-Content CMakeLists.txt -Raw
+          if ($cm -notmatch 'VERSION (\d+\.\d+\.\d+)') { throw 'no project version' }
+          $ver = $Matches[1]
+          if ($cm -match 'WPARTED_VERSION_SUFFIX "([^"]*)"' -and $Matches[1]) { $ver = "$ver-$($Matches[1])" }
+          if ($tag -ne $ver) { throw "tag $tag does not match CMake version $ver" }
+          "VERSION=$ver" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Build, test and package x64
+        shell: powershell
+        run: ./tools/build.ps1 -Arch x64 -Package
+      - name: Build, test and package x86
+        shell: powershell
+        run: ./tools/build.ps1 -Arch x86 -Package
+
+      - name: Sign binaries (skipped and reported as unsigned without secrets)
+        shell: powershell
+        env:
+          PFX_B64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
+          PFX_PASS: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: ./tools/sign-release.ps1 -DistDir dist
+
+      - name: Source archive, SBOM, checksums
+        shell: powershell
+        run: |
+          $v = $env:VERSION
+          git archive --format=zip --prefix="WParted-v$v/" -o "dist/WParted-v$v-source.zip" HEAD
+          $zips = Get-ChildItem dist -Filter *.zip | ForEach-Object FullName
+          python tools/generate_sbom.py $v "dist/WParted-v$v-sbom.json" @zips
+          $sum = "dist/WParted-v$v-checksums.sha256"
+          Remove-Item $sum -ErrorAction SilentlyContinue
+          Get-ChildItem dist -File | Where-Object Name -ne (Split-Path $sum -Leaf) | ForEach-Object {
+            "$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower())  $($_.Name)" | Out-File -Append -Encoding ascii $sum }
+          $expected = @("WParted-v$v-win7plus-x64-portable.zip", "WParted-v$v-win7plus-x86-portable.zip",
+                        "WParted-v$v-source.zip", "WParted-v$v-sbom.json", "WParted-v$v-checksums.sha256")
+          foreach ($e in $expected) { if (-not (Test-Path "dist/$e")) { throw "missing artefact $e" } }
+
+      - name: Create Gitea release and upload artefacts
+        shell: powershell
+        env:
+          TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          $v = $env:VERSION
+          $api = "${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
+          $notes = python tools/release_notes.py $v
+          $body = @{ tag_name = "v$v"; name = "WParted v$v"; body = ($notes -join "`n");
+                     prerelease = ($v -match '-'); draft = $true } | ConvertTo-Json
+          $headers = @{ Authorization = "token $env:TOKEN" }
+          $rel = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $headers -ContentType 'application/json' -Body $body
+          foreach ($f in Get-ChildItem dist -File) {
+            curl.exe --fail -sS -H "Authorization: token $env:TOKEN" -F "attachment=@$($f.FullName)" "$api/releases/$($rel.id)/assets?name=$($f.Name)"
+            if ($LASTEXITCODE -ne 0) { throw "upload failed: $($f.Name) (release stays a draft)" }
+          }
+          # Publish only after every artefact is attached.
+          Invoke-RestMethod -Method Patch -Uri "$api/releases/$($rel.id)" -Headers $headers -ContentType 'application/json' -Body '{"draft": false}' | Out-Null

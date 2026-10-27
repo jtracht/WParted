@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Pull request / push validation. Runner labels are documented in
+# docs/developer/infrastructure-setup.md:
+#   linux-build    -> docker://node:20-bookworm  (portable core, static checks)
+#   windows-modern -> host runner on Windows 10/11 x64 with VS 2022 Build Tools
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    name: static checks
+    runs-on: linux-build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read-only guard (no write paths in v0.x read-only builds)
+        run: python3 tools/ci/check_readonly.py
+      - name: SPDX headers
+        run: python3 tools/ci/check_spdx.py
+      - name: Secrets scan (simple patterns)
+        run: |
+          if grep -rInE '(gh[pousr]_[A-Za-z0-9]{30,}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|AKIA[0-9A-Z]{16})' \
+               --exclude-dir=.git --exclude-dir=build . ; then
+            echo "possible secret committed"; exit 1; fi
+      - name: Markdown relative links
+        run: python3 tools/ci/check_links.py
+
+  core-linux:
+    name: core + unit tests (Linux, GCC)
+    runs-on: linux-build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build g++ >/dev/null
+      - name: Configure
+        run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-Werror
+      - name: Build
+        run: cmake --build build/linux
+      - name: Test
+        run: ctest --test-dir build/linux --output-on-failure
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    runs-on: windows-modern
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        shell: powershell
+        run: ./tools/build.ps1 -Arch ${{ matrix.arch }} -Package
+      - name: Upload portable package
+        uses: actions/upload-artifact@v3
+        with:
+          name: wparted-${{ matrix.arch }}-portable
+          path: dist/*.zip

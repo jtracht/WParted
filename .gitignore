@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+/build/
+/dist/
+/out/
+.vs/
+*.user
+*.img
+*.vhd
+*.vhdx
+__pycache__/

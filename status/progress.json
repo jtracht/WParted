@@ -1,0 +1,53 @@
+{
+  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue.",
+  "updated": "2026-10-27",
+  "milestone": "v0.1.0-alpha",
+  "packages": [
+    {"key": "WP-001", "area": "Architecture", "weight": 3, "state": "tested", "title": "GParted analysis and parity matrix"},
+    {"key": "WP-002", "area": "Architecture", "weight": 1, "state": "tested", "title": "Licence and third-party baseline"},
+    {"key": "WP-003", "area": "Architecture", "weight": 2, "state": "tested", "title": "Technology decision and support matrix"},
+    {"key": "WP-023", "area": "Architecture", "weight": 3, "state": "planned", "title": "Privileged helper and IPC design"},
+    {"key": "WP-070", "area": "Architecture", "weight": 3, "state": "planned", "title": "Recovery/offline mode concept"},
+
+    {"key": "WP-004", "area": "CI/CD", "weight": 2, "state": "planned", "title": "Windows host runner"},
+    {"key": "WP-005", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Linux docker runner"},
+    {"key": "WP-006", "area": "CI/CD", "weight": 3, "state": "implemented", "title": "CI and release pipelines"},
+    {"key": "WP-007", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Branch protection with required checks"},
+    {"key": "WP-008", "area": "CI/CD", "weight": 1, "state": "in_progress", "title": "GitHub push mirror"},
+    {"key": "WP-009", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Code signing"},
+    {"key": "WP-016", "area": "CI/CD", "weight": 2, "state": "implemented", "title": "Portable packaging and v0.1 release"},
+
+    {"key": "WP-010", "area": "Partition Engine", "weight": 4, "state": "implemented", "title": "GPT/MBR parser"},
+    {"key": "WP-020", "area": "Partition Engine", "weight": 5, "state": "planned", "title": "Operation queue"},
+    {"key": "WP-021", "area": "Partition Engine", "weight": 5, "state": "planned", "title": "Validation engine and protection"},
+    {"key": "WP-030", "area": "Partition Engine", "weight": 6, "state": "planned", "title": "Create/delete partitions and tables"},
+    {"key": "WP-032", "area": "Partition Engine", "weight": 2, "state": "planned", "title": "Manage flags"},
+    {"key": "WP-041", "area": "Partition Engine", "weight": 8, "state": "planned", "title": "Resize/move"},
+    {"key": "WP-042", "area": "Partition Engine", "weight": 6, "state": "planned", "title": "Copy/paste and block copier"},
+    {"key": "WP-050", "area": "Partition Engine", "weight": 2, "state": "planned", "title": "Other table types"},
+    {"key": "WP-051", "area": "Partition Engine", "weight": 3, "state": "planned", "title": "Data rescue scan"},
+
+    {"key": "WP-012", "area": "Windows Core", "weight": 4, "state": "implemented", "title": "Read-only disk discovery"},
+    {"key": "WP-014", "area": "Windows Core", "weight": 2, "state": "planned", "title": "Elevated verification on real hardware"},
+    {"key": "WP-015", "area": "Windows Core", "weight": 3, "state": "planned", "title": "Windows 7-10 / ARM64 verification"},
+    {"key": "WP-044", "area": "Windows Core", "weight": 2, "state": "planned", "title": "Mount/unmount"},
+    {"key": "WP-071", "area": "Windows Core", "weight": 4, "state": "planned", "title": "BitLocker/EFI/BCD safety"},
+    {"key": "WP-072", "area": "Windows Core", "weight": 3, "state": "planned", "title": "Dynamic disks and Storage Spaces"},
+
+    {"key": "WP-011", "area": "Filesystem Support", "weight": 3, "state": "implemented", "title": "FS signature detection"},
+    {"key": "WP-040", "area": "Filesystem Support", "weight": 8, "state": "planned", "title": "NTFS/FAT/exFAT operations"},
+    {"key": "WP-043", "area": "Filesystem Support", "weight": 2, "state": "planned", "title": "New UUID"},
+    {"key": "WP-060", "area": "Filesystem Support", "weight": 8, "state": "planned", "title": "Linux file systems (offline)"},
+
+    {"key": "WP-013", "area": "User Interface", "weight": 5, "state": "implemented", "title": "Read-only main window"},
+    {"key": "WP-017", "area": "User Interface", "weight": 2, "state": "planned", "title": "Accessibility and dark menu bar"},
+    {"key": "WP-022", "area": "User Interface", "weight": 3, "state": "planned", "title": "Layout preview"},
+    {"key": "WP-024", "area": "User Interface", "weight": 1, "state": "planned", "title": "Operation log export"},
+
+    {"key": "WP-018", "area": "Testing", "weight": 2, "state": "in_progress", "title": "Performance baseline"},
+    {"key": "WP-031", "area": "Testing", "weight": 4, "state": "planned", "title": "VHD integration harness"},
+
+    {"key": "WP-090", "area": "Documentation", "weight": 4, "state": "planned", "title": "Website (SEO/GEO/AEO)"},
+    {"key": "WP-091", "area": "Documentation", "weight": 3, "state": "in_progress", "title": "User and developer documentation"}
+  ]
+}

@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# End-to-end: generate a synthetic image, analyse it with wparted-cli, verify
+# the JSON report, and verify the image was not modified (read-only guarantee).
+set(IMG "${WORKDIR}/cli_roundtrip.img")
+execute_process(COMMAND "${MAKE_IMAGE}" "${IMG}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "make_test_image failed: ${rc}")
+endif()
+file(SHA256 "${IMG}" before)
+execute_process(COMMAND "${CLI}" inspect-image "${IMG}" --json
+    RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 0)
+    message(FATAL_ERROR "wparted-cli exited with ${rc}: ${err}\n${out}")
+endif()
+string(JSON table GET "${out}" table)
+string(JSON count LENGTH "${out}" partitions)
+string(JSON fs0 GET "${out}" partitions 0 filesystem)
+string(JSON fs2 GET "${out}" partitions 2 filesystem)
+string(JSON fs3 GET "${out}" partitions 3 filesystem)
+string(JSON label3 GET "${out}" partitions 3 label)
+string(JSON crit0 GET "${out}" partitions 0 systemCritical)
+if(NOT table STREQUAL "gpt" OR NOT count EQUAL 4 OR NOT fs0 STREQUAL "fat32" OR NOT fs2 STREQUAL "ntfs"
+   OR NOT fs3 STREQUAL "ext4" OR NOT label3 STREQUAL "rootfs" OR NOT crit0)
+    message(FATAL_ERROR "unexpected report: ${out}")
+endif()
+file(SHA256 "${IMG}" after)
+if(NOT before STREQUAL after)
+    message(FATAL_ERROR "image was modified by a read-only command")
+endif()
+file(REMOVE "${IMG}")
+message(STATUS "cli_image_roundtrip OK")
