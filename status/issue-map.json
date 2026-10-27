@@ -1,0 +1,13 @@
+{
+  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Stable work-package key -> Gitea issue number in jtracht/WParted. Used to avoid duplicate tickets: always search by key before creating an issue.",
+  "repository": "https://git.tracht-digital.de/jtracht/WParted",
+  "project_board": "https://git.tracht-digital.de/jtracht/WParted/projects/33",
+  "issues": {
+    "WP-001": 1, "WP-002": 2, "WP-003": 3, "WP-004": 4, "WP-005": 5, "WP-006": 6, "WP-007": 7, "WP-008": 8,
+    "WP-009": 9, "WP-010": 10, "WP-011": 11, "WP-012": 12, "WP-013": 13, "WP-014": 14, "WP-015": 15,
+    "WP-016": 16, "WP-017": 17, "WP-018": 18, "WP-020": 19, "WP-021": 20, "WP-022": 21, "WP-023": 22,
+    "WP-024": 23, "WP-030": 24, "WP-031": 25, "WP-032": 26, "WP-040": 27, "WP-041": 28, "WP-042": 29,
+    "WP-043": 30, "WP-044": 31, "WP-050": 32, "WP-051": 33, "WP-060": 34, "WP-070": 35, "WP-071": 36,
+    "WP-072": 37, "WP-090": 38, "WP-091": 39
+  }
+}
