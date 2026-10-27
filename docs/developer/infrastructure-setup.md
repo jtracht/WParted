@@ -28,8 +28,9 @@ elevation/UAC, DPI/theme behaviour of real Windows versions, Windows 7/8.1 speci
 
 ## 2. Branch protection
 
-`main`: no force push, no deletion, required status checks = the four CI job names above. Required
-approvals: 1 once a second maintainer exists. Tags `v*` protected.
+Not used (maintainer decision 2026-10-27). Compensating rules: CI runs on every push and pull request;
+releases are only tagged on commits with a green CI run; the release workflow creates drafts only;
+agents never force-push.
 
 ## 3. GitHub mirror (Gitea -> GitHub, one direction)
 
@@ -44,5 +45,5 @@ approvals: 1 once a second maintainer exists. Tags `v*` protected.
 
 | Secret | Purpose |
 |---|---|
-| `RELEASE_TOKEN` | Gitea token (`write:repository`) used by `release.yml` to create the draft release |
+| `RELEASE_TOKEN` | Optional Gitea token (`write:repository`). Must be a **repository or user** secret: organisation secrets are not visible to the user-owned repository `jtracht/WParted`. Without it `release.yml` uses the automatic job token. |
 | `SIGNING_CERT_PFX_BASE64` / `SIGNING_CERT_PASSWORD` | Optional Authenticode certificate, used by `osslsigncode` on Linux. Without them the release says it is **unsigned**. |

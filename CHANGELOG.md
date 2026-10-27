@@ -4,7 +4,11 @@
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] – 0.1.0-alpha
+## [Unreleased]
+
+## [0.1.0-alpha] – 2026-10-27
+
+First public pre-release: a **read-only** disk explorer. It cannot modify disks.
 
 ### Added
 - Platform-independent core: GPT parser (CRC validation, backup fallback, sector-size mismatch
@@ -26,3 +30,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Security
 - The build contains no code path that writes to disks (enforced in CI).
+
+### Known limitations
+- **Administrator mode is not yet verified on real hardware.** Reading raw partition tables (WParted →
+  Restart as Administrator, or an elevated `wparted-cli list`) is covered by tests on synthetic disk
+  images and under Wine, but has not been checked against real disks (tracked in WP-014). Without
+  administrator rights WParted shows only Windows volumes; unknown regions are hatched, never shown as free.
+- Verified on Windows 11 x64 (x64 and x86 builds, without administrator rights). Windows 7, 8.1 and 10
+  are build targets but have not been run yet (WP-015). No ARM64 build.
+- Not code-signed; Windows SmartScreen may warn. Verify the SHA-256 checksums.
+- No installer yet (portable ZIP only). Dark mode leaves the menu bar light; the disk map has no
+  screen-reader provider yet (the partition list exposes the same data).

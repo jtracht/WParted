@@ -3,7 +3,9 @@
 # Linux runner and creates a *draft* Gitea release. A maintainer publishes it
 # after the manual real-Windows smoke test (Wine is not Windows).
 # Fails without creating a release if any step or artefact is missing.
-# Required secret: RELEASE_TOKEN (Gitea token with write:repository).
+# Token: secret RELEASE_TOKEN if visible to this repository, otherwise the
+# automatic job token (sufficient to create releases in this repository).
+# Note: organisation secrets are not visible to this user-owned repository.
 # Optional secrets: SIGNING_CERT_PFX_BASE64, SIGNING_CERT_PASSWORD (Authenticode via osslsigncode).
 name: release
 
@@ -56,7 +58,7 @@ jobs:
 
       - name: Create draft Gitea release and upload artefacts
         env:
-          TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
         run: |
           v="$VERSION"
           api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
