@@ -9,8 +9,8 @@
     {"key": "WP-023", "area": "Architecture", "weight": 3, "state": "planned", "title": "Privileged helper and IPC design"},
     {"key": "WP-070", "area": "Architecture", "weight": 3, "state": "planned", "title": "Recovery/offline mode concept"},
 
-    {"key": "WP-004", "area": "CI/CD", "weight": 2, "state": "planned", "title": "Windows host runner"},
-    {"key": "WP-005", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Linux docker runner"},
+    {"key": "WP-004", "area": "CI/CD", "weight": 2, "state": "implemented", "title": "Windows builds without Windows runner (MinGW cross build + Wine)"},
+    {"key": "WP-005", "area": "CI/CD", "weight": 1, "state": "implemented", "title": "Use existing instance runner (ubuntu-latest)"},
     {"key": "WP-006", "area": "CI/CD", "weight": 3, "state": "implemented", "title": "CI and release pipelines"},
     {"key": "WP-007", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Branch protection with required checks"},
     {"key": "WP-008", "area": "CI/CD", "weight": 1, "state": "in_progress", "title": "GitHub push mirror"},

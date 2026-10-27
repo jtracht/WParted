@@ -7,9 +7,11 @@
 |---|---|---|---|
 | Unit (core) | `tests/unit/test_core.cpp` | any OS | GPT/MBR parsing, CRC, GUIDs, UTF-16, flags, FS signatures, layout gaps, JSON, fuzzing |
 | End-to-end CLI | `tests/integration/cli_image_roundtrip.cmake` | Windows | CLI parses a synthetic GPT image, emits the expected JSON, and leaves the image byte-identical |
+| Wine execution | `tools/ci/build-mingw.sh`, `tools/ci/gui-smoke-wine.sh` | Linux runner | Cross-built EXEs load and pass all tests under Wine; GUI creates its window and finishes discovery; EXEs import only Windows system DLLs |
 | Static guards | `tools/ci/check_readonly.py`, `check_spdx.py` | any | No write APIs in production code; licence headers |
 | Manual hardware | `docs/compatibility/windows-support-matrix.md` | Windows VMs / test PCs | Real discovery per Windows version |
-| VHD integration (from v0.3) | `tests/integration/vhd/` (planned, WP-031) | Windows runner | Write operations on attached VHDX with read-back verification |
+| Image write tests (from v0.3) | planned, WP-031 | Linux runner (native + Wine) | Every layout write is first executed by the core against image files through a `BlockWriter` abstraction and verified by re-parsing |
+| VHDX integration (from v0.3) | `tests/integration/vhd/` (planned, WP-031) | Manual, elevated Windows machine (no Windows runner exists) | Windows IOCTL write path on attached VHDX with read-back verification; mandatory before a write feature leaves `Experimental` |
 
 Synthetic images are built in memory by `tests/unit/image_builder.hpp` (protective MBR, primary and
 backup GPT with valid CRCs, EBR chains, FS signatures). **No test touches a physical disk.**
@@ -21,12 +23,16 @@ backup GPT with valid CRCs, EBR chains, FS signatures). **No test touches a phys
 build\x64-release\tests\wparted_core_tests.exe
 ```
 
-## Current results (2026-10-27, Windows 11 x64 host)
+## Current results (2026-10-27)
 
-| Build | core_unit_tests | cli_image_roundtrip |
-|---|---|---|
-| x64 Release | PASS (30/30) | PASS |
-| x86 Release | PASS (30/30) | PASS |
+| Build | Where | core_unit_tests | cli_image_roundtrip | GUI |
+|---|---|---|---|---|
+| MSVC x64 Release | Windows 11 host | PASS (30/30) | PASS | starts (manual) |
+| MSVC x86 Release | Windows 11 host | PASS (30/30) | PASS | - |
+| MinGW x64 (CI build) | Wine in runner image | PASS | PASS | smoke PASS |
+| MinGW x86 (CI build) | Wine in runner image | PASS | PASS | smoke PASS |
+| MinGW x64/x86 (CI build) | **real Windows 11** | - | CLI `list`/`--json` OK | starts, discovery OK, clean exit |
+| Native GCC (core) | Linux runner image | PASS | - | - |
 
 ## Benchmarks
 

@@ -22,7 +22,18 @@
 
 Outputs: `build/<arch>-<config>/apps/wparted-gui/wparted.exe`, `apps/wparted-cli/wparted-cli.exe`.
 
-The core library and its unit tests also build on Linux with GCC/Clang (used by CI):
+### Release build (as in CI): MinGW-w64 cross build on Linux
+
+```sh
+tools/ci/build-mingw.sh x64 --package   # or x86; needs Ubuntu 24.04 (or the runner image)
+```
+
+Toolchains: `cmake/toolchains/mingw-x86_64.cmake`, `mingw-i686.cmake`. Tests run through Wine
+(`CMAKE_CROSSCOMPILING_EMULATOR`). Output: `build/mingw-<arch>/`, packages in `dist/`.
+
+### Portable core on Linux
+
+The core library and its unit tests also build natively on Linux with GCC/Clang (used by CI):
 
 ```sh
 cmake -S . -B build/linux -G Ninja && cmake --build build/linux && ctest --test-dir build/linux
@@ -30,5 +41,7 @@ cmake -S . -B build/linux -G Ninja && cmake --build build/linux && ctest --test-
 
 ## Compiler settings
 
-Static CRT (`/MT`), `/W4 /permissive- /sdl /guard:cf`, `/DYNAMICBASE /NXCOMPAT`, `/SAFESEH` on x86,
-`_WIN32_WINNT=0x0601`. Warnings are treated as defects (CI fails on new warnings).
+- MSVC: static CRT (`/MT`), `/W4 /permissive- /sdl /guard:cf`, `/DYNAMICBASE /NXCOMPAT`, `/SAFESEH` on x86.
+- MinGW-w64: `-Wall -Wextra -Wpedantic`, fully static (`-static`), `--dynamicbase --nxcompat`
+  (+ `--high-entropy-va` on x64), stripped Release binaries; C runtime `msvcrt.dll`.
+- Both: `_WIN32_WINNT=0x0601`; `-DWPARTED_WARNINGS_AS_ERRORS=ON` in CI.

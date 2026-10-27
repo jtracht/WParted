@@ -48,12 +48,27 @@ comparison.
 7. **Linux file system modification** only in an optional offline/recovery environment
    (ADR to follow in WP-070).
 
+8. **Two compilers, one code base** (amended 2026-10-27, ADR-0001a). The Gitea instance has exactly
+   one Actions runner - a Linux Docker runner (`ubuntu-latest`) - and no Windows runner will be added.
+   Therefore:
+   - **Release binaries** are cross-compiled on that runner with **MinGW-w64 GCC** (posix threads),
+     linked fully static against `msvcrt.dll`, which exists on every Windows version (keeps Windows 7
+     in reach). CI asserts that the EXEs import only Windows system DLLs.
+   - Unit tests, the CLI end-to-end test and a GUI start-up smoke test run under **Wine** in the same
+     job. Wine is not Windows: it proves the binaries load and the logic works, not that real disk access
+     behaves like on Windows. Real-Windows checks stay a manual release gate.
+   - **MSVC** remains supported for local development (`tools/build.ps1`) and as a second compiler that
+     catches portability issues. Both compilers must stay warning-free.
+   - Trade-off: GCC has no equivalent of MSVC `/guard:cf`; ASLR/DEP/high-entropy-VA are enabled via
+     linker flags.
+
 ## Consequences
 
-- No third-party runtime → minimal supply-chain surface; SBOM lists only the MSVC static runtime.
+- No third-party runtime DLLs → minimal supply-chain surface; the SBOM lists the statically linked
+  mingw-w64 CRT/winpthreads and GCC runtime libraries, whose licence texts ship in `licenses/`.
 - UI work is more manual (owner-drawn buttons, dark theme quirks). Known gaps are tracked
   (menu bar theming, UIA provider for the disk map).
-- **Toolchain risk for Windows 7:** MSVC 14.4x still targets Windows 7 for desktop apps with the
-  static CRT, but Microsoft no longer tests this. Binaries must be verified on real Windows 7 SP1 /
+- **Toolchain risk for Windows 7:** release builds use MinGW-w64 against `msvcrt.dll` (present on
+  Windows 7); local MSVC 14.4x builds still target Windows 7, but Microsoft no longer tests this. Binaries must be verified on real Windows 7 SP1 /
   8.1 VMs before the release notes claim support (WP-015). Until then the support matrix lists them
   as "build targets, runtime unverified".

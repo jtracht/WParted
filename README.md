@@ -42,12 +42,17 @@ extract it and run `wparted.exe`. To read partition tables, choose **WParted →
 
 ## Building
 
-Requirements: Visual Studio 2022 (C++ workload, Windows SDK), CMake ≥ 3.20, Ninja, Python 3.
+Release binaries are cross-compiled on Linux (MinGW-w64) and tested under Wine, exactly as in CI:
+
+```sh
+tools/ci/build-mingw.sh x64 --package          # Ubuntu 24.04 or the runner image via Docker
+```
+
+Local Windows development with Visual Studio 2022, CMake ≥ 3.20, Ninja, Python 3:
 
 ```powershell
 python -m pip install --user cmake ninja
 .\tools\build.ps1 -Arch x64        # builds, runs unit + end-to-end tests
-.\tools\build.ps1 -Arch x86
 ```
 
 Details: [docs/developer/building.md](docs/developer/building.md).

@@ -45,7 +45,8 @@ if(MINGW)
     # winpthread) so the binaries only import Windows system DLLs, and the C
     # runtime is msvcrt.dll, which ships with every Windows version.
     add_link_options(-static -static-libgcc -static-libstdc++
-                     -Wl,--dynamicbase -Wl,--nxcompat)
+                     -Wl,--dynamicbase -Wl,--nxcompat
+                     $<$<CONFIG:Release>:-s>)
     if(CMAKE_SIZEOF_VOID_P EQUAL 8)
         add_link_options(-Wl,--high-entropy-va)
     endif()

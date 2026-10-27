@@ -20,6 +20,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `wparted-cli`: `list`, `inspect-image`, `fs-support`, `version`, JSON output.
 - Tests: 30 unit tests incl. fuzzing; end-to-end CLI test that verifies images stay unmodified.
 - CI tooling: read-only guard, SPDX check, portable packaging, CycloneDX SBOM.
+- Release builds are cross-compiled on the Linux CI runner with MinGW-w64 (fully static, only Windows
+  system DLLs incl. `msvcrt.dll`); unit, end-to-end and GUI smoke tests run under Wine. Toolchain
+  licence texts ship in `licenses/`.
 
 ### Security
 - The build contains no code path that writes to disks (enforced in CI).

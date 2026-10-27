@@ -7,9 +7,10 @@ Only results that were actually observed are marked as verified. Everything else
 
 | Windows | Arch | Builds | Unit tests | GUI starts | Elevated disk read | Evidence / open check |
 |---|---|---|---|---|---|---|
-| Windows 11 Pro (26300) | x64 | ✔ | ✔ 30/30 + CLI E2E | ✔ (light + dark, DE locale) | ☐ not yet verified | Local developer run 2026-10-27 (unelevated: volumes-only mode verified) — WP-014 |
-| Windows 11 | x86 build on x64 (WOW64) | ✔ | ✔ 30/30 + CLI E2E | ☐ | ☐ | WP-015 |
-| Windows 11 | ARM64 | ✘ toolset missing on build host | – | – | – | Install "MSVC v143 ARM64 build tools" — WP-015 |
+| Windows 11 Pro (26300) | x64 | ✔ MSVC + MinGW | ✔ 30/30 + CLI E2E | ✔ MSVC and MinGW builds (light + dark, DE locale) | ☐ not yet verified | Local run 2026-10-27 (unelevated: volumes-only mode verified) — WP-014 |
+| Windows 11 | x86 build on x64 (WOW64) | ✔ MSVC + MinGW | ✔ 30/30 + CLI E2E | ✔ MinGW build | ☐ | Local run 2026-10-27 — WP-015 |
+| Windows 11 | ARM64 | ✘ no ARM64 toolchain in CI | – | – | – | Possible via llvm-mingw (aarch64) — WP-015 |
+| Wine 9 (Ubuntu 24.04, CI) | x64 / x86 | ✔ MinGW | ✔ | ✔ smoke | n/a | Every CI run; Wine is not Windows |
 | Windows 10 22H2 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |
 | Windows 8.1 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |
 | Windows 8 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |

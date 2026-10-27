@@ -1,66 +1,48 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# Infrastructure setup (Gitea runners, GitHub mirror, code signing)
+# Infrastructure setup (Gitea runner, GitHub mirror, code signing)
 
-State on 2026-10-27: Gitea 28.2 at https://git.tracht-digital.de, repository `jtracht/WParted`.
-**No Actions runner is registered** for this user/repository, so workflow runs stay queued until the
-steps below are done (issues WP-004, WP-005).
+## 1. CI runner - the single instance runner
 
-## 1. Linux runner (`linux-build`) – static checks and portable core tests
+The Gitea instance has **one** Actions runner: `instance-linux-runner` (act_runner v5.2.2, label
+`ubuntu-latest`, image `docker.gitea.com/runner-images:ubuntu-latest`, Ubuntu 24.04, root, Node
+available). It is shared with other repositories, so jobs run one after another. No Windows runner
+exists or is planned.
 
-On the Debian host that already runs Docker:
+All WParted workflows use `runs-on: ubuntu-latest`:
 
-```sh
-# Download act_runner (pick the current release from https://gitea.com/gitea/act_runner/releases)
-./act_runner register --no-interactive \
-  --instance https://git.tracht-digital.de \
-  --token <registration token from Repo → Settings → Actions → Runners> \
-  --name wparted-linux \
-  --labels "linux-build:docker://node:20-bookworm"
-./act_runner daemon
-```
+| Job | What it does |
+|---|---|
+| `static checks` | read-only guard, SPDX, secrets scan, Markdown links |
+| `core + unit tests (Linux, GCC)` | native GCC build of the portable core with `-Werror` |
+| `Windows x64/x86 (MinGW cross build, tests under Wine)` | `tools/ci/build-mingw.sh <arch> --package`, then `tools/ci/gui-smoke-wine.sh` |
 
-`node:20-bookworm` provides Node (needed by `actions/checkout`), Python 3 and apt.
-
-## 2. Windows host runner (`windows-modern`) – native builds and tests
-
-A Docker container on Linux cannot build or run native Windows binaries. Use a Windows 10/11 x64 VM
-or PC dedicated to CI (no personal data, no attached production disks):
-
-1. Install Visual Studio 2022 Build Tools with "Desktop development with C++" (+ "MSVC v143 ARM64
-   build tools" for ARM64), Git for Windows, Python 3, Node.js LTS.
-2. `python -m pip install cmake ninja` (system-wide) or put CMake/Ninja on `PATH`.
-3. `Set-ExecutionPolicy RemoteSigned -Scope LocalMachine`.
-4. Register and install act_runner as a service:
+Reproduce any job locally with Docker Desktop:
 
 ```powershell
-.\act_runner.exe register --no-interactive --instance https://git.tracht-digital.de `
-  --token <token> --name wparted-win11 --labels "windows-modern:host"
-.\act_runner.exe daemon   # or install as a service with nssm / sc.exe
+docker run --rm -v "${PWD}:/src" -w /src docker.gitea.com/runner-images:ubuntu-latest `
+  bash tools/ci/build-mingw.sh x64 --package
 ```
 
-Later: a second runner `windows-legacy:host` on a Windows 7 SP1 / 8.1 VM for runtime smoke tests
-(binaries are built on `windows-modern`; legacy runners only *run* them).
+What Wine cannot verify (manual release gate, see `release-process.md`): real raw-disk access,
+elevation/UAC, DPI/theme behaviour of real Windows versions, Windows 7/8.1 specifics.
 
-## 3. Branch protection (after runners work)
+## 2. Branch protection
 
-`main`: no force push, no deletion, require the status checks `ci / static checks`,
-`ci / core + unit tests (Linux, GCC)`, `ci / Windows x64`, `ci / Windows x86`. Required approvals: 1
-once a second maintainer exists. Tags `v*` protected.
+`main`: no force push, no deletion, required status checks = the four CI job names above. Required
+approvals: 1 once a second maintainer exists. Tags `v*` protected.
 
-## 4. GitHub mirror (Gitea → GitHub, one direction)
+## 3. GitHub mirror (Gitea -> GitHub, one direction)
 
-1. Create a **fine-grained GitHub token** limited to the repository `WParted` with
-   *Contents: Read and write* (and *Workflows* only if needed). Do not reuse a personal OAuth token.
-2. Gitea: Repo → Settings → Mirror Settings → *Push Mirror*: remote
-   `https://github.com/<owner>/WParted.git`, username `<owner>`, password = token, sync on commit,
-   interval 8h.
-3. On GitHub disable Issues, Projects, Wiki, Discussions and Actions (Settings → General/Actions).
-4. Release binaries are not mirrored by Git; an optional workflow job may copy finished Gitea release
-   assets to a GitHub release using a separate secret `GITHUB_MIRROR_TOKEN`.
+1. Create a **fine-grained GitHub token** limited to `jtracht/WParted` with *Contents: Read and write*.
+2. Gitea: Repo -> Settings -> Mirror Settings -> *Push Mirror*: `https://github.com/jtracht/WParted.git`,
+   username `jtracht`, password = token, sync on commit.
+3. GitHub Issues, Projects, Wiki, Discussions and Actions are already disabled.
+4. Release binaries are not mirrored by Git; an optional job may copy published Gitea release assets
+   using a separate secret `GITHUB_MIRROR_TOKEN`.
 
-## 5. Release secrets
+## 4. Release secrets
 
 | Secret | Purpose |
 |---|---|
-| `RELEASE_TOKEN` | Gitea token (`write:repository`) used by `release.yml` to create releases |
-| `SIGNING_CERT_PFX_BASE64` / `SIGNING_CERT_PASSWORD` | Optional Authenticode certificate. Without them releases are published as **unsigned** and say so. Prefer an HSM/cloud signing service (e.g. Azure Trusted Signing) for production. |
+| `RELEASE_TOKEN` | Gitea token (`write:repository`) used by `release.yml` to create the draft release |
+| `SIGNING_CERT_PFX_BASE64` / `SIGNING_CERT_PASSWORD` | Optional Authenticode certificate, used by `osslsigncode` on Linux. Without them the release says it is **unsigned**. |
