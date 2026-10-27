@@ -47,9 +47,7 @@ constexpr int kMaxLogicalPartitions = 256;
 
 // `args` are the message parameters for translations, in message order.
 void diag(DiskLayout& l, Severity s, const char* code, std::string msg, std::vector<std::string> args = {}) {
-    Diagnostic d{s, code, std::move(msg)};
-    d.args = std::move(args);
-    l.diagnostics.push_back(std::move(d));
+    l.diagnostics.emplace_back(s, code, std::move(msg), 0, std::move(args));
 }
 
 bool isExtendedType(std::uint8_t t) { return t == 0x05 || t == 0x0F || t == 0x85; }

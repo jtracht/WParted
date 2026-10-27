@@ -47,10 +47,7 @@ private:
     // `op` is the 1-based operation number (0 = plan/layout wide); `args` are
     // the message parameters for translations (see the comment at each code).
     void add(Severity s, const char* code, std::string msg, int op = 0, std::vector<std::string> args = {}) {
-        Diagnostic d{s, code, std::move(msg)};
-        d.operation = op;
-        d.args = std::move(args);
-        r_.diagnostics.push_back(std::move(d));
+        r_.diagnostics.emplace_back(s, code, std::move(msg), op, std::move(args));
     }
     static std::string where(int op) { return "Operation " + std::to_string(op) + ": "; }
     // Gaps of this build: warnings while planning, errors for execution.

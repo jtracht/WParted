@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "wparted/core/block_reader.hpp"
@@ -28,7 +29,11 @@ const char* partitionKindName(PartitionKind k) noexcept;
 enum class Severity { Info, Warning, Error };
 
 struct Diagnostic {
-    Severity severity;
+    Diagnostic() = default;
+    Diagnostic(Severity s, std::string c, std::string m, int op = 0, std::vector<std::string> a = {})
+        : severity(s), code(std::move(c)), message(std::move(m)), operation(op), args(std::move(a)) {}
+
+    Severity severity = Severity::Info;
     std::string code;     // Stable identifier, e.g. "gpt.primary_header_crc".
     std::string message;  // Human-readable English text.
     // Structured form for translations (validation diagnostics): 1-based
