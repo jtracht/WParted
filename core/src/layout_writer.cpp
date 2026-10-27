@@ -22,7 +22,7 @@ void put64(std::uint8_t* p, std::uint64_t v) {
 
 // MBR entry with "LBA only" CHS markers.
 void mbrEntry(std::uint8_t* e, bool boot, std::uint8_t type, std::uint64_t start, std::uint64_t count) {
-    std::memset(e, 0, 16);
+    for (int i = 0; i < 16; ++i) e[i] = 0;
     e[0] = boot ? 0x80 : 0x00;
     e[1] = 0xFE; e[2] = 0xFF; e[3] = 0xFF;
     e[4] = type;
@@ -32,7 +32,9 @@ void mbrEntry(std::uint8_t* e, bool boot, std::uint8_t type, std::uint64_t start
 }
 
 std::vector<std::uint8_t> bootSector(const DiskLayout& l, const SerializeOptions& o) {
-    std::vector<std::uint8_t> s(l.sectorSize, 0);
+    // At least 512 bytes (callers guarantee sectorSize >= 512; this also lets
+    // the compiler prove the fixed MBR offsets are in range).
+    std::vector<std::uint8_t> s(std::max<std::uint32_t>(l.sectorSize, 512), 0);
     if (o.originalSector0.size() >= 440) std::memcpy(s.data(), o.originalSector0.data(), 440);  // keep boot code
     put32(&s[440], l.mbrSignature);
     s[510] = 0x55;
@@ -94,7 +96,8 @@ bool serializeGpt(const DiskLayout& l, const SerializeOptions& o, std::vector<Se
         return h;
     };
     std::vector<std::uint8_t> mbr = bootSector(l, o);
-    for (int i = 0; i < 4; ++i) std::memset(&mbr[446 + 16 * i], 0, 16);
+    if (mbr.size() < 512) { err = "invalid sector size"; return false; }
+    std::fill(mbr.begin() + 446, mbr.begin() + 510, std::uint8_t{0});
     mbrEntry(&mbr[446], false, 0xEE, 1, std::min<std::uint64_t>(total - 1, 0xFFFFFFFFull));
     out.push_back({0, mbr});
     out.push_back({1, header(1, total - 1, 2)});
@@ -133,7 +136,7 @@ bool serializeMbr(const DiskLayout& l, const SerializeOptions& o, std::vector<Se
             const PartitionEntry& lp = *logical[i];
             const std::uint64_t ebr = i == 0 ? ext->firstLba : lp.firstLba - 1;
             if (lp.firstLba <= ebr || ebr < ext->firstLba) { err = "no room for an extended boot record"; return false; }
-            std::vector<std::uint8_t> s(ss, 0);
+            std::vector<std::uint8_t> s(std::max<std::uint32_t>(ss, 512), 0);
             mbrEntry(&s[446], lp.mbrBootable, lp.mbrType, lp.firstLba - ebr, lp.sectorCount);
             if (i + 1 < logical.size()) {
                 const PartitionEntry& nx = *logical[i + 1];
@@ -146,7 +149,7 @@ bool serializeMbr(const DiskLayout& l, const SerializeOptions& o, std::vector<Se
         }
     } else if (ext) {
         // An empty extended partition still needs a valid (empty) first EBR.
-        std::vector<std::uint8_t> s(ss, 0);
+        std::vector<std::uint8_t> s(std::max<std::uint32_t>(ss, 512), 0);
         s[510] = 0x55;
         s[511] = 0xAA;
         out.push_back({ext->firstLba, s});

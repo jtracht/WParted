@@ -187,10 +187,10 @@ private:
                 case 'r': out += '\r'; break;
                 case 't': out += '\t'; break;
                 case 'u': {
-                    std::uint32_t cp;
+                    std::uint32_t cp = 0;
                     if (!hex4(cp, err)) return false;
                     if (cp >= 0xD800 && cp <= 0xDBFF) {
-                        std::uint32_t lo;
+                        std::uint32_t lo = 0;
                         if (pos_ + 2 > s_.size() || s_[pos_] != '\\' || s_[pos_ + 1] != 'u') return fail(err, "unpaired surrogate");
                         pos_ += 2;
                         if (!hex4(lo, err)) return false;
