@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Cross-compile 32-bit Windows binaries on Linux with MinGW-w64 (posix
+# thread model). Tests run through Wine (requires wine32).
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86)
+set(WPARTED_MINGW_TRIPLE i686-w64-mingw32)
+
+set(CMAKE_C_COMPILER ${WPARTED_MINGW_TRIPLE}-gcc-posix)
+set(CMAKE_CXX_COMPILER ${WPARTED_MINGW_TRIPLE}-g++-posix)
+set(CMAKE_RC_COMPILER ${WPARTED_MINGW_TRIPLE}-windres)
+
+set(CMAKE_FIND_ROOT_PATH /usr/${WPARTED_MINGW_TRIPLE})
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+
+find_program(WINE_EXECUTABLE NAMES wine)
+if(WINE_EXECUTABLE)
+    set(CMAKE_CROSSCOMPILING_EMULATOR ${WINE_EXECUTABLE})
+endif()

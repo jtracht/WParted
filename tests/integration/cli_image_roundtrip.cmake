@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # End-to-end: generate a synthetic image, analyse it with wparted-cli, verify
 # the JSON report, and verify the image was not modified (read-only guarantee).
+# EMULATOR is set (e.g. to wine) when the Windows binaries are cross-compiled.
 set(IMG "${WORKDIR}/cli_roundtrip.img")
-execute_process(COMMAND "${MAKE_IMAGE}" "${IMG}" RESULT_VARIABLE rc)
+execute_process(COMMAND ${EMULATOR} "${MAKE_IMAGE}" "${IMG}" RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
     message(FATAL_ERROR "make_test_image failed: ${rc}")
 endif()
 file(SHA256 "${IMG}" before)
-execute_process(COMMAND "${CLI}" inspect-image "${IMG}" --json
+execute_process(COMMAND ${EMULATOR} "${CLI}" inspect-image "${IMG}" --json
     RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT rc EQUAL 0)
     message(FATAL_ERROR "wparted-cli exited with ${rc}: ${err}\n${out}")

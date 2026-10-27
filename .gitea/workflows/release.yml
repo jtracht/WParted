@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Builds and publishes a release for a version tag (v0.1.0-alpha, v1.0.0, ...).
+# Builds a release for a version tag (v0.1.0-alpha, v1.0.0, ...) on the
+# Linux runner and creates a *draft* Gitea release. A maintainer publishes it
+# after the manual real-Windows smoke test (Wine is not Windows).
 # Fails without creating a release if any step or artefact is missing.
 # Required secret: RELEASE_TOKEN (Gitea token with write:repository).
-# Optional secrets: SIGNING_CERT_PFX_BASE64, SIGNING_CERT_PASSWORD (Authenticode).
+# Optional secrets: SIGNING_CERT_PFX_BASE64, SIGNING_CERT_PASSWORD (Authenticode via osslsigncode).
 name: release
 
 on:
@@ -11,67 +13,60 @@ on:
 
 jobs:
   release:
-    runs-on: windows-modern
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Verify tag matches project version
-        shell: powershell
         run: |
-          $tag = "${{ github.ref_name }}".TrimStart('v')
-          $cm = Get-Content CMakeLists.txt -Raw
-          if ($cm -notmatch 'VERSION (\d+\.\d+\.\d+)') { throw 'no project version' }
-          $ver = $Matches[1]
-          if ($cm -match 'WPARTED_VERSION_SUFFIX "([^"]*)"' -and $Matches[1]) { $ver = "$ver-$($Matches[1])" }
-          if ($tag -ne $ver) { throw "tag $tag does not match CMake version $ver" }
-          "VERSION=$ver" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          tag="${GITHUB_REF_NAME#v}"
+          ver="$(sed -n 's/^ *VERSION \([0-9.]*\)$/\1/p' CMakeLists.txt | head -1)"
+          suffix="$(sed -n 's/.*WPARTED_VERSION_SUFFIX "\([^"]*\)".*/\1/p' CMakeLists.txt | head -1)"
+          [ -n "$suffix" ] && ver="$ver-$suffix"
+          [ "$tag" = "$ver" ] || { echo "tag $tag does not match CMake version $ver"; exit 1; }
+          echo "VERSION=$ver" >> "$GITHUB_ENV"
 
       - name: Build, test and package x64
-        shell: powershell
-        run: ./tools/build.ps1 -Arch x64 -Package
+        run: bash tools/ci/build-mingw.sh x64 --package
       - name: Build, test and package x86
-        shell: powershell
-        run: ./tools/build.ps1 -Arch x86 -Package
+        run: bash tools/ci/build-mingw.sh x86 --package --no-deps
+      - name: GUI smoke test (Wine)
+        run: bash tools/ci/gui-smoke-wine.sh build/mingw-x64/apps/wparted-gui/wparted.exe
 
       - name: Sign binaries (skipped and reported as unsigned without secrets)
-        shell: powershell
         env:
           PFX_B64: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
           PFX_PASS: ${{ secrets.SIGNING_CERT_PASSWORD }}
-        run: ./tools/sign-release.ps1 -DistDir dist
+        run: bash tools/sign-release.sh dist
 
-      - name: Source archive, SBOM, checksums
-        shell: powershell
+      - name: Source archive, SBOM, checksums, completeness
         run: |
-          $v = $env:VERSION
+          v="$VERSION"
           git archive --format=zip --prefix="WParted-v$v/" -o "dist/WParted-v$v-source.zip" HEAD
-          $zips = Get-ChildItem dist -Filter *.zip | ForEach-Object FullName
-          python tools/generate_sbom.py $v "dist/WParted-v$v-sbom.json" @zips
-          $sum = "dist/WParted-v$v-checksums.sha256"
-          Remove-Item $sum -ErrorAction SilentlyContinue
-          Get-ChildItem dist -File | Where-Object Name -ne (Split-Path $sum -Leaf) | ForEach-Object {
-            "$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower())  $($_.Name)" | Out-File -Append -Encoding ascii $sum }
-          $expected = @("WParted-v$v-win7plus-x64-portable.zip", "WParted-v$v-win7plus-x86-portable.zip",
-                        "WParted-v$v-source.zip", "WParted-v$v-sbom.json", "WParted-v$v-checksums.sha256")
-          foreach ($e in $expected) { if (-not (Test-Path "dist/$e")) { throw "missing artefact $e" } }
+          python3 tools/generate_sbom.py "$v" "dist/WParted-v$v-sbom.json" dist/*.zip
+          sum="dist/WParted-v$v-checksums.sha256"
+          rm -f "$sum"
+          (cd dist && sha256sum $(ls | grep -v checksums.sha256)) > "$sum"
+          for f in "WParted-v$v-win7plus-x64-portable.zip" "WParted-v$v-win7plus-x86-portable.zip" \
+                   "WParted-v$v-source.zip" "WParted-v$v-sbom.json" "WParted-v$v-checksums.sha256"; do
+            [ -s "dist/$f" ] || { echo "missing artefact $f"; exit 1; }
+          done
 
-      - name: Create Gitea release and upload artefacts
-        shell: powershell
+      - name: Create draft Gitea release and upload artefacts
         env:
           TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          $v = $env:VERSION
-          $api = "${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
-          $notes = python tools/release_notes.py $v
-          $body = @{ tag_name = "v$v"; name = "WParted v$v"; body = ($notes -join "`n");
-                     prerelease = ($v -match '-'); draft = $true } | ConvertTo-Json
-          $headers = @{ Authorization = "token $env:TOKEN" }
-          $rel = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $headers -ContentType 'application/json' -Body $body
-          foreach ($f in Get-ChildItem dist -File) {
-            curl.exe --fail -sS -H "Authorization: token $env:TOKEN" -F "attachment=@$($f.FullName)" "$api/releases/$($rel.id)/assets?name=$($f.Name)"
-            if ($LASTEXITCODE -ne 0) { throw "upload failed: $($f.Name) (release stays a draft)" }
-          }
-          # Publish only after every artefact is attached.
-          Invoke-RestMethod -Method Patch -Uri "$api/releases/$($rel.id)" -Headers $headers -ContentType 'application/json' -Body '{"draft": false}' | Out-Null
+          v="$VERSION"
+          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
+          prerelease=false; case "$v" in *-*) prerelease=true ;; esac
+          python3 tools/release_notes.py "$v" > notes.md
+          body="$(python3 -c 'import json,sys;print(json.dumps({"tag_name":"v"+sys.argv[1],"name":"WParted v"+sys.argv[1],"body":open("notes.md").read(),"draft":True,"prerelease":sys.argv[2]=="true"}))' "$v" "$prerelease")"
+          id="$(curl --fail -sS -H "Authorization: token $TOKEN" -H 'Content-Type: application/json' -d "$body" "$api/releases" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')"
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            curl --fail -sS -H "Authorization: token $TOKEN" -F "attachment=@$f" "$api/releases/$id/assets?name=$(basename "$f")" >/dev/null \
+              || { echo "upload failed: $f (release stays a draft)"; exit 1; }
+          done
+          echo "Draft release $id created. Publish it after the manual Windows smoke test."

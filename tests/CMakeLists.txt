@@ -13,5 +13,6 @@ if(WIN32 AND TARGET wparted-cli)
             -DMAKE_IMAGE=$<TARGET_FILE:wparted_make_test_image>
             -DCLI=$<TARGET_FILE:wparted-cli>
             -DWORKDIR=${CMAKE_CURRENT_BINARY_DIR}
+            "-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
             -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/cli_image_roundtrip.cmake)
 endif()

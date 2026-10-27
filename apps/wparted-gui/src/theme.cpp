@@ -18,8 +18,8 @@ Fn loadProc(const wchar_t* dll, const char* name) {
         wchar_t path[MAX_PATH];
         UINT n = GetSystemDirectoryW(path, MAX_PATH);
         if (n == 0 || n + wcslen(dll) + 2 > MAX_PATH) return nullptr;
-        wcscat_s(path, L"\\");
-        wcscat_s(path, dll);
+        wcscat_s(path, MAX_PATH, L"\\");
+        wcscat_s(path, MAX_PATH, dll);
         m = LoadLibraryW(path);
     }
     return m ? reinterpret_cast<Fn>(reinterpret_cast<void*>(GetProcAddress(m, name))) : nullptr;

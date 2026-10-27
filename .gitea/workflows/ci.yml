@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Pull request / push validation. Runner labels are documented in
-# docs/developer/infrastructure-setup.md:
-#   linux-build    -> docker://node:20-bookworm  (portable core, static checks)
-#   windows-modern -> host runner on Windows 10/11 x64 with VS 2022 Build Tools
+# Pull request / push validation on the instance's only runner
+# (label ubuntu-latest, image docker.gitea.com/runner-images:ubuntu-latest).
+# Windows binaries are cross-compiled with MinGW-w64 and tested under Wine;
+# real-Windows verification is a manual release gate (docs/developer/release-process.md).
 name: ci
 
 on:
@@ -13,7 +13,7 @@ on:
 jobs:
   checks:
     name: static checks
-    runs-on: linux-build
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Read-only guard (no write paths in v0.x read-only builds)
@@ -30,30 +30,31 @@ jobs:
 
   core-linux:
     name: core + unit tests (Linux, GCC)
-    runs-on: linux-build
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build g++ >/dev/null
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends cmake ninja-build g++ >/dev/null
       - name: Configure
-        run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS=-Werror
+        run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DWPARTED_WARNINGS_AS_ERRORS=ON
       - name: Build
         run: cmake --build build/linux
       - name: Test
         run: ctest --test-dir build/linux --output-on-failure
 
-  windows:
-    name: Windows ${{ matrix.arch }}
-    runs-on: windows-modern
+  windows-cross:
+    name: Windows ${{ matrix.arch }} (MinGW cross build, tests under Wine)
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         arch: [x64, x86]
     steps:
       - uses: actions/checkout@v4
-      - name: Build and test
-        shell: powershell
-        run: ./tools/build.ps1 -Arch ${{ matrix.arch }} -Package
+      - name: Build, unit tests, CLI end-to-end test, import check, package
+        run: bash tools/ci/build-mingw.sh ${{ matrix.arch }} --package
+      - name: GUI start-up smoke test (Wine + Xvfb)
+        run: bash tools/ci/gui-smoke-wine.sh build/mingw-${{ matrix.arch }}/apps/wparted-gui/wparted.exe
       - name: Upload portable package
         uses: actions/upload-artifact@v3
         with:

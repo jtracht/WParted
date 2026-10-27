@@ -58,7 +58,7 @@ if (-not $NoTests -and $canRun) {
 }
 
 if ($Package) {
-    & (Join-Path $PSScriptRoot 'package-portable.ps1') -BuildDir $buildDir -Arch $Arch
+    & python (Join-Path $PSScriptRoot 'package.py') --build-dir $buildDir --arch $Arch
     if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
 }
 Write-Host "Build OK: $buildDir"

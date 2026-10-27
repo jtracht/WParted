@@ -33,6 +33,24 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+option(WPARTED_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (CI)" OFF)
+if(WPARTED_WARNINGS_AS_ERRORS)
+    add_compile_options($<IF:$<CXX_COMPILER_ID:MSVC>,/WX,-Werror>)
+endif()
+
+if(MINGW)
+    # Win32 idiom `STRUCT s{sizeof s};` zero-initialises the remaining members.
+    add_compile_options(-Wno-missing-field-initializers)
+    # Cross builds on the Linux CI runner. Fully static (libgcc, libstdc++,
+    # winpthread) so the binaries only import Windows system DLLs, and the C
+    # runtime is msvcrt.dll, which ships with every Windows version.
+    add_link_options(-static -static-libgcc -static-libstdc++
+                     -Wl,--dynamicbase -Wl,--nxcompat)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        add_link_options(-Wl,--high-entropy-va)
+    endif()
+endif()
+
 if(WIN32)
     # Target Windows 7 SP1 as the minimum API level. Newer APIs must be
     # resolved at run time (GetProcAddress) and degrade gracefully.

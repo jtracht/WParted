@@ -20,4 +20,6 @@ target_link_libraries(wparted PRIVATE wparted_win_storage comctl32 comdlg32 shel
 if(MSVC)
     # The manifest is embedded through the .rc file.
     target_link_options(wparted PRIVATE /MANIFEST:NO)
+elseif(MINGW)
+    target_link_options(wparted PRIVATE -municode)  # wWinMain entry point
 endif()

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Generated from apps/wparted-gui/res/wparted.rc.in by CMake.
-#include <winres.h>
+// windows.h + winver.h work with both rc.exe (MSVC) and windres (MinGW).
+#include <windows.h>
+#include <winver.h>
 
 1 ICON "@WPARTED_ICON@"
 1 RT_MANIFEST "@WPARTED_MANIFEST@"

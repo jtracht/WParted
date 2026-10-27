@@ -132,6 +132,13 @@ void drawButton(const DRAWITEMSTRUCT& di, const Palette& p, UINT dpi) {
     }
 }
 
+// Explicit CALLBACK (__stdcall on x86): a lambda would only convert with MSVC.
+HRESULT CALLBACK aboutDialogCallback(HWND, UINT n, WPARAM, LPARAM lp, LONG_PTR) {
+    if (n == TDN_HYPERLINK_CLICKED)
+        ShellExecuteW(nullptr, L"open", reinterpret_cast<LPCWSTR>(lp), nullptr, nullptr, SW_SHOWNORMAL);
+    return S_OK;
+}
+
 int fsImageIndex(FsType t) { return static_cast<int>(t); }  // image list follows FsType order
 int unallocatedImage() { return static_cast<int>(FsType::Minix) + 1; }
 int extendedImage() { return static_cast<int>(FsType::Minix) + 2; }
@@ -149,12 +156,22 @@ bool MainWindow::create(HINSTANCE inst, int show) {
     wc.hIconSm = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
                                                GetSystemMetrics(SM_CYSMICON), 0));
     wc.lpszClassName = kWindowClass;
-    if (!RegisterClassExW(&wc) || !registerDiskMapClass(inst)) return false;
+    if (!RegisterClassExW(&wc)) {
+        log::error("RegisterClassExW(main) failed, error " + std::to_string(GetLastError()));
+        return false;
+    }
+    if (!registerDiskMapClass(inst)) {
+        log::error("RegisterClassExW(disk map) failed, error " + std::to_string(GetLastError()));
+        return false;
+    }
 
     std::wstring title = std::wstring(tr(S::AppTitle)) + L" " + WPARTED_VERSION_STRING_W + L" - " + tr(S::ReadOnlyBuild);
     hwnd_ = CreateWindowExW(WS_EX_CONTROLPARENT, kWindowClass, title.c_str(), WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                             CW_USEDEFAULT, CW_USEDEFAULT, 1100, 720, nullptr, nullptr, inst, this);
-    if (!hwnd_) return false;
+    if (!hwnd_) {
+        log::error("CreateWindowExW(main) failed, error " + std::to_string(GetLastError()));
+        return false;
+    }
     // Size the window for the actual monitor DPI.
     dpi_ = dpiForWindow(hwnd_);
     SetWindowPos(hwnd_, nullptr, 0, 0, scale(1100, dpi_), scale(720, dpi_), SWP_NOMOVE | SWP_NOZORDER);
@@ -586,9 +603,9 @@ void MainWindow::updateStatus() {
     if (!result_) return;
     wchar_t buf[256];
     if (result_->disks.empty())
-        wcscpy_s(buf, tr(S::NoDisks));
+        wcscpy_s(buf, sizeof buf / sizeof buf[0], tr(S::NoDisks));
     else
-        swprintf_s(buf, tr(S::ScanDoneFmt), static_cast<int>(result_->disks.size()), static_cast<int>(result_->durationMs));
+        swprintf_s(buf, sizeof buf / sizeof buf[0], tr(S::ScanDoneFmt), static_cast<int>(result_->disks.size()), static_cast<int>(result_->durationMs));
     std::wstring text = buf;
     if (view_.layout)
         for (const auto& d : view_.layout->diagnostics)
@@ -617,7 +634,7 @@ void MainWindow::showPartitionInfo() {
         line(L"Partition GUID", w(p.uniqueGuid.toString()));
         line(L"Name", w(p.name));
         wchar_t attr[32];
-        swprintf_s(attr, L"0x%016llX", static_cast<unsigned long long>(p.gptAttributes));
+        swprintf_s(attr, sizeof attr / sizeof attr[0], L"0x%016llX", static_cast<unsigned long long>(p.gptAttributes));
         line(L"Attributes", attr);
     }
     line(L"Kind", w(partitionKindName(p.kind)));
@@ -681,7 +698,7 @@ void MainWindow::showDeviceInfo() {
     }
     if (d.layoutAvailable && d.layout.type == TableType::Mbr) {
         wchar_t sig[16];
-        swprintf_s(sig, L"%08X", d.layout.mbrSignature);
+        swprintf_s(sig, sizeof sig / sizeof sig[0], L"%08X", d.layout.mbrSignature);
         line(L"MBR disk signature", sig);
     }
     line(L"Contains Windows", d.containsWindows() ? L"yes" : L"no");
@@ -732,10 +749,7 @@ void MainWindow::showAbout() {
     cfg.pszContent = tr(S::AboutText);
     cfg.pszFooter = L"<a href=\"https://git.tracht-digital.de/jtracht/WParted\">git.tracht-digital.de/jtracht/WParted</a>";
     cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
-    cfg.pfCallback = [](HWND, UINT n, WPARAM, LPARAM lp, LONG_PTR) -> HRESULT {
-        if (n == TDN_HYPERLINK_CLICKED) ShellExecuteW(nullptr, L"open", reinterpret_cast<LPCWSTR>(lp), nullptr, nullptr, SW_SHOWNORMAL);
-        return S_OK;
-    };
+    cfg.pfCallback = aboutDialogCallback;
     TaskDialogIndirect(&cfg, nullptr, nullptr, nullptr);
 }
 
