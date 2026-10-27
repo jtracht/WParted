@@ -57,6 +57,10 @@ jobs:
           apt-get install -y -qq --no-install-recommends \
             e2fsprogs dosfstools exfatprogs ntfs-3g btrfs-progs xfsprogs f2fs-tools util-linux >/dev/null
           bash tools/ci/mkfs-fixtures.sh build/linux/tests/wparted_detect_fs
+      - name: Plan execution on image files, checked with sgdisk, sfdisk, e2fsck and debugfs
+        run: |
+          apt-get install -y -qq --no-install-recommends gdisk fdisk >/dev/null
+          bash tools/ci/image-apply-check.sh build/linux/tests/wparted_image_tool
 
   windows-cross:
     name: Windows ${{ matrix.arch }} (MinGW cross build, tests under Wine)

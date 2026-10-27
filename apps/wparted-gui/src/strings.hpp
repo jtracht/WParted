@@ -43,7 +43,7 @@ enum class S {
     DiagExecUnavailable, DiagShrinkBelowUsed, DiagCapability, DiagSystemWindows, DiagSystemType, DiagBusy,
     DiagEncrypted, DiagEncryptedFormat, DiagOutOfBounds, DiagMbr2TiB, DiagTooSmall, DiagUnaligned,
     DiagPhysUnaligned, DiagTooManyPrimary, DiagMultipleExtended, DiagLogicalNoExt, DiagMultipleBootable,
-    DiagLogicalOutside, DiagNoRoomEbr, DiagOverlapPrimary, DiagOverlapLogical,
+    DiagLogicalOutside, DiagNoRoomEbr, DiagOverlapPrimary, DiagOverlapLogical, DiagImageExtendedMove,
     ActCreate, ActGrow, ActShrink, ActMove, ActCopy, ActCheck, ActLabel, ActUuid,
     SupSupported, SupLimited, SupOffline, SupExperimental, SupReadOnly, SupUnsupported, SupPlanned,
     InfoModel, InfoSerial, InfoFirmwareRevision, InfoPath, InfoInterface, InfoSize, InfoLogicalSectorSize, InfoPhysicalSectorSize, InfoSolidStateNoSeekPenalty, InfoRemovableMedia, InfoWriteProtected, InfoPartitionTable, InfoDiskGuid, InfoUsableSectors, InfoGptPrimaryBackupHeader, InfoMbrDiskSignature, InfoContainsWindows, InfoFileSystem, InfoLabel, InfoFileSystemUuidSerial, InfoPartitionType, InfoTypeGuid, InfoPartitionGuid, InfoName, InfoAttributes, InfoKind, InfoFirstSector, InfoLastSector, InfoTotalSectors, InfoAlignedTo1Mib, InfoAlignedToPhysicalSector, InfoFlags, InfoSystemCritical, InfoWindowsVolume, InfoMountPoints, InfoWindowsFileSystem, InfoUsed, InfoUnused, ValYes, ValNo, ValUnknown, ValBytes, ValValid, ValInvalid, ValNotReadable, ValDetection, ValProtected, InfoDiagnostics,

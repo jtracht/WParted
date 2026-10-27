@@ -72,7 +72,7 @@ private:
         if (c_.managedByWindows)
             add(Severity::Error, "device.managed_by_windows",
                 "This disk is a dynamic disk or Storage Spaces member. Use Disk Management or Storage Spaces instead.");
-        if (c_.mode == ValidationMode::Execution) {
+        if (c_.mode != ValidationMode::Planning) {
             if (c_.haveCurrentIdentity) {
                 std::string why;
                 if (!q_.identity().matches(c_.currentIdentity, why))
@@ -82,8 +82,9 @@ private:
             } else {
                 add(Severity::Error, "plan.identity_unknown", "The current identity of the device could not be determined.");
             }
-            add(Severity::Error, "execution.unavailable",
-                "This build of WParted cannot execute operations yet. The plan was validated only.");
+            if (c_.mode == ValidationMode::Execution)
+                add(Severity::Error, "execution.unavailable",
+                    "This build of WParted cannot execute operations yet. The plan was validated only.");
         }
     }
 
@@ -141,7 +142,7 @@ private:
                 at + what + " holds the running Windows or its page file and cannot be changed from Windows.", index,
                 {"windows", num});
         else if (isSystemCriticalType(layout, p))
-            add(Severity::Error, "op.system_critical",
+            add(c_.mode == ValidationMode::ImageExecution ? Severity::Warning : Severity::Error, "op.system_critical",
                 at + what + " is a system partition (" + partitionTypeDescription(layout, p) +
                     ") and is protected in desktop mode.",
                 index, {"type", num, partitionTypeDescription(layout, p)});
@@ -159,6 +160,13 @@ private:
     // op.capability args: {action, file system, support level}; action is one of
     // create, grow, shrink, move, copy, check, label, uuid.
     void capability(int index, const PartitionEntry& p, const Operation& op, const DiskLayout& layout) {
+        // op.image_unsupported args: {number}. The image executor moves data of
+        // primary and logical partitions only, not an extended partition with its EBR chain.
+        if (c_.mode == ValidationMode::ImageExecution && p.kind == PartitionKind::Extended &&
+            op.type == OpType::ResizeMove && op.firstLba != p.firstLba)
+            add(Severity::Error, "op.image_unsupported",
+                where(index) + "moving extended partition #" + std::to_string(p.number) + " is not supported yet.", index,
+                {std::to_string(p.number)});
         if (p.kind == PartitionKind::Extended) return;
         const FsType fs = p.fs.type;
         const auto& cap = capabilitiesFor(fs);
@@ -173,11 +181,16 @@ private:
                 if (fs == FsType::Unknown) return;  // no file system: partition boundaries only
                 if (op.sectorCount > p.sectorCount) need(cap.grow, "grow", "growing");
                 if (op.sectorCount < p.sectorCount) need(cap.shrink, "shrink", "shrinking");
-                if (op.firstLba != p.firstLba) need(cap.move, "move", "moving");
+                // Image files: a move that keeps the size is a raw block move and
+                // works for every file system.
+                const bool rawMove = c_.mode == ValidationMode::ImageExecution && op.sectorCount == p.sectorCount;
+                if (op.firstLba != p.firstLba && !rawMove) need(cap.move, "move", "moving");
                 (void)layout;
                 return;
             }
-            case OpType::Copy: if (fs != FsType::Unknown) need(cap.copy, "copy", "copying"); return;
+            case OpType::Copy:  // image files: raw block copy, any file system
+                if (fs != FsType::Unknown && c_.mode != ValidationMode::ImageExecution) need(cap.copy, "copy", "copying");
+                return;
             case OpType::Check: need(cap.check, "check", "checking"); return;
             case OpType::SetLabel: need(cap.label, "label", "labelling"); return;
             case OpType::NewUuid: need(cap.uuid, "uuid", "changing the UUID of"); return;

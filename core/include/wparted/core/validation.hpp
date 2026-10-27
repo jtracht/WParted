@@ -18,6 +18,10 @@ namespace wparted {
 enum class ValidationMode {
     Planning,   // capability gaps of this build are warnings: the plan can be made, not executed
     Execution,  // everything that cannot be executed safely is an error
+    // Execution on a disk image file (executor.hpp): partition-table changes and
+    // raw block moves/copies are possible; file-system changes are not. System
+    // partitions are warnings only, because an image is not the running system.
+    ImageExecution,
 };
 
 // Facts about the real device that the core cannot know by itself.

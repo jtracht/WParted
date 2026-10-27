@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Read-only guard for the v0.1/v0.2 release line.
 
-Fails if any production source requests write access to a device or uses a
-modifying storage API. A line may opt out only with an explicit
-`readonly-guard: allow` comment (used for user-chosen report files) - every
-such exemption is printed so reviewers see it.
+Fails if any production source requests write access to a device, opens a
+file for writing or uses a modifying storage API. A line may opt out only
+with an explicit `readonly-guard: allow` comment - used for user-chosen
+report/plan/log files and for the image-file executor (core/src/executor.cpp,
+which refuses device paths) - and every exemption is printed for reviewers.
 
 This check is a safety net, not a proof. It is removed per API once the
 operation engine with privilege separation (issue WP-020 and later) lands.
@@ -37,6 +38,8 @@ FORBIDDEN = [
     (r"\bSetVolumeMountPoint\w*\b", "mount point change"),
     (r"\bSetVolumeLabel\w*\b", "label change"),
     (r"\bfopen(_s)?\s*\([^;]*\"[^\"]*[wa+][^\"]*\"", "file opened for writing"),
+    (r"\b_w?fsopen\s*\([^;]*\"[^\"]*[wa+][^\"]*\"", "file opened for writing"),
+    (r"\b(std::)?ofstream\b", "file opened for writing"),
 ]
 ALLOW = "readonly-guard: allow"
 # Test helpers legitimately create synthetic image files.

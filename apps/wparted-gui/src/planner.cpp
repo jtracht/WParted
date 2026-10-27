@@ -140,7 +140,7 @@ std::wstring diagText(const Diagnostic& d) {
         {"layout.physical_unaligned", S::DiagPhysUnaligned, 1}, {"layout.too_many_primary", S::DiagTooManyPrimary, 0},
         {"layout.multiple_extended", S::DiagMultipleExtended, 0}, {"layout.logical_without_extended", S::DiagLogicalNoExt, 0},
         {"mbr.multiple_bootable", S::DiagMultipleBootable, 0}, {"layout.logical_outside_extended", S::DiagLogicalOutside, 1},
-        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1},
+        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1}, {"op.image_unsupported", S::DiagImageExtendedMove, 1},
         // partition-table parser
         {"gpt.no_valid_header", S::PdNoValidHeader, 2},
         {"gpt.primary_invalid", S::PdPrimaryInvalid, 1},

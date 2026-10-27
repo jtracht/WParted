@@ -14,5 +14,6 @@ add_library(wparted_core STATIC
     src/validation.cpp
     src/layout_writer.cpp
     src/rescue.cpp
-    src/operation_log.cpp)
+    src/operation_log.cpp
+    src/executor.cpp)
 target_include_directories(wparted_core PUBLIC include)

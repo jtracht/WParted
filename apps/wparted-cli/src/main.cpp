@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 The WParted contributors
 //
-// wparted-cli: read-only command line front end. Useful for scripting,
-// diagnostics reports and for testing the core against disk images.
+// wparted-cli: command line front end for scripting, diagnostics reports and
+// testing the core against disk images. Physical disks are only ever read;
+// `apply-plan --execute` writes to a user-chosen disk image *file* only.
 #include <windows.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "wparted/core/executor.hpp"
 #include "wparted/core/filesystem.hpp"
 #include "wparted/core/json.hpp"
 #include "wparted/core/partition_table.hpp"
@@ -24,7 +28,7 @@ namespace {
 
 void usage() {
     std::printf(
-        "WParted CLI %s (read-only)\n\n"
+        "WParted CLI %s\n\n"
         "Usage:\n"
         "  wparted-cli list [--json]                      List disks, partitions and volumes\n"
         "  wparted-cli inspect-image <file> [--sector-size N] [--json]\n"
@@ -32,8 +36,11 @@ void usage() {
         "  wparted-cli fs-support [--json]                Show file system capabilities of this build\n"
         "  wparted-cli rescue-scan-image <file> [--sector-size N] [--json]\n"
         "                                                 Search unallocated space for lost file systems\n"
+        "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute] [--log file.html]\n"
+        "                                                 Check a saved plan against a disk image file;\n"
+        "                                                 with --execute, apply it to that image file\n"
         "  wparted-cli version                            Print version\n\n"
-        "No command of this version modifies any disk or file.\n"
+        "Only apply-plan --execute writes, and only to an image file; physical disks are never written.\n"
         "Raw partition table access to physical disks requires an elevated prompt.\n",
         WPARTED_VERSION_STRING);
 }
@@ -138,6 +145,85 @@ int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json)
     return 0;
 }
 
+int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uint32_t ss, bool execute,
+                 const std::string& logPath) {
+    if (isDevicePath(image)) {
+        std::fprintf(stderr, "error: apply-plan works on disk image files only; '%s' is a device\n", image.c_str());
+        return 2;
+    }
+    std::string json, err;
+    {
+        std::ifstream f(planPath, std::ios::binary);
+        if (!f) {
+            std::fprintf(stderr, "error: cannot read plan '%s'\n", planPath.c_str());
+            return 2;
+        }
+        std::ostringstream text;
+        text << f.rdbuf();
+        json = text.str();
+    }
+    DiskLayout original;
+    {
+        FileBlockReader r;  // closed before the exclusive write handle is opened
+        if (!r.open(image, ss)) {
+            std::fprintf(stderr, "error: cannot open image '%s'\n", image.c_str());
+            return 2;
+        }
+        original = parseDiskLayout(r, true);
+    }
+    OperationQueue q;
+    if (!OperationQueue::fromJson(json, original, q, err)) {
+        std::fprintf(stderr, "error: the plan does not fit this image: %s\n", err.c_str());
+        return 3;
+    }
+    if (!execute) {
+        const auto descriptions = q.descriptions();
+        for (std::size_t i = 0; i < descriptions.size(); ++i)
+            std::printf("%zu. [%s] %s\n", i + 1, riskName(riskOf(q.operations()[i])), descriptions[i].c_str());
+        ValidationContext ctx;
+        ctx.mode = ValidationMode::ImageExecution;
+        ctx.haveCurrentIdentity = true;
+        ctx.currentIdentity = identityOf(original, q.identity().serial, q.identity().model);
+        const ValidationResult vr = validatePlan(q, ctx);
+        for (const auto& d : vr.diagnostics)
+            std::printf("%s [%s] %s\n", d.severity == Severity::Error ? "ERROR" : d.severity == Severity::Warning ? "WARNING" : "INFO",
+                        d.code.c_str(), d.message.c_str());
+        std::printf(vr.ok() ? "Check passed. Nothing was written; run again with --execute to apply the plan to %s.\n"
+                            : "Check failed. Nothing was written to %s.\n",
+                    image.c_str());
+        return vr.ok() ? 0 : 3;
+    }
+    ImageFileDevice dev;
+    if (!dev.open(image, ss, err)) {
+        std::fprintf(stderr, "error: %s\n", err.c_str());
+        return 2;
+    }
+    ExecuteOptions opt;
+    opt.progress = [](std::size_t op, std::uint64_t done, std::uint64_t total) {
+        std::fprintf(stderr, "\r  operation %zu: %3u %%", op + 1, static_cast<unsigned>(total ? done * 100 / total : 100));
+        if (done == total) std::fprintf(stderr, "\n");
+    };
+    const ExecuteResult res = executePlanOnImage(dev, q, image, opt);
+    for (const auto& d : res.validation.diagnostics)
+        if (d.severity != Severity::Info)
+            std::printf("%s [%s] %s\n", d.severity == Severity::Error ? "ERROR" : "WARNING", d.code.c_str(), d.message.c_str());
+    for (std::size_t i = 0; i < res.log.children.size(); ++i) {
+        const LogStep& s = res.log.children[i];
+        std::printf("%zu. %-8s %s\n", i + 1, logStatusName(s.status), s.title.c_str());
+        for (const auto& m : s.messages) std::printf("             %s\n", m.c_str());
+    }
+    if (!logPath.empty()) {
+        std::ofstream out(logPath, std::ios::binary);  // readonly-guard: allow (user-chosen log file)
+        out << logToHtml(res.log, "WParted - " + image);
+    }
+    if (!res.ok) {
+        std::fprintf(stderr, "error: %s\n", res.error.c_str());
+        return 1;
+    }
+    std::printf("Done: %zu operation(s) applied to %s and verified.\n", res.completed, image.c_str());
+    return 0;
+}
+
 int cmdFsSupport(bool json) {
     if (json) {
         JsonWriter w;
@@ -202,6 +288,19 @@ int wmain(int argc, wchar_t** argv) {
         for (std::size_t i = 2; i + 1 < args.size(); ++i)
             if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
         return cmdRescueImage(args[1], ss, json);
+    }
+    if (args[0] == "apply-plan") {
+        if (args.size() < 3) {
+            usage();
+            return 2;
+        }
+        std::uint32_t ss = 512;
+        std::string logPath;
+        for (std::size_t i = 3; i + 1 < args.size(); ++i) {
+            if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
+            if (args[i] == "--log") logPath = args[i + 1];
+        }
+        return cmdApplyPlan(args[1], args[2], ss, has("--execute"), logPath);
     }
     if (args[0] == "inspect-image") {
         if (args.size() < 2) {

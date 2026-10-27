@@ -259,6 +259,8 @@ const Entry kStrings[] = {
                        L"Logische Partition #%1 lässt keinen Platz für ihren erweiterten Bootdatensatz (EBR)."},
     {S::DiagOverlapPrimary, L"The partitions #%1 and #%2 overlap.", L"Die Partitionen #%1 und #%2 überlappen sich."},
     {S::DiagOverlapLogical, L"The logical partitions #%1 and #%2 overlap.", L"Die logischen Partitionen #%1 und #%2 überlappen sich."},
+    {S::DiagImageExtendedMove, L"moving extended partition #%1 is not supported yet.",
+                               L"Das Verschieben der erweiterten Partition #%1 ist noch nicht möglich."},
     {S::ActCreate, L"Creating", L"Erstellen von"},
     {S::ActGrow, L"Growing", L"Vergrößern von"},
     {S::ActShrink, L"Shrinking", L"Verkleinern von"},
