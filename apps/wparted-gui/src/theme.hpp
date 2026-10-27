@@ -36,6 +36,9 @@ struct Palette {
     COLORREF success;
     // Disk map
     COLORREF unallocated, used, unused;
+    // Windows high-contrast mode: colours come from GetSysColor, no dark-mode
+    // control themes and no custom-drawn menu bar.
+    bool highContrast = false;
 };
 
 ThemeMode loadThemeMode();
@@ -43,6 +46,9 @@ void saveThemeMode(ThemeMode m);
 bool systemPrefersDark();
 // Reads the Windows accent colour (Windows 8+); call again on WM_SETTINGCHANGE.
 void refreshAccentColor();
+// Reads the high-contrast setting; call again on WM_SETTINGCHANGE / WM_SYSCOLORCHANGE.
+void refreshHighContrast();
+bool highContrastActive();
 const Palette& palette(bool dark);
 
 // Title bar: dark mode (Windows 10 1809+) and caption colour matching the

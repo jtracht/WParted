@@ -83,7 +83,7 @@ void applyMenuTheme(bool dark) {
 }
 
 bool handleMenuBarMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, const Palette& pal, HFONT font, LRESULT& result) {
-    if (!uahSupported()) return false;
+    if (!uahSupported() || pal.highContrast) return false;  // native menu bar in high contrast
     switch (msg) {
         case WM_UAHDRAWMENU: {
             auto* um = reinterpret_cast<UAHMENU*>(lp);

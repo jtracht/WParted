@@ -177,6 +177,7 @@ bool MainWindow::create(HINSTANCE inst, int show) {
         return false;
     }
     refreshAccentColor();
+    refreshHighContrast();
     if (!registerDiskMapClass(inst)) {
         log::error("RegisterClassExW(disk map) failed, error " + std::to_string(GetLastError()));
         return false;
@@ -546,7 +547,7 @@ void MainWindow::drawPendingItem(const DRAWITEMSTRUCT& di) {
         fillRounded(di.hDC, dr, scale(8, dpi_), dot, dot);
     }
     RECT tr2{x + scale(kind > 0 ? 22 : 0, dpi_), r.top, r.right - scale(8, dpi_), r.bottom};
-    SetTextColor(di.hDC, kind >= 10 ? dot : p.text);
+    SetTextColor(di.hDC, selected && p.highContrast ? p.onAccent : kind >= 10 ? dot : p.text);
     DrawTextW(di.hDC, text, -1, &tr2, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
     SelectObject(di.hDC, old);
 }
@@ -567,6 +568,7 @@ LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
             const int col = cd->iSubItem;
             cd->clrTextBk = selected ? p.selection : p.card;
             cd->clrText = (col == ColUsed || col == ColUnused || col == ColFlags || col == ColMount) ? p.mutedText : p.text;
+            if (selected && p.highContrast) cd->clrText = p.onAccent;  // HighlightText on Highlight
             return CDRF_DODEFAULT;
         }
         case CDDS_ITEMPOSTPAINT: {
@@ -1083,8 +1085,16 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SETTINGCHANGE:
             if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
                 refreshAccentColor();  // accent colour and light/dark preference
+                refreshHighContrast();
+                applyTheme();
+            } else if (wp == SPI_SETHIGHCONTRAST) {
+                refreshHighContrast();
                 applyTheme();
             }
+            break;
+        case WM_SYSCOLORCHANGE:
+            refreshHighContrast();
+            applyTheme();
             break;
         case WM_DRAWITEM: {
             const auto* di = reinterpret_cast<const DRAWITEMSTRUCT*>(lp);

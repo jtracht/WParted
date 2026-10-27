@@ -30,6 +30,7 @@ Fn loadProc(const wchar_t* dll, const char* name) {
 
 COLORREF g_accentLight = RGB(0x00, 0x5F, 0xB8);  // Fluent default accent ("Blue")
 COLORREF g_accentDark = RGB(0x60, 0xCD, 0xFF);
+bool g_highContrast = false;  // Windows high-contrast mode (refreshHighContrast)
 
 int luminance(COLORREF c) { return (GetRValue(c) * 299 + GetGValue(c) * 587 + GetBValue(c) * 114) / 1000; }
 
@@ -102,8 +103,31 @@ void refreshAccentColor() {
     g_accentDark = darkVariant;
 }
 
+void refreshHighContrast() {
+    HIGHCONTRASTW hc{sizeof hc};
+    g_highContrast = SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof hc, &hc, 0) && (hc.dwFlags & HCF_HIGHCONTRASTON);
+}
+
+bool highContrastActive() { return g_highContrast; }
+
+// System colours only; muted and semantic colours collapse to the text colour
+// because high-contrast themes define no secondary text colours.
+static Palette highContrastPalette() {
+    const COLORREF win = GetSysColor(COLOR_WINDOW), text = GetSysColor(COLOR_WINDOWTEXT);
+    const COLORREF face = GetSysColor(COLOR_BTNFACE), hi = GetSysColor(COLOR_HIGHLIGHT);
+    const COLORREF hiText = GetSysColor(COLOR_HIGHLIGHTTEXT), gray = GetSysColor(COLOR_GRAYTEXT);
+    Palette p{false, win, face, win, win, face, text, text, text, gray, hi, hiText, hi,
+              win, text, text, text, gray, blend(win, hi, 35), win};
+    p.highContrast = true;
+    return p;
+}
+
 const Palette& palette(bool dark) {
-    static Palette light, darkP;
+    static Palette light, darkP, hc;
+    if (g_highContrast) {
+        hc = highContrastPalette();
+        return hc;
+    }
     light = Palette{false,
                     RGB(0xF3, 0xF3, 0xF3), RGB(0xFB, 0xFB, 0xFB), RGB(0xFF, 0xFF, 0xFF), RGB(0xF0, 0xF0, 0xF0),
                     RGB(0xE6, 0xE6, 0xE6), RGB(0xE5, 0xE5, 0xE5),
@@ -129,7 +153,8 @@ void applyTitleBarTheme(HWND hwnd, bool dark) {
     // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1+), 19 on 1809-1909.
     if (FAILED(setAttr(hwnd, 20, &value, sizeof value))) setAttr(hwnd, 19, &value, sizeof value);
     // 35 = DWMWA_CAPTION_COLOR (Windows 11): title bar blends into the window.
-    COLORREF caption = palette(dark).window;
+    // DWMWA_COLOR_DEFAULT (0xFFFFFFFF) leaves the caption to the system in high contrast.
+    COLORREF caption = g_highContrast ? 0xFFFFFFFF : palette(dark).window;
     setAttr(hwnd, 35, &caption, sizeof caption);
 }
 
