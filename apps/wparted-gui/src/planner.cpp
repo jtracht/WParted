@@ -22,6 +22,7 @@
 #include "main_window.hpp"
 #include "strings.hpp"
 #include "wparted/core/block_reader.hpp"
+#include "wparted/core/executor.hpp"
 #include "wparted/core/log.hpp"
 #include "wparted/core/operation_log.hpp"
 
@@ -60,6 +61,15 @@ const wchar_t* tristateText(win::Tristate t) {
 }
 
 namespace {
+
+// Result of applying a plan to an image file, posted to the window as LPARAM.
+struct ImageApplyResult {
+    ExecuteResult result;
+    std::wstring path;
+    std::string name;
+};
+
+bool isImageDisk(const win::PhysicalDisk* d) { return d && d->busType == "Image file"; }
 
 // Result of the background rescue scan, posted to the window as LPARAM.
 struct RescueResult {
@@ -335,7 +345,7 @@ ValidationContext MainWindow::validationContext(ValidationMode mode) const {
         }
         ctx.state[p.planId] = st;
     }
-    if (mode == ValidationMode::Execution) {
+    if (mode != ValidationMode::Planning) {
         ctx.haveCurrentIdentity = true;
         ctx.currentIdentity = identityOf(d->layout, d->serial, d->modelName());
     }
@@ -371,7 +381,7 @@ void MainWindow::refreshView() {
             const LRESULT idx = SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
             SendMessageW(pending_, LB_SETITEMDATA, static_cast<WPARAM>(idx), static_cast<LPARAM>(riskOf(q->operations()[i])) + 1);
         }
-        const ValidationResult vr = validatePlan(*q, validationContext(ValidationMode::Planning));
+        const ValidationResult vr = validatePlan(*q, validationContext(isImageDisk(currentDisk()) ? ValidationMode::ImageExecution : ValidationMode::Planning));
         for (const auto& diag : vr.diagnostics) {
             (diag.severity == Severity::Error ? errors : warnings)++;
             const std::wstring line = diagText(diag);
@@ -761,33 +771,58 @@ void MainWindow::planCreateTable() {
 void MainWindow::showApplySummary() {
     OperationQueue* q = currentQueue();
     if (!q || q->empty()) return;
-    const ValidationResult vr = validatePlan(*q, validationContext(ValidationMode::Execution));
+    const win::PhysicalDisk* d = currentDisk();
+    const bool image = isImageDisk(d);
+    const ValidationResult vr =
+        validatePlan(*q, validationContext(image ? ValidationMode::ImageExecution : ValidationMode::Execution));
     std::wstring text;
     const auto descriptions = describeQueue(*q);
     for (std::size_t i = 0; i < descriptions.size(); ++i)
         text += std::to_wstring(i + 1) + L". [" + formatText(S::RiskLabel, {riskText(riskOf(q->operations()[i]))}) + L"] " +
                 descriptions[i] + L"\n";
     text += L"\n";
-    for (const auto& d : vr.diagnostics)
-        text += std::wstring(d.severity == Severity::Error ? L"✖ " : L"⚠ ") + diagText(d) + L"\n";
-    const win::PhysicalDisk* d = currentDisk();
+    for (const auto& diag : vr.diagnostics)
+        text += std::wstring(diag.severity == Severity::Error ? L"✖ " : L"⚠ ") + diagText(diag) + L"\n";
     std::wstring head = std::wstring(tr(S::ApplyTitle)) + L": " + (d ? w(d->modelName()) : L"") +
                        (d && !d->serial.empty() ? L" (" + w(d->serial) + L")" : L"");
-    TASKDIALOG_BUTTON buttons[] = {{100, tr(S::BtnExportPlan)}, {101, tr(S::BtnSaveDetails)}};
+    const bool canApply = image && vr.ok();
+    TASKDIALOG_BUTTON buttons[] = {{102, tr(S::BtnApplyImage)}, {100, tr(S::BtnExportPlan)}, {101, tr(S::BtnSaveDetails)}};
     TASKDIALOGCONFIG cfg{sizeof cfg};
     cfg.hwndParent = hwnd_;
     cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
     cfg.pszWindowTitle = tr(S::ApplyTitle);
     cfg.pszMainInstruction = head.c_str();
-    cfg.pszContent = tr(S::ApplyNoExec);
+    cfg.pszContent = !image ? tr(S::ApplyNoExec) : canApply ? tr(S::ApplyImageReady) : tr(S::ApplyImageBlocked);
     cfg.pszExpandedInformation = text.c_str();
     cfg.dwFlags |= TDF_EXPANDED_BY_DEFAULT;
-    cfg.pButtons = buttons;
-    cfg.cButtons = 2;
+    cfg.pButtons = canApply ? buttons : buttons + 1;
+    cfg.cButtons = canApply ? 3 : 2;
     cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+    cfg.nDefaultButton = IDCLOSE;  // writing is never the default
     cfg.pszMainIcon = TD_WARNING_ICON;
     int pressed = 0;
     TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr);
+    if (pressed == 102) {
+        // Second, explicit confirmation naming the file.
+        const std::wstring title = formatText(S::ConfirmImageTitle, {std::to_wstring(q->operations().size())});
+        const std::wstring body = formatText(S::ConfirmImageText, {d->path});
+        TASKDIALOG_BUTTON yes[] = {{103, tr(S::BtnApplyNow)}};
+        TASKDIALOGCONFIG c{sizeof c};
+        c.hwndParent = hwnd_;
+        c.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+        c.pszWindowTitle = tr(S::ApplyResultTitle);
+        c.pszMainInstruction = title.c_str();
+        c.pszContent = body.c_str();
+        c.pButtons = yes;
+        c.cButtons = 1;
+        c.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+        c.nDefaultButton = IDCANCEL;
+        c.pszMainIcon = TD_WARNING_ICON;
+        int confirmed = 0;
+        TaskDialogIndirect(&c, &confirmed, nullptr, nullptr);
+        if (confirmed == 103) startImageApply();
+        return;
+    }
     if (pressed == 100) savePlan();
     if (pressed == 101) {
         const std::wstring path = askSavePath(L"wparted-plan-details.html", L"HTML (*.html)\0*.html\0", L"html");
@@ -796,6 +831,109 @@ void MainWindow::showApplySummary() {
             const bool ok = saveTextFile(path, logToHtml(planLog(*q, vr, name), "WParted plan details - " + name));
             MessageBoxW(hwnd_, ok ? tr(S::ExportOk) : tr(S::ExportFailed), tr(S::AppTitle), ok ? MB_ICONINFORMATION : MB_ICONERROR);
         }
+    }
+}
+
+void MainWindow::startImageApply() {
+    const win::PhysicalDisk* d = currentDisk();
+    OperationQueue* q = currentQueue();
+    if (!isImageDisk(d) || !q || q->empty() || applying_) return;
+    if (applyWorker_.joinable()) applyWorker_.join();
+    applying_ = true;
+    applyTotal_ = q->operations().size();
+    onImageApplyProgress(0, 0);
+    const OperationQueue plan = *q;  // the worker gets its own copies
+    const std::wstring path = d->path;
+    const std::string name = d->modelName();
+    const std::uint32_t ss = d->logicalSectorSize;
+    HWND target = hwnd_;
+    log::info("Applying " + std::to_string(applyTotal_) + " operation(s) to image file " + win::narrow(path));
+    applyWorker_ = std::thread([plan, path, name, ss, target] {
+        auto* r = new ImageApplyResult;
+        r->path = path;
+        r->name = name;
+        ImageFileDevice dev;
+        std::string err;
+        if (!dev.open(win::narrow(path), ss, err)) {
+            r->result.error = err;
+        } else {
+            ExecuteOptions opt;
+            int lastPct = -1;
+            std::size_t lastOp = 0;
+            opt.progress = [&](std::size_t op, std::uint64_t done, std::uint64_t total) {
+                const int pct = total ? static_cast<int>(done * 100 / total) : 100;
+                if (pct == lastPct && op == lastOp) return;
+                lastPct = pct;
+                lastOp = op;
+                PostMessageW(target, WM_APP + 52, static_cast<WPARAM>(op), static_cast<LPARAM>(pct));
+            };
+            r->result = executePlanOnImage(dev, plan, name, opt);
+        }
+        if (!PostMessageW(target, WM_APP + 53, 0, reinterpret_cast<LPARAM>(r))) delete r;
+    });
+}
+
+void MainWindow::onImageApplyProgress(WPARAM op, LPARAM percent) {
+    const std::wstring text = formatText(S::ApplyRunning, {std::to_wstring(static_cast<std::size_t>(op) + 1),
+                                                           std::to_wstring(applyTotal_), std::to_wstring(percent)});
+    SetWindowTextW(status_, text.c_str());
+}
+
+void MainWindow::onImageApplyDone(LPARAM lp) {
+    std::unique_ptr<ImageApplyResult> r(reinterpret_cast<ImageApplyResult*>(lp));
+    applying_ = false;
+    if (applyWorker_.joinable()) applyWorker_.join();
+    const ExecuteResult& res = r->result;
+    log::info(res.ok ? "Image apply finished: " + std::to_string(res.completed) + " operation(s) verified"
+                     : "Image apply failed: " + res.error);
+    std::wstring steps;
+    for (std::size_t i = 0; i < res.log.children.size(); ++i) {
+        const LogStep& s = res.log.children[i];
+        const wchar_t* mark = s.status == LogStep::Status::Success ? L"✔ " : s.status == LogStep::Status::Error ? L"✖ " : L"– ";
+        steps += std::to_wstring(i + 1) + L". " + mark + w(s.title) + L"\n";
+    }
+    const std::wstring head = res.ok ? formatText(S::ApplyDoneOk, {std::to_wstring(res.completed)}) : std::wstring(tr(S::ApplyDoneFailed));
+    const std::wstring body = res.ok ? r->path : w(res.error);
+    TASKDIALOG_BUTTON buttons[] = {{101, tr(S::BtnSaveDetails)}};
+    TASKDIALOGCONFIG cfg{sizeof cfg};
+    cfg.hwndParent = hwnd_;
+    cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT | TDF_EXPANDED_BY_DEFAULT;
+    cfg.pszWindowTitle = tr(S::ApplyResultTitle);
+    cfg.pszMainInstruction = head.c_str();
+    cfg.pszContent = body.c_str();
+    cfg.pszExpandedInformation = steps.c_str();
+    cfg.pButtons = buttons;
+    cfg.cButtons = 1;
+    cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+    cfg.pszMainIcon = res.ok ? TD_INFORMATION_ICON : TD_ERROR_ICON;
+    int pressed = 0;
+    TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr);
+    if (pressed == 101) {
+        const std::wstring path = askSavePath(L"wparted-apply-details.html", L"HTML (*.html)\0*.html\0", L"html");
+        if (!path.empty()) {
+            const bool ok = saveTextFile(path, logToHtml(res.log, "WParted - " + r->name));
+            MessageBoxW(hwnd_, ok ? tr(S::ExportOk) : tr(S::ExportFailed), tr(S::AppTitle), ok ? MB_ICONINFORMATION : MB_ICONERROR);
+        }
+    }
+    reloadImage(r->path);  // show what is in the file now; the old plan no longer applies
+}
+
+void MainWindow::reloadImage(const std::wstring& path) {
+    if (!result_) return;
+    queues_.erase(path);
+    for (std::size_t i = 0; i < result_->disks.size(); ++i) {
+        win::PhysicalDisk& d = result_->disks[i];
+        if (d.path != path || !isImageDisk(&d)) continue;
+        FileBlockReader r;  // read-only
+        if (!r.open(win::narrow(path), d.logicalSectorSize)) {
+            log::warn("Re-reading image failed: " + win::narrow(path));
+            continue;
+        }
+        d.layout = parseDiskLayout(r, true);
+        log::info("Re-read image after apply: " + std::to_string(d.layout.partitions.size()) + " partition(s)");
+        for (auto& img : images_)
+            if (img.path == path) img.layout = d.layout;
+        selectDisk(static_cast<int>(i));
     }
 }
 

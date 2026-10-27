@@ -41,7 +41,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     InitCommonControlsEx(&icc);
     wparted::ui::initLanguage();
     openLog();
-    wparted::log::info(std::string("WParted ") + WPARTED_VERSION_STRING + " starting (read-only build)");
+    wparted::log::info(std::string("WParted ") + WPARTED_VERSION_STRING + " starting (disks are only read; image files can be written)");
 
     wparted::ui::MainWindow window;
     // Like GParted, an image file can be given on the command line (opened read-only).

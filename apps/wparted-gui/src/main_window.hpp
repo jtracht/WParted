@@ -93,6 +93,10 @@ private:
     void openImage(const std::wstring& path);
     void startRescue();
     void onRescueDone(LPARAM lp);
+    void startImageApply();
+    void onImageApplyProgress(WPARAM op, LPARAM percent);
+    void onImageApplyDone(LPARAM lp);
+    void reloadImage(const std::wstring& path);
     void chooseImage();
     bool saveTextFile(const std::wstring& path, const std::string& text);
     std::wstring askSavePath(const wchar_t* defaultName, const wchar_t* filter, const wchar_t* ext);
@@ -116,6 +120,9 @@ private:
     std::thread worker_;
     std::thread rescueWorker_;
     bool rescuing_ = false;
+    std::thread applyWorker_;     // plan execution on an image file
+    bool applying_ = false;
+    std::size_t applyTotal_ = 0;
     bool scanning_ = false;
     std::unique_ptr<win::DiscoveryResult> result_;
     std::vector<DiskLayout> fallbackLayouts_;  // per disk, used when the raw table is unreadable

@@ -993,6 +993,10 @@ void MainWindow::showContextMenu(POINT pt) {
 }
 
 void MainWindow::onCommand(int id) {
+    if (applying_ && id != IDM_QUIT) {  // the image file is being written
+        MessageBoxW(hwnd_, tr(S::ApplyBusy), tr(S::AppTitle), MB_ICONINFORMATION);
+        return;
+    }
     if (id >= IDM_FORMAT_BASE && id < IDM_FORMAT_BASE + kFormatChoiceCount) {
         planFormat(kFormatChoices[id - IDM_FORMAT_BASE]);
         return;
@@ -1218,9 +1222,16 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP + 51:  // rescue scan finished
             onRescueDone(lp);
             return 0;
+        case WM_APP + 52:  // image apply progress
+            onImageApplyProgress(wp, lp);
+            return 0;
+        case WM_APP + 53:  // image apply finished
+            onImageApplyDone(lp);
+            return 0;
         case WM_DESTROY: {
             if (worker_.joinable()) worker_.join();
             if (rescueWorker_.joinable()) rescueWorker_.join();
+            if (applyWorker_.joinable()) applyWorker_.join();  // never abandon a write half-way
             MSG m;
             while (PeekMessageW(&m, hwnd_, WM_APP_DISCOVERED, WM_APP_DISCOVERED, PM_REMOVE))
                 delete reinterpret_cast<win::DiscoveryResult*>(m.lParam);
