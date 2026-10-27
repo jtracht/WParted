@@ -27,6 +27,38 @@
 
 namespace wparted::ui {
 
+// Replaces %1..%9 in a translated pattern.
+std::wstring formatText(S pattern, std::initializer_list<std::wstring> args) {
+    std::wstring out;
+    const std::vector<std::wstring> a(args);
+    for (const wchar_t* p = tr(pattern); *p; ++p) {
+        if (p[0] == L'%' && p[1] >= L'1' && p[1] <= L'9' && static_cast<std::size_t>(p[1] - L'1') < a.size()) {
+            out += a[static_cast<std::size_t>(p[1] - L'1')];
+            ++p;
+        } else {
+            out += *p;
+        }
+    }
+    return out;
+}
+
+const wchar_t* supportText(Support s) {
+    switch (s) {
+        case Support::Supported: return tr(S::SupSupported);
+        case Support::Limited: return tr(S::SupLimited);
+        case Support::OfflineOnly: return tr(S::SupOffline);
+        case Support::Experimental: return tr(S::SupExperimental);
+        case Support::ReadOnly: return tr(S::SupReadOnly);
+        case Support::Unsupported: return tr(S::SupUnsupported);
+        case Support::Planned: return tr(S::SupPlanned);
+    }
+    return tr(S::ValUnknown);
+}
+
+const wchar_t* tristateText(win::Tristate t) {
+    return tr(t == win::Tristate::Yes ? S::ValYes : t == win::Tristate::No ? S::ValNo : S::ValUnknown);
+}
+
 namespace {
 
 // Result of the background rescue scan, posted to the window as LPARAM.
@@ -42,21 +74,6 @@ constexpr std::uint64_t kMiB = 1024 * 1024;
 std::wstring w(const std::string& s) { return win::widen(s); }
 
 std::wstring fsChoiceName(FsType fs) { return fs == FsType::Unknown ? std::wstring(tr(S::FsUnformatted)) : w(fsTypeName(fs)); }
-
-// Replaces %1..%9 in a translated pattern.
-std::wstring formatText(S pattern, std::initializer_list<std::wstring> args) {
-    std::wstring out;
-    const std::vector<std::wstring> a(args);
-    for (const wchar_t* p = tr(pattern); *p; ++p) {
-        if (p[0] == L'%' && p[1] >= L'1' && p[1] <= L'9' && static_cast<std::size_t>(p[1] - L'1') < a.size()) {
-            out += a[static_cast<std::size_t>(p[1] - L'1')];
-            ++p;
-        } else {
-            out += *p;
-        }
-    }
-    return out;
-}
 
 const wchar_t* riskText(Risk r) {
     switch (r) {
@@ -124,6 +141,29 @@ std::wstring diagText(const Diagnostic& d) {
         {"layout.multiple_extended", S::DiagMultipleExtended, 0}, {"layout.logical_without_extended", S::DiagLogicalNoExt, 0},
         {"mbr.multiple_bootable", S::DiagMultipleBootable, 0}, {"layout.logical_outside_extended", S::DiagLogicalOutside, 1},
         {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1},
+        // partition-table parser
+        {"gpt.no_valid_header", S::PdNoValidHeader, 2},
+        {"gpt.primary_invalid", S::PdPrimaryInvalid, 1},
+        {"gpt.backup_invalid", S::PdBackupInvalid, 1},
+        {"gpt.primary_backup_mismatch", S::PdMismatch, 0},
+        {"gpt.backup_location", S::PdBackupLocation, 0},
+        {"gpt.entry_reversed", S::PdEntryReversed, 1},
+        {"gpt.entry_outside_usable", S::PdEntryOutside, 1},
+        {"mbr.ebr_loop", S::PdEbrLoop, 0},
+        {"mbr.too_many_logical", S::PdTooManyLogical, 0},
+        {"mbr.ebr_unreadable", S::PdEbrUnreadable, 0},
+        {"mbr.ebr_signature", S::PdEbrSignature, 0},
+        {"mbr.logical_outside_extended", S::PdLogicalOutside, 1},
+        {"mbr.ebr_link_type", S::PdEbrLinkType, 0},
+        {"mbr.multiple_extended", S::PdMultipleExtended, 0},
+        {"layout.beyond_device", S::PdBeyondDevice, 1},
+        {"layout.overlap", S::PdOverlap, 2},
+        {"device.too_small", S::PdTooSmall, 0},
+        {"device.read_failed", S::PdReadFailed, 0},
+        {"gpt.sector_size_mismatch", S::PdSectorSize, 2},
+        {"layout.whole_device_fs", S::PdWholeDevice, 1},
+        {"table.foreign", S::PdForeign, 1},
+        {"mbr.invalid_entries", S::PdInvalidEntries, 0},
     };
     std::vector<std::wstring> a;
     for (const auto& s : d.args) a.push_back(w(s));
@@ -240,6 +280,8 @@ FormUpdate placementUpdate(const Placement& pl) {
 }
 
 }  // namespace
+
+std::wstring diagnosticText(const Diagnostic& d) { return diagText(d); }
 
 // ---------------------------------------------------------------------------
 // State

@@ -259,7 +259,7 @@ void MainWindow::createChildren() {
     SendMessageW(bannerBtn_, BCM_SETSHIELD, 0, TRUE);
     map_ = CreateWindowExW(0, kDiskMapClass, L"Disk map", child | WS_TABSTOP, 0, 0, 10, 10, hwnd_,
                            reinterpret_cast<HMENU>(IDC_MAP), inst_, nullptr);
-    list_ = CreateWindowExW(0, WC_LISTVIEWW, L"Partitions",
+    list_ = CreateWindowExW(0, WC_LISTVIEWW, tr(S::SectionPartitions),
                             child | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER, 0, 0, 10, 10, hwnd_,
                             reinterpret_cast<HMENU>(IDC_LIST), inst_, nullptr);
     ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
@@ -782,7 +782,7 @@ void MainWindow::updateStatus() {
     std::wstring text = buf;
     if (view_.layout)
         for (const auto& d : view_.layout->diagnostics)
-            if (d.severity != Severity::Info) text += L"  ⚠ " + w(d.message);
+            if (d.severity != Severity::Info) text += L"  ⚠ " + diagnosticText(d);
     SetWindowTextW(status_, text.c_str());
     SetWindowTextW(statusRight_, result_->elevated ? tr(S::ElevatedStatus) : tr(S::NotElevatedStatus));
 }
@@ -798,41 +798,43 @@ void MainWindow::showPartitionInfo() {
     const std::uint64_t startBytes = p.firstLba * ss;
     std::wstring t;
     auto line = [&t](const wchar_t* k, const std::wstring& v) { t += std::wstring(k) + L": " + v + L"\n"; };
-    line(L"File system", w(fsTypeName(p.fs.type)) + L" (detection: " + w(supportName(capabilitiesFor(p.fs.type).detect)) + L")");
-    if (!p.fs.label.empty()) line(L"Label", w(p.fs.label));
-    if (!p.fs.uuid.empty()) line(L"File system UUID / serial", w(p.fs.uuid));
-    line(L"Partition type", w(partitionTypeDescription(l, p)));
+    line(tr(S::InfoFileSystem), formatText(S::ValDetection, {w(fsTypeName(p.fs.type)), supportText(capabilitiesFor(p.fs.type).detect)}));
+    if (!p.fs.label.empty()) line(tr(S::InfoLabel), w(p.fs.label));
+    if (!p.fs.uuid.empty()) line(tr(S::InfoFileSystemUuidSerial), w(p.fs.uuid));
+    line(tr(S::InfoPartitionType), w(partitionTypeDescription(l, p)));
     if (l.type == TableType::Gpt) {
-        line(L"Type GUID", w(p.typeGuid.toString()));
-        line(L"Partition GUID", w(p.uniqueGuid.toString()));
-        line(L"Name", w(p.name));
+        line(tr(S::InfoTypeGuid), w(p.typeGuid.toString()));
+        line(tr(S::InfoPartitionGuid), w(p.uniqueGuid.toString()));
+        line(tr(S::InfoName), w(p.name));
         wchar_t attr[32];
         swprintf_s(attr, sizeof attr / sizeof attr[0], L"0x%016llX", static_cast<unsigned long long>(p.gptAttributes));
-        line(L"Attributes", attr);
+        line(tr(S::InfoAttributes), attr);
     }
-    line(L"Kind", w(partitionKindName(p.kind)));
-    line(L"First sector", std::to_wstring(p.firstLba) + L" (" + sizeText(startBytes) + L")");
-    line(L"Last sector", std::to_wstring(p.lastLba()));
-    line(L"Total sectors", std::to_wstring(p.sectorCount));
-    line(L"Size", sizeText(p.sectorCount * ss) + L" (" + std::to_wstring(p.sectorCount * ss) + L" bytes)");
-    line(L"Aligned to 1 MiB", startBytes % (1024 * 1024) == 0 ? L"yes" : L"no");
+    line(tr(S::InfoKind), tr(p.kind == PartitionKind::Logical    ? S::KindLogical
+                             : p.kind == PartitionKind::Extended ? S::KindExtended
+                                                                 : S::KindPrimary));
+    line(tr(S::InfoFirstSector), std::to_wstring(p.firstLba) + L" (" + sizeText(startBytes) + L")");
+    line(tr(S::InfoLastSector), std::to_wstring(p.lastLba()));
+    line(tr(S::InfoTotalSectors), std::to_wstring(p.sectorCount));
+    line(tr(S::InfoSize), sizeText(p.sectorCount * ss) + L" (" + formatText(S::ValBytes, {std::to_wstring(p.sectorCount * ss)}) + L")");
+    line(tr(S::InfoAlignedTo1Mib), tr(startBytes % (1024 * 1024) == 0 ? S::ValYes : S::ValNo));
     if (view_.disk->physicalSectorSize)
-        line(L"Aligned to physical sector", startBytes % view_.disk->physicalSectorSize == 0 ? L"yes" : L"no");
+        line(tr(S::InfoAlignedToPhysicalSector), tr(startBytes % view_.disk->physicalSectorSize == 0 ? S::ValYes : S::ValNo));
     std::wstring flags;
     for (const auto& f : partitionFlags(l, p)) flags += (flags.empty() ? L"" : L", ") + w(f);
-    line(L"Flags", flags.empty() ? L"-" : flags);
-    line(L"System critical", isSystemCriticalType(l, p) ? L"yes - protected from changes" : L"no");
+    line(tr(S::InfoFlags), flags.empty() ? L"-" : flags);
+    line(tr(S::InfoSystemCritical), tr(isSystemCriticalType(l, p) ? S::ValProtected : S::ValNo));
     if (vol) {
         std::wstring mounts;
         for (const auto& m : vol->mountPoints) mounts += (mounts.empty() ? L"" : L", ") + m;
-        line(L"Windows volume", vol->guidPath);
-        line(L"Mount points", mounts.empty() ? L"-" : mounts);
-        line(L"Windows file system", vol->fileSystem);
+        line(tr(S::InfoWindowsVolume), vol->guidPath);
+        line(tr(S::InfoMountPoints), mounts.empty() ? L"-" : mounts);
+        line(tr(S::InfoWindowsFileSystem), vol->fileSystem);
         if (vol->hasUsage) {
-            line(L"Used", sizeText(vol->totalBytes - vol->freeBytes));
-            line(L"Unused", sizeText(vol->freeBytes));
+            line(tr(S::InfoUsed), sizeText(vol->totalBytes - vol->freeBytes));
+            line(tr(S::InfoUnused), sizeText(vol->freeBytes));
         }
-        if (vol->containsWindows) line(L"Contains Windows", L"yes");
+        if (vol->containsWindows) line(tr(S::InfoContainsWindows), tr(S::ValYes));
     }
     std::wstring head = L"#" + std::to_wstring(p.number) + L"  " + w(fsTypeName(p.fs.type)) + L"  " + sizeText(p.sectorCount * ss);
     TASKDIALOGCONFIG cfg{sizeof cfg};
@@ -851,35 +853,37 @@ void MainWindow::showDeviceInfo() {
     const auto& d = *view_.disk;
     std::wstring t;
     auto line = [&t](const wchar_t* k, const std::wstring& v) { t += std::wstring(k) + L": " + v + L"\n"; };
-    line(L"Model", w(d.modelName()));
-    line(L"Serial", d.serial.empty() ? L"-" : w(d.serial));
-    line(L"Firmware revision", d.revision.empty() ? L"-" : w(d.revision));
-    line(L"Path", d.path);
-    line(L"Interface", w(d.busType));
-    line(L"Size", sizeText(d.sizeBytes) + L" (" + std::to_wstring(d.sizeBytes) + L" bytes)");
-    line(L"Logical sector size", std::to_wstring(d.logicalSectorSize) + L" bytes");
-    line(L"Physical sector size", d.physicalSectorSize ? std::to_wstring(d.physicalSectorSize) + L" bytes" : L"unknown");
-    line(L"Solid state (no seek penalty)", w(win::tristateName(d.solidState)));
-    line(L"Removable media", d.removableMedia ? L"yes" : L"no");
-    line(L"Write protected", w(win::tristateName(d.writeProtected)));
-    line(L"Partition table", d.layoutAvailable ? w(tableTypeName(d.layout.type)) : L"not readable: " + w(d.accessError));
+    line(tr(S::InfoModel), w(d.modelName()));
+    line(tr(S::InfoSerial), d.serial.empty() ? L"-" : w(d.serial));
+    line(tr(S::InfoFirmwareRevision), d.revision.empty() ? L"-" : w(d.revision));
+    line(tr(S::InfoPath), d.path);
+    line(tr(S::InfoInterface), w(d.busType));
+    line(tr(S::InfoSize), sizeText(d.sizeBytes) + L" (" + formatText(S::ValBytes, {std::to_wstring(d.sizeBytes)}) + L")");
+    line(tr(S::InfoLogicalSectorSize), formatText(S::ValBytes, {std::to_wstring(d.logicalSectorSize)}));
+    line(tr(S::InfoPhysicalSectorSize), d.physicalSectorSize ? formatText(S::ValBytes, {std::to_wstring(d.physicalSectorSize)}) : std::wstring(tr(S::ValUnknown)));
+    line(tr(S::InfoSolidStateNoSeekPenalty), tristateText(d.solidState));
+    line(tr(S::InfoRemovableMedia), tr(d.removableMedia ? S::ValYes : S::ValNo));
+    line(tr(S::InfoWriteProtected), tristateText(d.writeProtected));
+    line(tr(S::InfoPartitionTable), d.layoutAvailable ? w(tableTypeName(d.layout.type)) : formatText(S::ValNotReadable, {w(d.accessError)}));
     if (d.layoutAvailable && d.layout.type == TableType::Gpt) {
-        line(L"Disk GUID", w(d.layout.diskGuid.toString()));
-        line(L"Usable sectors", std::to_wstring(d.layout.firstUsableLba) + L" - " + std::to_wstring(d.layout.lastUsableLba));
-        line(L"GPT primary / backup header", std::wstring(d.layout.gptPrimaryValid ? L"valid" : L"INVALID") + L" / " +
-                                                 (d.layout.gptBackupValid ? L"valid" : L"INVALID"));
+        line(tr(S::InfoDiskGuid), w(d.layout.diskGuid.toString()));
+        line(tr(S::InfoUsableSectors), std::to_wstring(d.layout.firstUsableLba) + L" - " + std::to_wstring(d.layout.lastUsableLba));
+        line(tr(S::InfoGptPrimaryBackupHeader), std::wstring(tr(d.layout.gptPrimaryValid ? S::ValValid : S::ValInvalid)) + L" / " +
+                                                 tr(d.layout.gptBackupValid ? S::ValValid : S::ValInvalid));
     }
     if (d.layoutAvailable && d.layout.type == TableType::Mbr) {
         wchar_t sig[16];
         swprintf_s(sig, sizeof sig / sizeof sig[0], L"%08X", d.layout.mbrSignature);
-        line(L"MBR disk signature", sig);
+        line(tr(S::InfoMbrDiskSignature), sig);
     }
-    line(L"Contains Windows", d.containsWindows() ? L"yes" : L"no");
+    line(tr(S::InfoContainsWindows), tr(d.containsWindows() ? S::ValYes : S::ValNo));
     if (view_.layout && !view_.layout->diagnostics.empty()) {
-        t += L"\nDiagnostics:\n";
-        for (const auto& diag : view_.layout->diagnostics) t += L"• " + w(diag.message) + L"\n";
+        t += L"\n" + std::wstring(tr(S::InfoDiagnostics)) + L":\n";
+        for (const auto& diag : view_.layout->diagnostics) t += L"• " + diagnosticText(diag) + L"\n";
     }
-    std::wstring head = w(d.displayName()) + L"  " + w(d.modelName());
+    // Images are named "Image <file>" already; avoid "Image  Image <file>".
+    const std::string model = d.modelName(), name = d.displayName();
+    std::wstring head = model.compare(0, name.size(), name) == 0 ? w(model) : w(name) + L"  " + w(model);
     TASKDIALOGCONFIG cfg{sizeof cfg};
     cfg.hwndParent = hwnd_;
     cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
@@ -895,8 +899,8 @@ void MainWindow::showFsSupport() {
     std::wstring t;
     for (FsType f : allFsTypes()) {
         const auto& c = capabilitiesFor(f);
-        t += w(fsTypeName(f)) + L":  " + tr(S::ColFsDetect) + L" " + w(supportName(c.detect)) + L";  " + tr(S::ColFsUsage) +
-             L" " + w(supportName(c.readUsage)) + L"\n";
+        t += w(fsTypeName(f)) + L":  " + tr(S::ColFsDetect) + L" " + supportText(c.detect) + L";  " + tr(S::ColFsUsage) +
+             L" " + supportText(c.readUsage) + L"\n";
     }
     t += L"\n";
     t += tr(S::PlannedFeature);

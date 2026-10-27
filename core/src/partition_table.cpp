@@ -45,8 +45,11 @@ namespace {
 constexpr std::uint64_t kMaxGptArrayBytes = 4u * 1024 * 1024;
 constexpr int kMaxLogicalPartitions = 256;
 
-void diag(DiskLayout& l, Severity s, const char* code, std::string msg) {
-    l.diagnostics.push_back({s, code, std::move(msg)});
+// `args` are the message parameters for translations, in message order.
+void diag(DiskLayout& l, Severity s, const char* code, std::string msg, std::vector<std::string> args = {}) {
+    Diagnostic d{s, code, std::move(msg)};
+    d.args = std::move(args);
+    l.diagnostics.push_back(std::move(d));
 }
 
 bool isExtendedType(std::uint8_t t) { return t == 0x05 || t == 0x0F || t == 0x85; }
@@ -104,16 +107,19 @@ void parseGpt(BlockReader& r, DiskLayout& l) {
         l.type = TableType::Unknown;
         diag(l, Severity::Error, "gpt.no_valid_header",
              "Protective MBR found but neither the primary (" + whyPrimary + ") nor the backup (" + whyBackup +
-                 ") GPT header is valid.");
+                 ") GPT header is valid.",
+             {whyPrimary, whyBackup});
         return;
     }
     if (!l.gptPrimaryValid)
         diag(l, Severity::Error, "gpt.primary_invalid",
-             "Primary GPT header is invalid (" + whyPrimary + "); using the backup header. No repair was attempted.");
+             "Primary GPT header is invalid (" + whyPrimary + "); using the backup header. No repair was attempted.",
+             {whyPrimary});
     if (!l.gptBackupValid)
         diag(l, Severity::Warning, "gpt.backup_invalid",
              "Backup GPT header at the end of the device is invalid (" + whyBackup +
-                 "). This is common after a disk image was copied to a larger device.");
+                 "). This is common after a disk image was copied to a larger device.",
+             {whyBackup});
 
     const GptHeader& h = l.gptPrimaryValid ? primary : backup;
     if (l.gptPrimaryValid && l.gptBackupValid &&
@@ -143,14 +149,14 @@ void parseGpt(BlockReader& r, DiskLayout& l) {
         p.name = utf16leToUtf8(e + 56, 36);
         if (last < first) {
             diag(l, Severity::Error, "gpt.entry_reversed",
-                 "Partition " + std::to_string(p.number) + " ends before it starts; ignored.");
+                 "Partition " + std::to_string(p.number) + " ends before it starts; ignored.", {std::to_string(p.number)});
             continue;
         }
         p.firstLba = first;
         p.sectorCount = last - first + 1;
         if (first < h.firstUsable || last > h.lastUsable)
             diag(l, Severity::Error, "gpt.entry_outside_usable",
-                 "Partition " + std::to_string(p.number) + " lies outside the usable area of the GPT.");
+                 "Partition " + std::to_string(p.number) + " lies outside the usable area of the GPT.", {std::to_string(p.number)});
         l.partitions.push_back(std::move(p));
     }
 }
@@ -202,7 +208,7 @@ void parseLogicals(BlockReader& r, DiskLayout& l, const PartitionEntry ext) {
             p.sectorCount = count;
             if (p.firstLba < ext.firstLba || p.lastLba() > ext.lastLba())
                 diag(l, Severity::Error, "mbr.logical_outside_extended",
-                     "Logical partition " + std::to_string(p.number) + " extends beyond its extended partition.");
+                     "Logical partition " + std::to_string(p.number) + " extends beyond its extended partition.", {std::to_string(p.number)});
             l.partitions.push_back(p);
         }
         if (ntype == 0 || ncount == 0) break;
@@ -284,7 +290,7 @@ void checkBoundsAndOverlaps(DiskLayout& l) {
     for (const auto& p : l.partitions) {
         if (p.firstLba >= total || p.sectorCount > total - p.firstLba)
             diag(l, Severity::Error, "layout.beyond_device",
-                 "Partition " + std::to_string(p.number) + " extends beyond the end of the device.");
+                 "Partition " + std::to_string(p.number) + " extends beyond the end of the device.", {std::to_string(p.number)});
     }
     // Overlaps among primaries/extended and among logicals (logicals are
     // expected to lie inside their extended partition).
@@ -297,7 +303,8 @@ void checkBoundsAndOverlaps(DiskLayout& l) {
             if (v[i]->firstLba <= v[i - 1]->lastLba())
                 diag(l, Severity::Error, "layout.overlap",
                      "Partitions " + std::to_string(v[i - 1]->number) + " and " + std::to_string(v[i]->number) +
-                         " overlap.");
+                         " overlap.",
+                     {std::to_string(v[i - 1]->number), std::to_string(v[i]->number)});
     }
 }
 
@@ -337,7 +344,8 @@ DiskLayout parseDiskLayout(BlockReader& r, bool detectContents) {
                 if (alt != l.sectorSize && r.read(alt, sig, 8) && std::memcmp(sig, "EFI PART", 8) == 0)
                     diag(l, Severity::Error, "gpt.sector_size_mismatch",
                          "A GPT header exists for a " + std::to_string(alt) + "-byte sector size, but the device reports " +
-                             std::to_string(l.sectorSize) + " bytes. The enclosure may translate sector sizes.");
+                             std::to_string(l.sectorSize) + " bytes. The enclosure may translate sector sizes.",
+                         {std::to_string(alt), std::to_string(l.sectorSize)});
             }
         }
     } else if (entriesValid && anyUsed) {
@@ -354,7 +362,8 @@ DiskLayout parseDiskLayout(BlockReader& r, bool detectContents) {
             p.fs = fs;
             l.partitions.push_back(p);
             diag(l, Severity::Info, "layout.whole_device_fs",
-                 std::string("No partition table; the whole device contains a ") + fsTypeName(fs.type) + " file system.");
+                 std::string("No partition table; the whole device contains a ") + fsTypeName(fs.type) + " file system.",
+                 {fsTypeName(fs.type)});
             return l;
         }
         const std::string foreign = detectForeignTable(r, l.sectorSize);
@@ -362,7 +371,7 @@ DiskLayout parseDiskLayout(BlockReader& r, bool detectContents) {
             l.type = TableType::Unknown;
             l.foreignTable = foreign;
             diag(l, Severity::Info, "table.foreign",
-                 "The device uses a \"" + foreign + "\" partition table. WParted can detect but not display or change it.");
+                 "The device uses a \"" + foreign + "\" partition table. WParted can detect but not display or change it.", {foreign});
             return l;
         }
         if (bootSig && entriesValid) {

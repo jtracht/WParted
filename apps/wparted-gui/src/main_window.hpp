@@ -6,6 +6,7 @@
 
 #include <commctrl.h>
 
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <string>
@@ -14,12 +15,19 @@
 
 #include "inspector.hpp"
 #include "model.hpp"
+#include "strings.hpp"
 #include "theme.hpp"
 #include "wparted/core/operations.hpp"
 #include "wparted/core/validation.hpp"
 #include "wparted/win/disk_discovery.hpp"
 
 namespace wparted::ui {
+
+// Translated texts shared by the main window and the planner (planner.cpp).
+std::wstring formatText(S pattern, std::initializer_list<std::wstring> args);  // replaces %1..%9
+std::wstring diagnosticText(const Diagnostic& d);  // validation and partition-table diagnostics
+const wchar_t* supportText(Support s);
+const wchar_t* tristateText(win::Tristate t);
 
 class MainWindow {
 public:
