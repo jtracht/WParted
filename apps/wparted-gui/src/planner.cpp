@@ -69,12 +69,26 @@ std::vector<FormField> placementFields(const Placement& pl, std::uint64_t before
     return f;
 }
 
+FormField previewField(COLORREF color) {
+    FormField pv;
+    pv.kind = FormField::Kind::Preview;
+    pv.previewColor = color;
+    return pv;
+}
+
 FormUpdate placementUpdate(const Placement& pl) {
     return [pl](std::vector<FormField>& f, int) -> std::wstring {
         std::uint64_t first = 0, count = 0;
         const bool fits = pl.compute(f, first, count);
         const std::uint64_t end = first + count - 1;
         f[2].text = fits ? std::to_wstring((pl.hi - end) / pl.spm) : L"-";
+        for (auto& field : f) {
+            if (field.kind != FormField::Kind::Preview) continue;
+            field.previewTotal = pl.hi - pl.lo + 1;
+            field.previewStart = fits ? first - pl.lo : 0;
+            field.previewSize = fits ? count : 0;
+            field.previewLabel = std::to_wstring(f[1].number) + L" MiB";
+        }
         return fits ? std::wstring() : std::wstring(tr(S::ErrTooLarge));
     };
 }
@@ -164,15 +178,17 @@ void MainWindow::refreshView() {
     if (q && !q->empty()) {
         const auto descriptions = q->descriptions();
         for (std::size_t i = 0; i < descriptions.size(); ++i) {
-            std::wstring line = std::to_wstring(i + 1) + L".  [" + w(riskName(riskOf(q->operations()[i]))) + L"]  " +
-                                w(descriptions[i]);
-            SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+            std::wstring line = std::to_wstring(i + 1) + L".  " + w(descriptions[i]) + L"   ·  " +
+                                w(riskName(riskOf(q->operations()[i])));
+            const LRESULT idx = SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+            SendMessageW(pending_, LB_SETITEMDATA, static_cast<WPARAM>(idx), static_cast<LPARAM>(riskOf(q->operations()[i])) + 1);
         }
         const ValidationResult vr = validatePlan(*q, validationContext(ValidationMode::Planning));
         for (const auto& diag : vr.diagnostics) {
             (diag.severity == Severity::Error ? errors : warnings)++;
-            std::wstring line = std::wstring(diag.severity == Severity::Error ? L"    ✖ " : L"    ⚠ ") + w(diag.message);
-            SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+            const std::wstring line = w(diag.message);
+            const LRESULT idx = SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
+            SendMessageW(pending_, LB_SETITEMDATA, static_cast<WPARAM>(idx), diag.severity == Severity::Error ? 11 : 10);
         }
     } else {
         SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tr(d && !q ? S::ErrNeedsTable : S::PendingNone)));
@@ -184,8 +200,85 @@ void MainWindow::refreshView() {
                    warnings);
         SetWindowTextW(status_, buf);
     }
+    InvalidateRect(hwnd_, &pendingCard_, TRUE);  // section title shows the count
     if (selectedRow_ >= static_cast<int>(view_.rows.size())) selectedRow_ = -1;
     selectRow(selectedRow_, true);
+}
+
+void MainWindow::updateInspector() {
+    InspectorData& d = inspectorData_;
+    d = InspectorData{};
+    const Palette& pal = palette(isDark());
+    const win::PhysicalDisk* disk = currentDisk();
+    const Row* row = selectedRowData();
+    const DiskLayout* l = view_.layout;
+    auto add = [&d](S label, const std::wstring& value) {
+        if (!value.empty()) d.rows.emplace_back(tr(label), value);
+    };
+    auto range = [&](std::uint64_t first, std::uint64_t count) {
+        return std::to_wstring(first) + L" – " + std::to_wstring(first + count - 1) + L"  (" + std::to_wstring(count) + L")";
+    };
+    if (!disk || !l) {
+        d.title = tr(S::AppTitle);
+        d.hint = tr(S::HintSelect);
+    } else if (!row) {
+        d.title = w(disk->modelName());
+        add(S::InsDevice, disk->busType == "Image file" ? disk->path : disk->path + L"  ·  " + w(disk->busType));
+        add(S::InsSize, w(formatSize(disk->sizeBytes)));
+        add(S::InsTable, view_.tableRead ? w(tableTypeName(l->type)) : std::wstring(tr(S::StatusNotReadable)));
+        add(S::InsSectors, std::to_wstring(disk->logicalSectorSize) + L" / " +
+                               (disk->physicalSectorSize ? std::to_wstring(disk->physicalSectorSize) : std::wstring(L"?")) + L" B");
+        add(S::InsPartitions, std::to_wstring(l->partitions.size()));
+        if (!view_.tableRead) {
+            d.hint = tr(S::ErrNeedsTable);
+            d.warnHint = true;
+        } else {
+            d.hint = disk->busType == "Image file" ? std::wstring(tr(S::HintImage)) + L" " + tr(S::HintSelect) : tr(S::HintSelect);
+        }
+    } else if (row->kind == Segment::Kind::Unallocated) {
+        d.title = view_.tableRead ? tr(S::Unallocated) : tr(S::UnknownRegion);
+        add(S::InsSize, w(formatSize(row->sectorCount * l->sectorSize)));
+        add(S::InsRange, range(row->firstLba, row->sectorCount));
+        d.hint = view_.tableRead ? tr(S::HintUnallocated) : tr(S::ErrNeedsTable);
+        d.warnHint = !view_.tableRead;
+    } else {
+        const PartitionEntry& p = l->partitions[static_cast<std::size_t>(row->partitionIndex)];
+        const auto* vol = viewVolume(view_, p);
+        d.title = p.number > 0 ? L"#" + std::to_wstring(p.number) : std::wstring(tr(S::VolumeOnly));
+        if (vol && !vol->mountPoints.empty()) d.title += L"  " + vol->mountPoints.front();
+        else if (!p.fs.label.empty()) d.title += L"  " + w(p.fs.label);
+        d.pill = p.kind == PartitionKind::Extended ? std::wstring(L"extended") : w(fsTypeName(p.fs.type));
+        d.pillColor = p.kind == PartitionKind::Extended ? pal.mutedText : fsColor(p.fs.type);
+        add(S::InsType, w(partitionTypeDescription(*l, p)));
+        add(S::InsSize, w(formatSize(p.sectorCount * l->sectorSize)));
+        if (vol && vol->hasUsage)
+            add(S::InsUsage, w(formatSize(vol->totalBytes - vol->freeBytes)) + L" / " + w(formatSize(vol->totalBytes)));
+        if (vol) {
+            std::wstring mounts;
+            for (const auto& m : vol->mountPoints) mounts += (mounts.empty() ? L"" : L", ") + m;
+            add(S::ColMountPoint, mounts);
+        }
+        add(S::ColLabel, vol && !vol->label.empty() ? vol->label : w(p.fs.label));
+        add(S::ColName, w(p.name));
+        std::wstring flags;
+        for (const auto& f : partitionFlags(*l, p)) flags += (flags.empty() ? L"" : L", ") + w(f);
+        add(S::ColFlags, flags);
+        add(S::InsRange, range(p.firstLba, p.sectorCount));
+        const bool aligned = (p.firstLba * l->sectorSize) % (1024 * 1024) == 0;
+        add(S::InsAlign, std::wstring(L"1 MiB: ") + (aligned ? tr(S::InsYes) : tr(S::InsNo)));
+        add(S::InsUuid, w(p.fs.uuid));
+        const bool planned = view_.original && p.planId > view_.original->partitions.size();
+        if (planned) {
+            d.hint = tr(S::HintPlanned);
+        } else if (isSystemCriticalType(*l, p) || (vol && vol->containsWindows)) {
+            d.hint = tr(S::HintCritical);
+            d.warnHint = true;
+        } else {
+            d.hint = view_.tableRead ? tr(S::HintPartition) : tr(S::ErrNeedsTable);
+            d.warnHint = !view_.tableRead;
+        }
+    }
+    SendMessageW(inspector_, IM_SETDATA, reinterpret_cast<WPARAM>(&pal), reinterpret_cast<LPARAM>(&d));
 }
 
 void MainWindow::updateCommandState() {
@@ -282,6 +375,7 @@ void MainWindow::planNew() {
     label.label = tr(S::FieldLabel);
     label.maxLength = 32;
     f.push_back(label);
+    f.push_back(previewField(fsColor(FsType::Ntfs)));
 
     const FormUpdate base = placementUpdate(pl);
     const FormUpdate update = [base, kinds](std::vector<FormField>& v, int changed) {
@@ -332,6 +426,7 @@ void MainWindow::planResize() {
     const std::uint64_t size0 = std::max<std::uint64_t>(1, p->sectorCount / pl.spm);
     auto f = placementFields(pl, before0, size0, 1);
     f[3].selected = (p->firstLba % pl.spm == 0) ? 0 : 1;  // keep unaligned partitions unaligned unless asked
+    f.push_back(previewField(fsColor(p->fs.type)));
     const std::wstring intro = w(partitionKindName(p->kind)) + L" #" + std::to_wstring(p->number) + L"  " +
                                w(fsTypeName(p->fs.type)) + L"  " + w(formatSize(p->sectorCount * l.sectorSize));
     if (!runForm(hwnd_, tr(S::DlgResizeTitle), intro, f, palette(isDark()), font_, dpi_, placementUpdate(pl))) return;
@@ -372,6 +467,7 @@ void MainWindow::planPaste() {
     pl.minFirst = r->depth == 1 ? pl.lo + 1 : pl.lo;
     const std::uint64_t minMiB = ceilDiv(src->sectorCount, pl.spm);
     auto f = placementFields(pl, 0, minMiB, minMiB);
+    f.push_back(previewField(fsColor(src->fs.type)));
     const std::wstring intro = std::wstring(tr(S::FieldSource)) + L": #" + std::to_wstring(src->number) + L"  " +
                                w(fsTypeName(src->fs.type)) + L"  " + w(formatSize(src->sectorCount * l.sectorSize));
     if (!runForm(hwnd_, tr(S::DlgPasteTitle), intro, f, palette(isDark()), font_, dpi_, placementUpdate(pl))) return;

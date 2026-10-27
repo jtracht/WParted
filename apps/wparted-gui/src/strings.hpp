@@ -32,7 +32,10 @@ enum class S {
     FieldFreeBefore, FieldNewSize, FieldFreeAfter, FieldAlign, AlignMiB, AlignNone, FieldCreateAs,
     KindPrimary, KindExtended, KindLogical, FieldFs, FieldLabel, FieldName, FieldTableType, FieldSource,
     TableWarning, ErrTooLarge, ErrNeedsTable, PendingFmt, ApplyTitle, ApplyNoExec, BtnExportPlan, OpRejected,
-    ImageOpenFailed, CopiedFmt, Count_
+    ImageOpenFailed, CopiedFmt,
+    SectionPartitions, SectionPending, InsType, InsSize, InsUsage, InsRange, InsAlign, InsUuid, InsDevice, InsTable,
+    InsPartitions, InsSectors, InsYes, InsNo, HintSelect, HintUnallocated, HintPartition, HintCritical, HintPlanned,
+    HintImage, Count_
 };
 
 void initLanguage();             // Selects the language from the Windows UI language.

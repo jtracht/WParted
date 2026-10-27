@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 
+#include "inspector.hpp"
 #include "model.hpp"
 #include "theme.hpp"
 #include "wparted/core/operations.hpp"
@@ -53,6 +54,11 @@ private:
     void openHelp();
     void showContextMenu(POINT screenPt);
     bool isDark() const;
+    void updateInspector();
+    bool showBanner() const;
+    void paintBackground(HDC dc);
+    void drawPendingItem(const DRAWITEMSTRUCT& di);
+    LRESULT listCustomDraw(NMLVCUSTOMDRAW* cd);
 
     // Planning (planner.cpp). Nothing here writes to a disk.
     OperationQueue* currentQueue();
@@ -88,7 +94,10 @@ private:
     HWND combo_ = nullptr, map_ = nullptr, list_ = nullptr, pending_ = nullptr, status_ = nullptr,
          statusRight_ = nullptr, banner_ = nullptr, bannerBtn_ = nullptr, tooltip_ = nullptr;
     std::vector<HWND> buttons_;
-    HFONT font_ = nullptr;
+    HFONT font_ = nullptr, sectionFont_ = nullptr, iconFont_ = nullptr, captionFont_ = nullptr;
+    HWND inspector_ = nullptr, applyBtn_ = nullptr;
+    InspectorData inspectorData_;
+    RECT listCard_{}, pendingCard_{};
     HBRUSH windowBrush_ = nullptr, panelBrush_ = nullptr, warnBrush_ = nullptr;
     HIMAGELIST fsImages_ = nullptr;
     UINT dpi_ = 96;

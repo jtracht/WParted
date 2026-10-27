@@ -26,6 +26,7 @@ struct FormState {
     HWND error = nullptr, ok = nullptr;
     bool done = false, accepted = false, syncing = false;
     bool ready = false;  // all controls created; edits notify EN_CHANGE while being built
+    int footerHeight = 0;
 };
 
 std::wstring toText(std::uint64_t v) { return std::to_wstring(v); }
@@ -56,6 +57,7 @@ void readBack(FormState& s) {
                 f[i].checked = SendMessageW(c, BM_GETCHECK, 0, 0) == BST_CHECKED;
                 break;
             case FormField::Kind::Note:
+            case FormField::Kind::Preview:
                 break;
         }
     }
@@ -70,6 +72,7 @@ void writeOut(FormState& s, int except) {
         HWND c = s.controls[i];
         if (f[i].kind == FormField::Kind::Number) SetWindowTextW(c, toText(f[i].number).c_str());
         if (f[i].kind == FormField::Kind::Note) SetWindowTextW(c, f[i].text.c_str());
+        if (f[i].kind == FormField::Kind::Preview) InvalidateRect(c, nullptr, FALSE);
         EnableWindow(c, f[i].enabled);
     }
     s.syncing = false;
@@ -114,6 +117,67 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         }
+        case WM_DRAWITEM: {
+            if (!s) break;
+            const auto* di = reinterpret_cast<const DRAWITEMSTRUCT*>(lp);
+            const Palette& pal = *s->pal;
+            const UINT dpi = dpiForWindow(h);
+            if (di->CtlType == ODT_BUTTON) {  // primary (accent) button
+                const bool disabled = (di->itemState & ODS_DISABLED) != 0;
+                const bool pressed = (di->itemState & ODS_SELECTED) != 0;
+                fillRect(di->hDC, di->rcItem, pal.window);
+                const COLORREF fill = disabled ? blend(pal.window, pal.border, 70)
+                                      : pressed ? blend(pal.accent, pal.window, 25) : pal.accent;
+                fillRounded(di->hDC, di->rcItem, scale(8, dpi), fill, fill);
+                SetBkMode(di->hDC, TRANSPARENT);
+                SetTextColor(di->hDC, disabled ? pal.disabledText : pal.onAccent);
+                HGDIOBJ old = SelectObject(di->hDC, s->font);
+                RECT r = di->rcItem;
+                DrawTextW(di->hDC, L"OK", -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                SelectObject(di->hDC, old);
+                if (di->itemState & ODS_FOCUS) {
+                    InflateRect(&r, -scale(3, dpi), -scale(3, dpi));
+                    DrawFocusRect(di->hDC, &r);
+                }
+                return TRUE;
+            }
+            if (di->CtlType == ODT_STATIC) {  // placement preview
+                const int idx = static_cast<int>(di->CtlID) - IDC_FIELD_BASE;
+                if (idx < 0 || idx >= static_cast<int>(s->fields->size())) return TRUE;
+                const FormField& f = (*s->fields)[static_cast<std::size_t>(idx)];
+                RECT r = di->rcItem;
+                fillRect(di->hDC, r, pal.card);
+                RECT track = r;
+                track.right -= 1;
+                fillRounded(di->hDC, track, scale(6, dpi), blend(pal.card, pal.unallocated, pal.dark ? 30 : 40), pal.border);
+                if (f.previewTotal > 0 && f.previewSize > 0) {
+                    const double w = static_cast<double>(track.right - track.left - 2);
+                    RECT part = track;
+                    InflateRect(&part, -1, -1);
+                    part.left = track.left + 1 + static_cast<int>(w * static_cast<double>(f.previewStart) / static_cast<double>(f.previewTotal));
+                    part.right = track.left + 1 +
+                                 static_cast<int>(w * static_cast<double>(f.previewStart + f.previewSize) / static_cast<double>(f.previewTotal));
+                    part.right = std::max<LONG>(part.right, part.left + scale(6, dpi));
+                    part.right = std::min<LONG>(part.right, track.right - 1);
+                    fillRounded(di->hDC, part, scale(5, dpi), blend(pal.card, f.previewColor, pal.dark ? 30 : 18), pal.accent);
+                    RECT bar = part;
+                    InflateRect(&bar, -1, 0);
+                    bar.top += 1;
+                    bar.bottom = bar.top + scale(4, dpi);
+                    fillRounded(di->hDC, bar, scale(3, dpi), f.previewColor, f.previewColor);
+                    SetBkMode(di->hDC, TRANSPARENT);
+                    SetTextColor(di->hDC, pal.text);
+                    HGDIOBJ old = SelectObject(di->hDC, s->font);
+                    RECT tr2 = part;
+                    tr2.top += scale(4, dpi);
+                    DrawTextW(di->hDC, f.previewLabel.c_str(), -1, &tr2,
+                              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                    SelectObject(di->hDC, old);
+                }
+                return TRUE;
+            }
+            break;
+        }
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORBTN:
         case WM_CTLCOLOREDIT: {
@@ -121,7 +185,7 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             HDC dc = reinterpret_cast<HDC>(wp);
             const bool isError = reinterpret_cast<HWND>(lp) == s->error;
             SetTextColor(dc, isError ? RGB(0xD1, 0x34, 0x38) : s->pal->text);
-            SetBkColor(dc, msg == WM_CTLCOLOREDIT ? s->pal->unused : s->pal->window);
+            SetBkColor(dc, msg == WM_CTLCOLOREDIT ? s->pal->unused : s->pal->card);
             if (msg == WM_CTLCOLOREDIT) {
                 static HBRUSH editBrush = nullptr;
                 static COLORREF editColor = 0;
@@ -136,9 +200,16 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_ERASEBKGND: {
             if (!s) break;
+            // Fluent dialog: content on the card layer, buttons in a footer band.
             RECT rc;
             GetClientRect(h, &rc);
             FillRect(reinterpret_cast<HDC>(wp), &rc, s->bg);
+            RECT footer = rc;
+            footer.top = rc.bottom - s->footerHeight;
+            fillRect(reinterpret_cast<HDC>(wp), footer, s->pal->window);
+            RECT line = footer;
+            line.bottom = line.top + 1;
+            fillRect(reinterpret_cast<HDC>(wp), line, s->pal->border);
             return 1;
         }
         case WM_CLOSE:
@@ -169,13 +240,20 @@ bool runForm(HWND owner, const std::wstring& title, const std::wstring& intro, s
     s.update = &update;
     s.pal = &palette;
     s.font = font;
-    s.bg = CreateSolidBrush(palette.window);
+    s.bg = CreateSolidBrush(palette.card);
 
     const int pad = scale(12, dpi), rowH = scale(26, dpi), gap = scale(6, dpi);
     const int labelW = scale(200, dpi), ctrlW = scale(260, dpi);
     const int width = pad * 3 + labelW + ctrlW;
     const int introH = intro.empty() ? 0 : scale(48, dpi);
-    int height = pad + introH + static_cast<int>(fields.size()) * (rowH + gap) + scale(30, dpi) + rowH + pad * 2;
+    const int previewH = scale(44, dpi);
+    int previews = 0;
+    for (const auto& f : fields)
+        if (f.kind == FormField::Kind::Preview) ++previews;
+    s.footerHeight = rowH + scale(36, dpi);
+    int height = pad + introH + previews * (previewH + scale(12, dpi)) +
+                 static_cast<int>(fields.size() - static_cast<std::size_t>(previews)) * (rowH + gap) + scale(30, dpi) +
+                 s.footerHeight;
 
     RECT wr{0, 0, width, height};
     const DWORD style = WS_POPUP | WS_CAPTION | WS_SYSMENU;
@@ -202,9 +280,22 @@ bool runForm(HWND owner, const std::wstring& title, const std::wstring& intro, s
         child(L"STATIC", intro.c_str(), SS_LEFT | SS_NOPREFIX, pad, y, width - 2 * pad, introH - gap, -1);
         y += introH;
     }
-    for (std::size_t i = 0; i < fields.size(); ++i) {
+    // Previews first (GParted shows the graphical resizer above the numbers),
+    // then the remaining fields in order. Indices stay those of `fields`.
+    std::vector<std::size_t> order;
+    for (std::size_t i = 0; i < fields.size(); ++i)
+        if (fields[i].kind == FormField::Kind::Preview) order.push_back(i);
+    for (std::size_t i = 0; i < fields.size(); ++i)
+        if (fields[i].kind != FormField::Kind::Preview) order.push_back(i);
+    s.controls.assign(fields.size(), nullptr);
+    for (std::size_t i : order) {
         const FormField& f = fields[i];
         const int id = IDC_FIELD_BASE + static_cast<int>(i);
+        if (f.kind == FormField::Kind::Preview) {
+            s.controls[i] = child(L"STATIC", L"", SS_OWNERDRAW, pad, y, width - 2 * pad, previewH, id);
+            y += previewH + scale(12, dpi);
+            continue;
+        }
         if (f.kind != FormField::Kind::Check)
             child(L"STATIC", f.label.c_str(), SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, pad, y, labelW, rowH, -1);
         const int cx = pad * 2 + labelW;
@@ -232,16 +323,18 @@ bool runForm(HWND owner, const std::wstring& title, const std::wstring& intro, s
             case FormField::Kind::Note:
                 c = child(L"STATIC", f.text.c_str(), SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX, cx, y, ctrlW, rowH, id);
                 break;
+            case FormField::Kind::Preview:
+                break;
         }
         EnableWindow(c, f.enabled);
-        s.controls.push_back(c);
+        s.controls[i] = c;
         y += rowH + gap;
     }
     s.error = child(L"STATIC", L"", SS_LEFT | SS_NOPREFIX, pad, y, width - 2 * pad, scale(30, dpi), IDC_ERROR);
-    y += scale(30, dpi);
-    const int bw = scale(96, dpi);
-    s.ok = child(L"BUTTON", L"OK", WS_TABSTOP | BS_DEFPUSHBUTTON, width - pad - 2 * bw - gap, y, bw, rowH, IDOK);
-    HWND cancel = child(L"BUTTON", tr(S::Cancel), WS_TABSTOP | BS_PUSHBUTTON, width - pad - bw, y, bw, rowH, IDCANCEL);
+    y += scale(30, dpi) + scale(16, dpi);
+    const int bw = scale(120, dpi);
+    s.ok = child(L"BUTTON", L"OK", WS_TABSTOP | BS_OWNERDRAW, width - pad - 2 * bw - gap, y, bw, rowH + scale(4, dpi), IDOK);
+    HWND cancel = child(L"BUTTON", tr(S::Cancel), WS_TABSTOP | BS_PUSHBUTTON, width - pad - bw, y, bw, rowH + scale(4, dpi), IDCANCEL);
     applyControlTheme(s.ok, palette.dark);
     applyControlTheme(cancel, palette.dark);
 

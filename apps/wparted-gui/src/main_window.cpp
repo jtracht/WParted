@@ -13,6 +13,7 @@
 #include <string>
 
 #include "commands.hpp"
+#include "menubar.hpp"
 #include "strings.hpp"
 #include "wparted/core/json.hpp"
 #include "wparted/core/log.hpp"
@@ -35,9 +36,24 @@ struct ToolButton {
     S label;
 };
 const ToolButton kToolButtons[] = {
-    {IDM_REFRESH, S::BtnRefresh}, {IDM_NEW, S::BtnNew},   {IDM_DELETE, S::BtnDelete}, {IDM_RESIZE, S::BtnResizeMove},
-    {IDM_COPY, S::BtnCopy},       {IDM_PASTE, S::BtnPaste}, {IDM_UNDO, S::BtnUndo},   {IDM_APPLY_OPS, S::BtnApply},
+    {IDM_REFRESH, S::BtnRefresh}, {IDM_NEW, S::BtnNew},     {IDM_DELETE, S::BtnDelete}, {IDM_RESIZE, S::BtnResizeMove},
+    {IDM_COPY, S::BtnCopy},       {IDM_PASTE, S::BtnPaste}, {IDM_UNDO, S::BtnUndo},     {IDM_APPLY_OPS, S::BtnApply},
 };
+constexpr std::size_t kApplyIndex = 7;  // laid out separately at the right edge
+
+wchar_t commandGlyph(int id) {
+    switch (id) {
+        case IDM_REFRESH: return glyph::Refresh;
+        case IDM_NEW: return glyph::Add;
+        case IDM_DELETE: return glyph::Delete;
+        case IDM_RESIZE: return glyph::Resize;
+        case IDM_COPY: return glyph::Copy;
+        case IDM_PASTE: return glyph::Paste;
+        case IDM_UNDO: return glyph::Undo;
+        case IDM_APPLY_OPS: return glyph::Apply;
+        default: return 0;
+    }
+}
 
 enum Column { ColPartition, ColName, ColFs, ColMount, ColLabel, ColSize, ColUsed, ColUnused, ColFlags, ColStatus, ColCount };
 
@@ -82,34 +98,51 @@ LRESULT CALLBACK listSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, 
     return DefSubclassProc(h, msg, wp, lp);
 }
 
-void drawButton(const DRAWITEMSTRUCT& di, const Palette& p, UINT dpi) {
+// Command bar button: Fluent "subtle" style (transparent until hovered),
+// the primary action (Apply) uses the accent colour.
+void drawButton(const DRAWITEMSTRUCT& di, const Palette& p, UINT dpi, HFONT textFont, HFONT iconFont) {
     const bool disabled = (di.itemState & ODS_DISABLED) != 0;
     const bool pressed = (di.itemState & ODS_SELECTED) != 0;
     const bool hot = !disabled && GetPropW(di.hwndItem, kHotProp) != nullptr;
-    COLORREF bg = p.panel;
-    if (pressed) bg = p.border;
-    else if (hot) bg = p.dark ? RGB(0x3A, 0x3A, 0x3A) : RGB(0xE5, 0xF1, 0xFB);
-    HBRUSH b = CreateSolidBrush(p.window);
-    FillRect(di.hDC, &di.rcItem, b);
-    DeleteObject(b);
-    HBRUSH fillBrush = CreateSolidBrush(disabled ? p.window : bg);
-    HPEN pen = CreatePen(PS_SOLID, 1, hot ? p.accent : p.border);
-    HGDIOBJ oldB = SelectObject(di.hDC, fillBrush), oldP = SelectObject(di.hDC, pen);
-    const int radius = scale(6, dpi);
-    RoundRect(di.hDC, di.rcItem.left, di.rcItem.top, di.rcItem.right, di.rcItem.bottom, radius, radius);
-    SelectObject(di.hDC, oldB);
-    SelectObject(di.hDC, oldP);
-    DeleteObject(fillBrush);
-    DeleteObject(pen);
+    const int id = GetDlgCtrlID(di.hwndItem);
+    const bool primary = id == IDM_APPLY_OPS;
+    fillRect(di.hDC, di.rcItem, p.window);
+    const int radius = scale(8, dpi);
+    COLORREF fg = disabled ? p.disabledText : p.text;
+    if (primary) {
+        const COLORREF fill = disabled ? blend(p.window, p.border, 70) : pressed ? blend(p.accent, p.window, 25)
+                              : hot ? blend(p.accent, p.window, 12) : p.accent;
+        fillRounded(di.hDC, di.rcItem, radius, fill, fill);
+        fg = disabled ? p.disabledText : p.onAccent;
+    } else if (pressed || hot) {
+        fillRounded(di.hDC, di.rcItem, radius, pressed ? p.pressed : p.subtle, pressed ? p.pressed : p.subtle);
+    }
     wchar_t text[64];
     GetWindowTextW(di.hwndItem, text, 64);
     SetBkMode(di.hDC, TRANSPARENT);
-    SetTextColor(di.hDC, disabled ? (p.dark ? RGB(0x6E, 0x6E, 0x6E) : RGB(0xA0, 0xA0, 0xA0)) : p.text);
+    SetTextColor(di.hDC, fg);
     RECT r = di.rcItem;
-    DrawTextW(di.hDC, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    const wchar_t g = commandGlyph(id);
+    HGDIOBJ old = SelectObject(di.hDC, textFont);
+    SIZE ts{};
+    GetTextExtentPoint32W(di.hDC, text, static_cast<int>(wcslen(text)), &ts);
+    const int iconW = (iconFont && g) ? scale(16, dpi) + scale(8, dpi) : 0;
+    int x = r.left + (r.right - r.left - iconW - ts.cx) / 2;
+    if (iconW) {
+        RECT ir{x, r.top, x + scale(16, dpi), r.bottom};
+        SelectObject(di.hDC, iconFont);
+        if (!primary && !disabled) SetTextColor(di.hDC, p.accent);
+        DrawTextW(di.hDC, &g, 1, &ir, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SetTextColor(di.hDC, fg);
+        x += iconW;
+    }
+    RECT tr2{x, r.top, r.right, r.bottom};
+    SelectObject(di.hDC, textFont);
+    DrawTextW(di.hDC, text, -1, &tr2, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    SelectObject(di.hDC, old);
     if ((di.itemState & ODS_FOCUS) && !(di.itemState & ODS_NOFOCUSRECT)) {
         RECT f = di.rcItem;
-        InflateRect(&f, -scale(3, dpi), -scale(3, dpi));
+        InflateRect(&f, -scale(2, dpi), -scale(2, dpi));
         DrawFocusRect(di.hDC, &f);
     }
 }
@@ -121,9 +154,6 @@ HRESULT CALLBACK aboutDialogCallback(HWND, UINT n, WPARAM, LPARAM lp, LONG_PTR) 
     return S_OK;
 }
 
-int fsImageIndex(FsType t) { return static_cast<int>(t); }  // image list follows FsType order
-int unallocatedImage() { return static_cast<int>(FsType::Minix) + 1; }
-int extendedImage() { return static_cast<int>(FsType::Minix) + 2; }
 
 }  // namespace
 
@@ -142,6 +172,11 @@ bool MainWindow::create(HINSTANCE inst, int show) {
         log::error("RegisterClassExW(main) failed, error " + std::to_string(GetLastError()));
         return false;
     }
+    if (!registerInspectorClass(inst)) {
+        log::error("RegisterClassExW(inspector) failed, error " + std::to_string(GetLastError()));
+        return false;
+    }
+    refreshAccentColor();
     if (!registerDiskMapClass(inst)) {
         log::error("RegisterClassExW(disk map) failed, error " + std::to_string(GetLastError()));
         return false;
@@ -156,7 +191,12 @@ bool MainWindow::create(HINSTANCE inst, int show) {
     }
     // Size the window for the actual monitor DPI.
     dpi_ = dpiForWindow(hwnd_);
-    SetWindowPos(hwnd_, nullptr, 0, 0, scale(1100, dpi_), scale(720, dpi_), SWP_NOMOVE | SWP_NOZORDER);
+    RECT work{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    const int ww = std::min<int>(scale(1280, dpi_), work.right - work.left - 40);
+    const int wh = std::min<int>(scale(840, dpi_), work.bottom - work.top - 40);
+    SetWindowPos(hwnd_, nullptr, work.left + (work.right - work.left - ww) / 2, work.top + (work.bottom - work.top - wh) / 2,
+                 ww, wh, SWP_NOZORDER);
     ShowWindow(hwnd_, show);
     UpdateWindow(hwnd_);
     startDiscovery();
@@ -180,37 +220,22 @@ bool MainWindow::isDark() const {
 }
 
 void MainWindow::recreateFonts() {
-    if (font_) DeleteObject(font_);
-    font_ = createUiFont(dpi_);
+    for (HFONT* f : {&font_, &sectionFont_, &iconFont_, &captionFont_})
+        if (*f) DeleteObject(*f);
+    font_ = createUiFont(dpi_, FontRole::Body);
+    sectionFont_ = createUiFont(dpi_, FontRole::BodyStrong);
+    captionFont_ = createUiFont(dpi_, FontRole::Caption);
+    iconFont_ = createIconFont(dpi_, 16);
     auto setFont = [this](HWND c) { if (c) SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE); };
     for (HWND b : buttons_) setFont(b);
     for (HWND c : {combo_, list_, pending_, status_, statusRight_, banner_, bannerBtn_}) setFont(c);
-
+    SendMessageW(status_, WM_SETFONT, reinterpret_cast<WPARAM>(captionFont_), TRUE);
+    SendMessageW(statusRight_, WM_SETFONT, reinterpret_cast<WPARAM>(captionFont_), TRUE);
+    // The image list only sets a comfortable row height (Fluent list rows are 32-40 px).
     if (fsImages_) ImageList_Destroy(fsImages_);
-    const int sz = scale(12, dpi_);
-    fsImages_ = ImageList_Create(sz, sz, ILC_COLOR24, unallocatedImage() + 2, 0);
-    HDC screen = GetDC(nullptr);
-    HDC dc = CreateCompatibleDC(screen);
-    auto add = [&](COLORREF c) {
-        HBITMAP bmp = CreateCompatibleBitmap(screen, sz, sz);
-        HGDIOBJ old = SelectObject(dc, bmp);
-        RECT r{0, 0, sz, sz};
-        HBRUSH frameBrush = CreateSolidBrush(RGB(0x40, 0x40, 0x40));
-        HBRUSH b = CreateSolidBrush(c);
-        FillRect(dc, &r, b);
-        FrameRect(dc, &r, frameBrush);
-        DeleteObject(b);
-        DeleteObject(frameBrush);
-        SelectObject(dc, old);
-        ImageList_Add(fsImages_, bmp, nullptr);
-        DeleteObject(bmp);
-    };
-    for (int i = 0; i <= static_cast<int>(FsType::Minix); ++i) add(fsColor(static_cast<FsType>(i)));
-    add(palette(false).unallocated);
-    add(RGB(0x7D, 0xFC, 0xFE));
-    DeleteDC(dc);
-    ReleaseDC(nullptr, screen);
+    fsImages_ = ImageList_Create(1, scale(34, dpi_), ILC_COLOR24, 1, 0);
     if (list_) ListView_SetImageList(list_, fsImages_, LVSIL_SMALL);
+    if (pending_) SendMessageW(pending_, LB_SETITEMHEIGHT, 0, scale(28, dpi_));
 }
 
 void MainWindow::createChildren() {
@@ -224,22 +249,22 @@ void MainWindow::createChildren() {
     }
     combo_ = CreateWindowExW(0, WC_COMBOBOXW, L"", child | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 0, 0, 10, 300,
                              hwnd_, reinterpret_cast<HMENU>(IDC_COMBO), inst_, nullptr);
-    banner_ = CreateWindowExW(0, L"STATIC", tr(S::NotElevatedBanner), WS_CHILD | SS_LEFT | SS_CENTERIMAGE | SS_NOPREFIX,
+    banner_ = CreateWindowExW(0, L"STATIC", tr(S::NotElevatedBanner), WS_CHILD | WS_CLIPSIBLINGS | SS_OWNERDRAW | SS_NOPREFIX,
                               0, 0, 10, 10, hwnd_, reinterpret_cast<HMENU>(IDC_BANNER), inst_, nullptr);
     std::wstring restart = tr(S::MenuRestartAdmin);
     restart.erase(std::remove(restart.begin(), restart.end(), L'&'), restart.end());
-    bannerBtn_ = CreateWindowExW(0, L"BUTTON", restart.c_str(), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10,
+    bannerBtn_ = CreateWindowExW(0, L"BUTTON", restart.c_str(), WS_CHILD | WS_CLIPSIBLINGS | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10,
                                  hwnd_, reinterpret_cast<HMENU>(IDC_BANNER_BTN), inst_, nullptr);
     SendMessageW(bannerBtn_, BCM_SETSHIELD, 0, TRUE);
     map_ = CreateWindowExW(0, kDiskMapClass, L"Disk map", child | WS_TABSTOP, 0, 0, 10, 10, hwnd_,
                            reinterpret_cast<HMENU>(IDC_MAP), inst_, nullptr);
     list_ = CreateWindowExW(0, WC_LISTVIEWW, L"Partitions",
-                            child | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS, 0, 0, 10, 10, hwnd_,
+                            child | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER, 0, 0, 10, 10, hwnd_,
                             reinterpret_cast<HMENU>(IDC_LIST), inst_, nullptr);
-    ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_SUBITEMIMAGES);
+    ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
     const S cols[ColCount] = {S::ColPartition, S::ColName, S::ColFileSystem, S::ColMountPoint, S::ColLabel,
                               S::ColSize, S::ColUsed, S::ColUnused, S::ColFlags, S::ColStatus};
-    const int widths[ColCount] = {110, 150, 110, 100, 110, 90, 90, 90, 120, 150};
+    const int widths[ColCount] = {64, 130, 96, 80, 100, 84, 80, 80, 100, 130};
     for (int i = 0; i < ColCount; ++i) {
         LVCOLUMNW c{};
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
@@ -248,9 +273,11 @@ void MainWindow::createChildren() {
         c.pszText = const_cast<wchar_t*>(tr(cols[i]));
         ListView_InsertColumn(list_, i, &c);
     }
-    pending_ = CreateWindowExW(0, L"LISTBOX", L"Pending operations", child | WS_TABSTOP | LBS_NOINTEGRALHEIGHT | WS_VSCROLL,
+    pending_ = CreateWindowExW(0, L"LISTBOX", L"Pending operations",
+                               child | WS_TABSTOP | LBS_NOINTEGRALHEIGHT | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | WS_VSCROLL,
                                0, 0, 10, 10, hwnd_, reinterpret_cast<HMENU>(IDC_PENDING), inst_, nullptr);
     SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tr(S::PendingNone)));
+    inspector_ = CreateWindowExW(0, kInspectorClass, L"Details", child, 0, 0, 10, 10, hwnd_, nullptr, inst_, nullptr);
     status_ = CreateWindowExW(0, L"STATIC", L"", child | SS_LEFTNOWORDWRAP | SS_ENDELLIPSIS | SS_NOPREFIX, 0, 0, 10, 10,
                               hwnd_, reinterpret_cast<HMENU>(IDC_STATUS), inst_, nullptr);
     statusRight_ = CreateWindowExW(0, L"STATIC", L"", child | SS_RIGHT | SS_NOPREFIX, 0, 0, 10, 10, hwnd_,
@@ -373,59 +400,205 @@ void MainWindow::rebuildDeviceMenu() {
     }
 }
 
+bool MainWindow::showBanner() const {
+    const win::PhysicalDisk* d = currentDisk();
+    return result_ && !result_->elevated && !(d && d->busType == "Image file");
+}
+
 void MainWindow::layout() {
     if (!list_) return;
     RECT rc;
     GetClientRect(hwnd_, &rc);
-    const int pad = scale(8, dpi_), gap = scale(4, dpi_);
-    const int btnH = scale(28, dpi_);
-    int x = pad, y = pad;
+    // Fluent spacing: 4 px grid, 16 px page margins, 8/12 px between blocks.
+    const int pad = scale(16, dpi_), gap = scale(8, dpi_), tight = scale(4, dpi_);
+    const int btnH = scale(36, dpi_);
+    int x = pad, y = scale(10, dpi_);
     HDC dc = GetDC(hwnd_);
     HGDIOBJ old = SelectObject(dc, font_);
-    for (std::size_t i = 0; i < buttons_.size(); ++i) {
+    auto buttonWidth = [&](std::size_t i) {
         wchar_t text[64];
         GetWindowTextW(buttons_[i], text, 64);
         SIZE sz{};
         GetTextExtentPoint32W(dc, text, static_cast<int>(wcslen(text)), &sz);
-        int bw = sz.cx + scale(20, dpi_);
-        MoveWindow(buttons_[i], x, y, bw, btnH, TRUE);
+        return sz.cx + scale(24, dpi_) + (iconFont_ ? scale(24, dpi_) : 0);
+    };
+    auto placeTool = [&](std::size_t i, int bx, int bw) {
+        MoveWindow(buttons_[i], bx, y, bw, btnH, TRUE);
         TTTOOLINFOW ti{sizeof ti};
         ti.hwnd = hwnd_;
         ti.uId = static_cast<UINT_PTR>(kToolButtons[i].command);
-        ti.rect = RECT{x, y, x + bw, y + btnH};
+        ti.rect = RECT{bx, y, bx + bw, y + btnH};
         SendMessageW(tooltip_, TTM_NEWTOOLRECTW, 0, reinterpret_cast<LPARAM>(&ti));
-        x += bw + ((i == 0 || i == 5) ? pad * 2 : gap);  // groups: refresh | edit ops | queue
+    };
+    for (std::size_t i = 0; i < buttons_.size(); ++i) {
+        if (i == kApplyIndex) continue;
+        const int bw = buttonWidth(i);
+        placeTool(i, x, bw);
+        x += bw + ((i == 0 || i == 5) ? scale(16, dpi_) : tight);  // groups: refresh | edit | undo
     }
+    const int applyW = buttonWidth(kApplyIndex) + scale(8, dpi_);
+    placeTool(kApplyIndex, rc.right - pad - applyW, applyW);
     SelectObject(dc, old);
     ReleaseDC(hwnd_, dc);
-    const int comboW = std::max(scale(260, dpi_), static_cast<int>(rc.right - x - pad));
-    MoveWindow(combo_, std::max(x, static_cast<int>(rc.right - pad - std::min(comboW, scale(420, dpi_)))), y,
-               std::min(comboW, scale(420, dpi_)), scale(300, dpi_), TRUE);
-    y += btnH + pad;
+    const int comboW = std::min<int>(scale(380, dpi_), std::max<int>(scale(200, dpi_), rc.right - pad - applyW - gap - x - gap));
+    MoveWindow(combo_, rc.right - pad - applyW - gap - comboW, y + scale(4, dpi_), comboW, scale(300, dpi_), TRUE);
+    y += btnH + scale(10, dpi_);
 
-    const bool showBanner = result_ && !result_->elevated;
-    ShowWindow(banner_, showBanner ? SW_SHOW : SW_HIDE);
-    ShowWindow(bannerBtn_, showBanner ? SW_SHOW : SW_HIDE);
-    if (showBanner) {
-        const int bh = scale(34, dpi_), bbw = scale(230, dpi_);
-        MoveWindow(banner_, pad, y, rc.right - 2 * pad - bbw - gap, bh, TRUE);
-        MoveWindow(bannerBtn_, rc.right - pad - bbw, y + scale(3, dpi_), bbw, bh - scale(6, dpi_), TRUE);
-        y += bh + pad;
+    const bool banner = showBanner();
+    ShowWindow(banner_, banner ? SW_SHOW : SW_HIDE);
+    ShowWindow(bannerBtn_, banner ? SW_SHOW : SW_HIDE);
+    if (banner) {
+        const int bh = scale(44, dpi_), bbw = scale(220, dpi_);
+        MoveWindow(banner_, pad, y, rc.right - 2 * pad, bh, TRUE);
+        MoveWindow(bannerBtn_, rc.right - pad - bbw - scale(8, dpi_), y + scale(7, dpi_), bbw, bh - scale(14, dpi_), TRUE);
+        SetWindowPos(bannerBtn_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        y += bh + gap;
     }
-    const int mapH = scale(78, dpi_);
+    const int mapH = scale(136, dpi_);
     MoveWindow(map_, pad, y, rc.right - 2 * pad, mapH, TRUE);
-    y += mapH + pad;
+    y += mapH + scale(12, dpi_);
 
-    const int statusH = scale(22, dpi_);
+    const int statusH = scale(24, dpi_);
     const bool pendingVisible = IsWindowVisible(pending_) != FALSE;
-    const int pendingH = pendingVisible ? scale(56, dpi_) : 0;
-    const int bottom = rc.bottom - pad - statusH;
-    const int listBottom = bottom - (pendingVisible ? pendingH + pad : 0);
-    MoveWindow(list_, pad, y, rc.right - 2 * pad, std::max(0, listBottom - y), TRUE);
-    if (pendingVisible) MoveWindow(pending_, pad, listBottom + pad, rc.right - 2 * pad, pendingH, TRUE);
-    const int rightW = scale(220, dpi_);
+    const int pendingH = pendingVisible ? scale(140, dpi_) : 0;
+    const int bottom = rc.bottom - statusH - tight;
+    const int sectionH = scale(36, dpi_);
+    const int inspectorW = std::min<int>(scale(320, dpi_), (rc.right - 2 * pad) / 3);
+    const int listBottom = bottom - (pendingVisible ? pendingH + scale(12, dpi_) : 0);
+    listCard_ = RECT{pad, y, rc.right - pad - inspectorW - scale(12, dpi_), listBottom};
+    MoveWindow(list_, listCard_.left + 1, listCard_.top + sectionH, listCard_.right - listCard_.left - 2,
+               std::max(0, static_cast<int>(listCard_.bottom - listCard_.top) - sectionH - scale(6, dpi_)), TRUE);
+    MoveWindow(inspector_, rc.right - pad - inspectorW, y, inspectorW, std::max(0, listBottom - y), TRUE);
+    {  // the Status column takes the remaining width (no horizontal scrolling)
+        int used = 0;
+        for (int c = 0; c < ColStatus; ++c) used += ListView_GetColumnWidth(list_, c);
+        const int avail = static_cast<int>(listCard_.right - listCard_.left) - 2 - GetSystemMetrics(SM_CXVSCROLL) - used;
+        ListView_SetColumnWidth(list_, ColStatus, std::max(scale(100, dpi_), avail));
+    }
+    if (pendingVisible) {
+        pendingCard_ = RECT{pad, listBottom + scale(12, dpi_), rc.right - pad, bottom};
+        MoveWindow(pending_, pendingCard_.left + scale(8, dpi_), pendingCard_.top + sectionH,
+                   pendingCard_.right - pendingCard_.left - scale(16, dpi_),
+                   std::max(0, static_cast<int>(pendingCard_.bottom - pendingCard_.top) - sectionH - scale(8, dpi_)), TRUE);
+    } else {
+        pendingCard_ = RECT{};
+    }
+    const int rightW = scale(240, dpi_);
     MoveWindow(status_, pad, bottom + scale(2, dpi_), rc.right - 3 * pad - rightW, statusH, TRUE);
     MoveWindow(statusRight_, rc.right - pad - rightW, bottom + scale(2, dpi_), rightW, statusH, TRUE);
+    InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+void MainWindow::paintBackground(HDC dc) {
+    const Palette& p = palette(isDark());
+    RECT rc;
+    GetClientRect(hwnd_, &rc);
+    fillRect(dc, rc, p.window);
+    const int radius = scale(8, dpi_);
+    SetBkMode(dc, TRANSPARENT);
+    auto section = [&](const RECT& card, const std::wstring& title) {
+        if (card.right <= card.left) return;
+        fillRounded(dc, card, radius, p.card, p.border);
+        RECT t{card.left + scale(16, dpi_), card.top, card.right - scale(16, dpi_), card.top + scale(36, dpi_)};
+        HGDIOBJ old = SelectObject(dc, sectionFont_);
+        SetTextColor(dc, p.text);
+        DrawTextW(dc, title.c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        SelectObject(dc, old);
+    };
+    section(listCard_, tr(S::SectionPartitions));
+    std::wstring pendingTitle = tr(S::SectionPending);
+    const win::PhysicalDisk* d = currentDisk();
+    auto it = d ? queues_.find(d->path) : queues_.end();
+    if (it != queues_.end() && !it->second.empty()) pendingTitle += L"  (" + std::to_wstring(it->second.operations().size()) + L")";
+    section(pendingCard_, pendingTitle);
+}
+
+void MainWindow::drawPendingItem(const DRAWITEMSTRUCT& di) {
+    const Palette& p = palette(isDark());
+    if (di.itemID == static_cast<UINT>(-1)) return;
+    const bool selected = (di.itemState & ODS_SELECTED) != 0;
+    fillRect(di.hDC, di.rcItem, selected ? p.selection : p.card);
+    wchar_t text[1024] = L"";
+    SendMessageW(di.hwndItem, LB_GETTEXT, di.itemID, reinterpret_cast<LPARAM>(text));
+    const LRESULT kind = SendMessageW(di.hwndItem, LB_GETITEMDATA, di.itemID, 0);
+    // 1-4: risk low..critical, 10 warning, 11 error, 0 info
+    COLORREF dot = p.mutedText;
+    if (kind == 1) dot = p.success;
+    else if (kind == 2) dot = p.accent;
+    else if (kind == 3) dot = p.caution;
+    else if (kind == 4 || kind == 11) dot = p.danger;
+    else if (kind == 10) dot = p.caution;
+    RECT r = di.rcItem;
+    const int cy = (r.top + r.bottom) / 2;
+    const int x = r.left + scale(kind >= 10 ? 28 : 8, dpi_);
+    SetBkMode(di.hDC, TRANSPARENT);
+    HGDIOBJ old = SelectObject(di.hDC, font_);
+    if (kind >= 10 && iconFont_) {
+        const wchar_t g = kind == 11 ? glyph::Error : glyph::Warning;
+        RECT ir{x, r.top, x + scale(18, dpi_), r.bottom};
+        SelectObject(di.hDC, iconFont_);
+        SetTextColor(di.hDC, dot);
+        DrawTextW(di.hDC, &g, 1, &ir, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(di.hDC, font_);
+    } else if (kind > 0 && kind < 10) {
+        RECT dr{x, cy - scale(4, dpi_), x + scale(8, dpi_), cy + scale(4, dpi_)};
+        fillRounded(di.hDC, dr, scale(8, dpi_), dot, dot);
+    }
+    RECT tr2{x + scale(kind > 0 ? 22 : 0, dpi_), r.top, r.right - scale(8, dpi_), r.bottom};
+    SetTextColor(di.hDC, kind >= 10 ? dot : p.text);
+    DrawTextW(di.hDC, text, -1, &tr2, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(di.hDC, old);
+}
+
+LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
+    switch (cd->nmcd.dwDrawStage) {
+        case CDDS_PREPAINT: return CDRF_NOTIFYITEMDRAW;
+        case CDDS_ITEMPREPAINT:
+            cd->nmcd.uItemState &= ~static_cast<UINT>(CDIS_SELECTED | CDIS_FOCUS | CDIS_HOT);
+            return CDRF_NOTIFYPOSTPAINT | CDRF_NOTIFYSUBITEMDRAW;
+        case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
+            // Selection is drawn as a subtle accent tint (Fluent list style)
+            // instead of the theme's grey/blue highlight.
+            const Palette& p = palette(isDark());
+            const int item = static_cast<int>(cd->nmcd.dwItemSpec);
+            const bool selected = ListView_GetItemState(list_, item, LVIS_SELECTED) != 0;
+            cd->nmcd.uItemState &= ~static_cast<UINT>(CDIS_SELECTED | CDIS_FOCUS | CDIS_HOT);
+            const int col = cd->iSubItem;
+            cd->clrTextBk = selected ? p.selection : p.card;
+            cd->clrText = (col == ColUsed || col == ColUnused || col == ColFlags || col == ColMount) ? p.mutedText : p.text;
+            return CDRF_DODEFAULT;
+        }
+        case CDDS_ITEMPOSTPAINT: {
+            // File system as a coloured pill (the cell text stays for screen readers).
+            const int item = static_cast<int>(cd->nmcd.dwItemSpec);
+            if (item < 0 || item >= static_cast<int>(view_.rows.size()) || !view_.layout) return CDRF_DODEFAULT;
+            const Palette& p = palette(isDark());
+            const Row& row = view_.rows[static_cast<std::size_t>(item)];
+            RECT cell{};
+            ListView_GetSubItemRect(list_, item, ColFs, LVIR_BOUNDS, &cell);
+            const bool selected = ListView_GetItemState(list_, item, LVIS_SELECTED) != 0;
+            RECT bg = cell;
+            fillRect(cd->nmcd.hdc, bg, selected ? p.selection : p.card);
+            std::wstring label;
+            COLORREF color = p.unallocated;
+            if (row.kind == Segment::Kind::Unallocated) {
+                label = view_.tableRead ? tr(S::Unallocated) : tr(S::UnknownRegion);
+            } else {
+                const auto& part = view_.layout->partitions[static_cast<std::size_t>(row.partitionIndex)];
+                label = part.kind == PartitionKind::Extended ? std::wstring(L"extended") : w(fsTypeName(part.fs.type));
+                color = part.kind == PartitionKind::Extended ? p.mutedText : fsColor(part.fs.type);
+            }
+            RECT pill = cell;
+            pill.left += scale(6, dpi_);
+            pill.right -= scale(4, dpi_);
+            InflateRect(&pill, 0, -scale(5, dpi_));
+            drawPill(cd->nmcd.hdc, pill, blend(selected ? p.selection : p.card, color, p.dark ? 40 : 22), p.text,
+                     label.c_str(), captionFont_, dpi_);
+            return CDRF_DODEFAULT;
+        }
+        default:
+            return CDRF_DODEFAULT;
+    }
 }
 
 void MainWindow::applyTheme() {
@@ -433,9 +606,11 @@ void MainWindow::applyTheme() {
     for (HBRUSH* b : {&windowBrush_, &panelBrush_, &warnBrush_})
         if (*b) DeleteObject(*b);
     windowBrush_ = CreateSolidBrush(p.window);
-    panelBrush_ = CreateSolidBrush(p.panel);
+    panelBrush_ = CreateSolidBrush(p.card);
     warnBrush_ = CreateSolidBrush(p.warning);
     applyTitleBarTheme(hwnd_, p.dark);
+    applyMenuTheme(p.dark);
+    DrawMenuBar(hwnd_);
     RemoveWindowSubclass(list_, listSubclass, 1);
     SetWindowSubclass(list_, listSubclass, 1, reinterpret_cast<DWORD_PTR>(&p));
     applyControlTheme(bannerBtn_, p.dark);
@@ -443,8 +618,10 @@ void MainWindow::applyTheme() {
     applyControlTheme(list_, p.dark, L"DarkMode_Explorer");
     applyControlTheme(ListView_GetHeader(list_), p.dark, L"DarkMode_ItemsView");
     applyControlTheme(pending_, p.dark);
-    ListView_SetBkColor(list_, p.window);
-    ListView_SetTextBkColor(list_, p.window);
+    applyControlTheme(bannerBtn_, p.dark);
+    updateInspector();
+    ListView_SetBkColor(list_, p.card);
+    ListView_SetTextBkColor(list_, p.card);
     ListView_SetTextColor(list_, p.text);
     SendMessageW(map_, DM_SETVIEW, reinterpret_cast<WPARAM>(&p), reinterpret_cast<LPARAM>(view_.layout ? &view_ : nullptr));
     if (selectedRow_ >= 0) SendMessageW(map_, DM_SETSELECTION, static_cast<WPARAM>(selectedRow_), 0);
@@ -510,6 +687,7 @@ void MainWindow::selectDisk(int index) {
                           MF_BYCOMMAND | (static_cast<int>(i) == index ? MF_CHECKED : MF_UNCHECKED));
     }
     refreshView();
+    layout();  // the info bar depends on the device (hidden for disk images)
     selectRow(-1, false);
 }
 
@@ -521,7 +699,6 @@ void MainWindow::fillPartitionList() {
         for (std::size_t i = 0; i < view_.rows.size(); ++i) {
             const Row& r = view_.rows[i];
             std::wstring cells[ColCount];
-            int image = unallocatedImage();
             const std::wstring indent = r.depth ? L"    " : L"";
             if (r.kind == Segment::Kind::Unallocated) {
                 const wchar_t* gap = view_.tableRead ? tr(S::Unallocated) : tr(S::UnknownRegion);
@@ -535,13 +712,7 @@ void MainWindow::fillPartitionList() {
                                                 : p.number > 0 ? L"#" + std::to_wstring(p.number)
                                                                : std::wstring(tr(S::VolumeOnly)));
                 cells[ColName] = w(p.name);
-                if (p.kind == PartitionKind::Extended) {
-                    cells[ColFs] = L"extended";
-                    image = extendedImage();
-                } else {
-                    cells[ColFs] = w(fsTypeName(p.fs.type));
-                    image = fsImageIndex(p.fs.type);
-                }
+                cells[ColFs] = p.kind == PartitionKind::Extended ? std::wstring(L"extended") : w(fsTypeName(p.fs.type));
                 std::wstring label = w(p.fs.label);
                 if (vol) {
                     for (const auto& m : vol->mountPoints) cells[ColMount] += (cells[ColMount].empty() ? L"" : L", ") + m;
@@ -564,19 +735,17 @@ void MainWindow::fillPartitionList() {
                 cells[ColStatus] = status;
             }
             LVITEMW it{};
-            it.mask = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
+            it.mask = LVIF_TEXT | LVIF_PARAM;
             it.iItem = static_cast<int>(i);
             it.pszText = const_cast<wchar_t*>(cells[ColPartition].c_str());
             it.lParam = static_cast<LPARAM>(i);
-            it.iImage = -1;
             ListView_InsertItem(list_, &it);
             for (int c = 1; c < ColCount; ++c) {
                 LVITEMW sub{};
-                sub.mask = LVIF_TEXT | (c == ColFs ? LVIF_IMAGE : 0);
+                sub.mask = LVIF_TEXT;
                 sub.iItem = static_cast<int>(i);
                 sub.iSubItem = c;
                 sub.pszText = const_cast<wchar_t*>(cells[c].c_str());
-                sub.iImage = image;
                 SendMessageW(list_, LVM_SETITEMW, 0, reinterpret_cast<LPARAM>(&sub));
             }
         }
@@ -597,6 +766,7 @@ void MainWindow::selectRow(int row, bool fromMap) {
         SendMessageW(map_, DM_SETSELECTION, static_cast<WPARAM>(row), 0);
     }
     updateCommandState();
+    updateInspector();
 }
 
 void MainWindow::updateStatus() {
@@ -876,6 +1046,10 @@ void MainWindow::onCommand(int id) {
 }
 
 LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
+    if (font_) {
+        LRESULT handled = 0;
+        if (handleMenuBarMessage(hwnd_, msg, wp, lp, palette(isDark()), font_, handled)) return handled;
+    }
     switch (msg) {
         case WM_CREATE:
             dpi_ = dpiForWindow(hwnd_);
@@ -898,31 +1072,68 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             const RECT* r = reinterpret_cast<const RECT*>(lp);
             SetWindowPos(hwnd_, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
             for (int i = 0; i < ColCount; ++i) {
-                const int widths[ColCount] = {110, 150, 110, 100, 110, 90, 90, 90, 120, 150};
+                const int widths[ColCount] = {64, 130, 96, 80, 100, 84, 80, 80, 100, 130};
                 ListView_SetColumnWidth(list_, i, scale(widths[i], dpi_));
             }
             layout();
             return 0;
         }
         case WM_SETTINGCHANGE:
-            if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0 && themeMode_ == ThemeMode::System)
+            if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
+                refreshAccentColor();  // accent colour and light/dark preference
                 applyTheme();
+            }
             break;
         case WM_DRAWITEM: {
             const auto* di = reinterpret_cast<const DRAWITEMSTRUCT*>(lp);
             if (di->CtlType == ODT_BUTTON) {
-                drawButton(*di, palette(isDark()), dpi_);
+                drawButton(*di, palette(isDark()), dpi_, font_, iconFont_);
+                return TRUE;
+            }
+            if (di->CtlType == ODT_LISTBOX && di->hwndItem == pending_) {
+                drawPendingItem(*di);
+                return TRUE;
+            }
+            if (di->CtlType == ODT_STATIC && di->hwndItem == banner_) {
+                // Fluent InfoBar (caution): rounded, icon, message.
+                const Palette& p = palette(isDark());
+                fillRect(di->hDC, di->rcItem, p.window);
+                fillRounded(di->hDC, di->rcItem, scale(8, dpi_), p.warning, blend(p.warning, p.caution, 30));
+                SetBkMode(di->hDC, TRANSPARENT);
+                RECT r = di->rcItem;
+                r.left += scale(16, dpi_);
+                if (iconFont_) {
+                    RECT ir{r.left, r.top, r.left + scale(20, dpi_), r.bottom};
+                    HGDIOBJ old = SelectObject(di->hDC, iconFont_);
+                    SetTextColor(di->hDC, p.caution);
+                    const wchar_t g = glyph::Warning;
+                    DrawTextW(di->hDC, &g, 1, &ir, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                    SelectObject(di->hDC, old);
+                    r.left += scale(32, dpi_);
+                }
+                r.right -= scale(240, dpi_);
+                wchar_t text[512];
+                GetWindowTextW(banner_, text, 512);
+                HGDIOBJ old = SelectObject(di->hDC, font_);
+                SetTextColor(di->hDC, p.text);
+                DrawTextW(di->hDC, text, -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                SelectObject(di->hDC, old);
                 return TRUE;
             }
             break;
         }
         case WM_GETFONT:
             return reinterpret_cast<LRESULT>(font_);
-        case WM_ERASEBKGND: {
-            RECT rc;
-            GetClientRect(hwnd_, &rc);
-            FillRect(reinterpret_cast<HDC>(wp), &rc, windowBrush_);
+        case WM_ERASEBKGND:
+            paintBackground(reinterpret_cast<HDC>(wp));
             return 1;
+        case WM_MEASUREITEM: {
+            auto* mi = reinterpret_cast<MEASUREITEMSTRUCT*>(lp);
+            if (mi->CtlType == ODT_LISTBOX) {
+                mi->itemHeight = static_cast<UINT>(scale(28, dpi_));
+                return TRUE;
+            }
+            break;
         }
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORLISTBOX:
@@ -932,7 +1143,7 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             HWND ctl = reinterpret_cast<HWND>(lp);
             const bool warn = ctl == banner_;
             SetTextColor(dc, (ctl == status_ || ctl == statusRight_) ? p.mutedText : p.text);
-            SetBkColor(dc, warn ? p.warning : (msg == WM_CTLCOLORLISTBOX ? p.panel : p.window));
+            SetBkColor(dc, warn ? p.warning : (msg == WM_CTLCOLORLISTBOX ? p.card : p.window));
             return reinterpret_cast<LRESULT>(warn ? warnBrush_ : (msg == WM_CTLCOLORLISTBOX ? panelBrush_ : windowBrush_));
         }
         case WM_COMMAND: {
@@ -962,6 +1173,7 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_NOTIFY: {
             auto* nm = reinterpret_cast<NMHDR*>(lp);
             if (nm->hwndFrom == list_) {
+                if (nm->code == NM_CUSTOMDRAW) return listCustomDraw(reinterpret_cast<NMLVCUSTOMDRAW*>(lp));
                 if (nm->code == LVN_ITEMCHANGED) {
                     auto* lv = reinterpret_cast<NMLISTVIEW*>(lp);
                     if ((lv->uChanged & LVIF_STATE) && (lv->uNewState & LVIS_SELECTED) && !(lv->uOldState & LVIS_SELECTED))
@@ -994,7 +1206,8 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 delete reinterpret_cast<win::DiscoveryResult*>(m.lParam);
             for (HBRUSH b : {windowBrush_, panelBrush_, warnBrush_})
                 if (b) DeleteObject(b);
-            if (font_) DeleteObject(font_);
+            for (HFONT f : {font_, sectionFont_, iconFont_, captionFont_})
+                if (f) DeleteObject(f);
             if (fsImages_) ImageList_Destroy(fsImages_);
             if (accel_) DestroyAcceleratorTable(accel_);
             PostQuitMessage(0);

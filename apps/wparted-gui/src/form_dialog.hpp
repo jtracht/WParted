@@ -17,7 +17,7 @@
 namespace wparted::ui {
 
 struct FormField {
-    enum class Kind { Number, Text, Choice, Check, Note };
+    enum class Kind { Number, Text, Choice, Check, Note, Preview };
     Kind kind = Kind::Text;
     std::wstring label;
     // Number
@@ -31,6 +31,10 @@ struct FormField {
     // Check
     bool checked = false;
     bool enabled = true;
+    // Preview (graphical placement bar, always shown at the top of the form)
+    std::uint64_t previewTotal = 0, previewStart = 0, previewSize = 0;
+    COLORREF previewColor = RGB(0x2F, 0xB6, 0x8A);
+    std::wstring previewLabel;
 };
 
 // Called whenever a value changes; may update other fields (e.g. "free space

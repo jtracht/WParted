@@ -5,6 +5,9 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 
+#include <algorithm>
+#include <cwchar>
+
 namespace wparted::ui {
 
 namespace {
@@ -24,6 +27,40 @@ Fn loadProc(const wchar_t* dll, const char* name) {
     }
     return m ? reinterpret_cast<Fn>(reinterpret_cast<void*>(GetProcAddress(m, name))) : nullptr;
 }
+
+COLORREF g_accentLight = RGB(0x00, 0x5F, 0xB8);  // Fluent default accent ("Blue")
+COLORREF g_accentDark = RGB(0x60, 0xCD, 0xFF);
+
+int luminance(COLORREF c) { return (GetRValue(c) * 299 + GetGValue(c) * 587 + GetBValue(c) * 114) / 1000; }
+
+int CALLBACK fontFound(const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM found) {
+    *reinterpret_cast<bool*>(found) = true;
+    return 0;
+}
+
+bool fontInstalled(const wchar_t* face) {
+    bool found = false;
+    LOGFONTW lf{};
+    lf.lfCharSet = DEFAULT_CHARSET;
+    wcsncpy_s(lf.lfFaceName, face, LF_FACESIZE - 1);
+    HDC dc = GetDC(nullptr);
+    EnumFontFamiliesExW(dc, &lf, fontFound, reinterpret_cast<LPARAM>(&found), 0);
+    ReleaseDC(nullptr, dc);
+    return found;
+}
+
+const wchar_t* uiFace() {
+    static const wchar_t* face = fontInstalled(L"Segoe UI Variable Text") ? L"Segoe UI Variable Text" : L"Segoe UI";
+    return face;
+}
+
+const wchar_t* iconFace() {
+    static const wchar_t* face = fontInstalled(L"Segoe Fluent Icons") ? L"Segoe Fluent Icons"
+                                 : fontInstalled(L"Segoe MDL2 Assets") ? L"Segoe MDL2 Assets"
+                                                                       : nullptr;
+    return face;
+}
+
 }  // namespace
 
 ThemeMode loadThemeMode() {
@@ -50,15 +87,37 @@ bool systemPrefersDark() {
     return false;  // Windows 7/8 have no app dark mode
 }
 
+void refreshAccentColor() {
+    // HKCU\...\DWM\AccentColor is ABGR (Windows 8+). Adjust per theme so that
+    // accent text and fills keep sufficient contrast.
+    DWORD v = 0, size = sizeof v;
+    if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\DWM", L"AccentColor", RRF_RT_REG_DWORD, nullptr,
+                     &v, &size) != ERROR_SUCCESS)
+        return;
+    const COLORREF c = RGB(v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF);
+    COLORREF lightVariant = c, darkVariant = c;
+    while (luminance(lightVariant) > 110) lightVariant = blend(lightVariant, RGB(0, 0, 0), 15);
+    while (luminance(darkVariant) < 150) darkVariant = blend(darkVariant, RGB(255, 255, 255), 15);
+    g_accentLight = lightVariant;
+    g_accentDark = darkVariant;
+}
+
 const Palette& palette(bool dark) {
-    static const Palette light{false,
-                               RGB(0xFA, 0xFA, 0xFA), RGB(0xF0, 0xF0, 0xF0), RGB(0x1B, 0x1B, 0x1B), RGB(0x5F, 0x5F, 0x5F),
-                               RGB(0xC8, 0xC8, 0xC8), RGB(0x00, 0x5F, 0xB8), RGB(0x00, 0x5F, 0xB8), RGB(0xA9, 0xA9, 0xA9),
-                               RGB(0xF8, 0xF4, 0xB8), RGB(0xFF, 0xFF, 0xFF), RGB(0xFF, 0xF4, 0xCE)};
-    static const Palette darkP{true,
-                               RGB(0x20, 0x20, 0x20), RGB(0x2B, 0x2B, 0x2B), RGB(0xEE, 0xEE, 0xEE), RGB(0xA8, 0xA8, 0xA8),
-                               RGB(0x45, 0x45, 0x45), RGB(0x4C, 0xA8, 0xFF), RGB(0x4C, 0xA8, 0xFF), RGB(0x6B, 0x6B, 0x6B),
-                               RGB(0x6E, 0x69, 0x3A), RGB(0x33, 0x33, 0x33), RGB(0x4D, 0x40, 0x14)};
+    static Palette light, darkP;
+    light = Palette{false,
+                    RGB(0xF3, 0xF3, 0xF3), RGB(0xFB, 0xFB, 0xFB), RGB(0xFF, 0xFF, 0xFF), RGB(0xF0, 0xF0, 0xF0),
+                    RGB(0xE6, 0xE6, 0xE6), RGB(0xE5, 0xE5, 0xE5),
+                    RGB(0x1A, 0x1A, 0x1A), RGB(0x5D, 0x5D, 0x5D), RGB(0xA0, 0xA0, 0xA0),
+                    g_accentLight, RGB(0xFF, 0xFF, 0xFF), blend(RGB(0xFF, 0xFF, 0xFF), g_accentLight, 14),
+                    RGB(0xFF, 0xF4, 0xCE), RGB(0x9D, 0x5D, 0x00), RGB(0xC4, 0x2B, 0x1C), RGB(0x0F, 0x7B, 0x0F),
+                    RGB(0xC8, 0xC8, 0xC8), RGB(0xD6, 0xE9, 0xF8), RGB(0xFF, 0xFF, 0xFF)};
+    darkP = Palette{true,
+                    RGB(0x20, 0x20, 0x20), RGB(0x2D, 0x2D, 0x2D), RGB(0x2B, 0x2B, 0x2B), RGB(0x34, 0x34, 0x34),
+                    RGB(0x29, 0x29, 0x29), RGB(0x3D, 0x3D, 0x3D),
+                    RGB(0xFF, 0xFF, 0xFF), RGB(0xC5, 0xC5, 0xC5), RGB(0x78, 0x78, 0x78),
+                    g_accentDark, RGB(0x00, 0x00, 0x00), blend(RGB(0x2B, 0x2B, 0x2B), g_accentDark, 22),
+                    RGB(0x43, 0x35, 0x19), RGB(0xFC, 0xE1, 0x00), RGB(0xFF, 0x99, 0xA4), RGB(0x6C, 0xCB, 0x5F),
+                    RGB(0x55, 0x55, 0x55), RGB(0x2F, 0x4A, 0x62), RGB(0x33, 0x33, 0x33)};
     return dark ? darkP : light;
 }
 
@@ -69,6 +128,9 @@ void applyTitleBarTheme(HWND hwnd, bool dark) {
     BOOL value = dark ? TRUE : FALSE;
     // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1+), 19 on 1809-1909.
     if (FAILED(setAttr(hwnd, 20, &value, sizeof value))) setAttr(hwnd, 19, &value, sizeof value);
+    // 35 = DWMWA_CAPTION_COLOR (Windows 11): title bar blends into the window.
+    COLORREF caption = palette(dark).window;
+    setAttr(hwnd, 35, &caption, sizeof caption);
 }
 
 void applyControlTheme(HWND control, bool dark, const wchar_t* darkClass) {
@@ -79,31 +141,38 @@ void applyControlTheme(HWND control, bool dark, const wchar_t* darkClass) {
 
 COLORREF fsColor(FsType t) {
     switch (t) {
-        case FsType::Ntfs: return RGB(0x42, 0xE5, 0xAC);
+        case FsType::Ntfs: return RGB(0x2F, 0xB6, 0x8A);
         case FsType::Fat12:
-        case FsType::Fat16: return RGB(0x00, 0xC0, 0x5A);
-        case FsType::Fat32: return RGB(0x18, 0xD9, 0x18);
+        case FsType::Fat16: return RGB(0x3C, 0xA4, 0x3C);
+        case FsType::Fat32: return RGB(0x4C, 0xB8, 0x2E);
         case FsType::ExFat: return RGB(0x2E, 0x8B, 0x57);
-        case FsType::ReFs: return RGB(0x3B, 0x9C, 0xD9);
-        case FsType::BitLocker: return RGB(0x49, 0x40, 0x66);
-        case FsType::Ext2: return RGB(0x9D, 0xB8, 0xD2);
-        case FsType::Ext3: return RGB(0x75, 0x90, 0xAE);
-        case FsType::Ext4: return RGB(0x31, 0x4E, 0x6C);
-        case FsType::Btrfs: return RGB(0xFF, 0x99, 0x55);
-        case FsType::Xfs: return RGB(0xEE, 0xD6, 0x80);
-        case FsType::F2fs: return RGB(0xDF, 0x4B, 0x2C);
+        case FsType::ReFs: return RGB(0x3B, 0x8E, 0xD0);
+        case FsType::BitLocker: return RGB(0x6B, 0x5B, 0x95);
+        case FsType::Ext2: return RGB(0x7F, 0x9E, 0xC0);
+        case FsType::Ext3: return RGB(0x5A, 0x7E, 0xA8);
+        case FsType::Ext4: return RGB(0x3A, 0x5F, 0x8F);
+        case FsType::Btrfs: return RGB(0xE8, 0x84, 0x3C);
+        case FsType::Xfs: return RGB(0xC9, 0xA2, 0x27);
+        case FsType::F2fs: return RGB(0xD0, 0x4A, 0x2E);
         case FsType::LinuxSwap:
-        case FsType::LinuxSuspend: return RGB(0xC1, 0x66, 0x5A);
-        case FsType::Luks: return RGB(0x62, 0x5B, 0x81);
-        case FsType::Lvm2Pv: return RGB(0xB1, 0x9C, 0xD9);
-        case FsType::LinuxRaid: return RGB(0x82, 0x69, 0x4D);
+        case FsType::LinuxSuspend: return RGB(0xB8, 0x5C, 0x52);
+        case FsType::Luks: return RGB(0x7A, 0x5C, 0xB0);
+        case FsType::Lvm2Pv: return RGB(0x9C, 0x7C, 0xC8);
+        case FsType::LinuxRaid: return RGB(0x8A, 0x6D, 0x4D);
         case FsType::HfsPlus:
-        case FsType::Hfs: return RGB(0xE0, 0xB6, 0xAF);
-        case FsType::Apfs: return RGB(0x87, 0x87, 0x87);
-        case FsType::Udf: return RGB(0x10, 0x5A, 0x7A);
+        case FsType::Hfs: return RGB(0xC9, 0x8E, 0x86);
+        case FsType::Apfs: return RGB(0x80, 0x80, 0x88);
+        case FsType::Udf: return RGB(0x1F, 0x6F, 0x8F);
         case FsType::Zfs: return RGB(0x6B, 0x8E, 0x23);
-        default: return RGB(0x00, 0x00, 0x00);
+        default: return RGB(0x78, 0x78, 0x78);
     }
+}
+
+COLORREF readableOn(COLORREF bg) { return luminance(bg) > 150 ? RGB(0x1A, 0x1A, 0x1A) : RGB(0xFF, 0xFF, 0xFF); }
+
+COLORREF blend(COLORREF a, COLORREF b, int pct) {
+    auto mix = [pct](int x, int y) { return x + (y - x) * pct / 100; };
+    return RGB(mix(GetRValue(a), GetRValue(b)), mix(GetGValue(a), GetGValue(b)), mix(GetBValue(a), GetBValue(b)));
 }
 
 UINT dpiForWindow(HWND hwnd) {
@@ -116,20 +185,66 @@ UINT dpiForWindow(HWND hwnd) {
     return dpi ? dpi : 96;
 }
 
-HFONT createUiFont(UINT dpi, bool bold) {
-    NONCLIENTMETRICSW ncm{};
-    ncm.cbSize = sizeof ncm;
-    using SpiForDpi = BOOL(WINAPI*)(UINT, UINT, PVOID, UINT, UINT);
-    static auto spiForDpi = loadProc<SpiForDpi>(L"user32.dll", "SystemParametersInfoForDpi");
-    if (spiForDpi) {
-        spiForDpi(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0, dpi);
-    } else {
-        SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof ncm, &ncm, 0);
-        UINT sys = dpiForWindow(nullptr);
-        ncm.lfMessageFont.lfHeight = MulDiv(ncm.lfMessageFont.lfHeight, static_cast<int>(dpi), static_cast<int>(sys));
+HFONT createUiFont(UINT dpi, FontRole role) {
+    // Fluent type ramp: Caption 12, Body 14, Subtitle 20, Title 28 (px at 96 DPI).
+    int px = 14, weight = FW_NORMAL;
+    switch (role) {
+        case FontRole::Body: break;
+        case FontRole::BodyStrong: weight = FW_SEMIBOLD; break;
+        case FontRole::Caption: px = 12; break;
+        case FontRole::Subtitle: px = 20; weight = FW_SEMIBOLD; break;
+        case FontRole::Title: px = 28; weight = FW_SEMIBOLD; break;
     }
-    if (bold) ncm.lfMessageFont.lfWeight = FW_SEMIBOLD;
-    return CreateFontIndirectW(&ncm.lfMessageFont);
+    LOGFONTW lf{};
+    lf.lfHeight = -scale(px, dpi);
+    lf.lfWeight = weight;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfQuality = CLEARTYPE_QUALITY;
+    wcsncpy_s(lf.lfFaceName, uiFace(), LF_FACESIZE - 1);
+    return CreateFontIndirectW(&lf);
+}
+
+bool hasIconFont() { return iconFace() != nullptr; }
+
+HFONT createIconFont(UINT dpi, int sizePx) {
+    if (!iconFace()) return nullptr;
+    LOGFONTW lf{};
+    lf.lfHeight = -scale(sizePx, dpi);
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfQuality = CLEARTYPE_QUALITY;
+    wcsncpy_s(lf.lfFaceName, iconFace(), LF_FACESIZE - 1);
+    return CreateFontIndirectW(&lf);
+}
+
+void fillRect(HDC dc, const RECT& r, COLORREF c) {
+    HBRUSH b = CreateSolidBrush(c);
+    FillRect(dc, &r, b);
+    DeleteObject(b);
+}
+
+void fillRounded(HDC dc, const RECT& r, int radius, COLORREF fill, COLORREF stroke) {
+    HBRUSH b = CreateSolidBrush(fill);
+    HPEN p = CreatePen(PS_SOLID, 1, stroke);
+    HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, p);
+    RoundRect(dc, r.left, r.top, r.right, r.bottom, radius, radius);
+    SelectObject(dc, ob);
+    SelectObject(dc, op);
+    DeleteObject(b);
+    DeleteObject(p);
+}
+
+void drawPill(HDC dc, const RECT& r, COLORREF fill, COLORREF textColor, const wchar_t* text, HFONT font, UINT dpi) {
+    HGDIOBJ of = SelectObject(dc, font);
+    SIZE sz{};
+    GetTextExtentPoint32W(dc, text, static_cast<int>(wcslen(text)), &sz);
+    const int h = std::min<int>(r.bottom - r.top, sz.cy + scale(6, dpi));
+    const int w = std::min<int>(r.right - r.left, sz.cx + scale(16, dpi));
+    RECT pill{r.left, r.top + (r.bottom - r.top - h) / 2, r.left + w, r.top + (r.bottom - r.top - h) / 2 + h};
+    fillRounded(dc, pill, h, fill, fill);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, textColor);
+    DrawTextW(dc, text, -1, &pill, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(dc, of);
 }
 
 }  // namespace wparted::ui
