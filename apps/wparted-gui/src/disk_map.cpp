@@ -6,6 +6,7 @@
 // nested logical partitions, usage bars, hover and selection. Plain GDI with
 // double buffering so it renders the same on Windows 7 to 11.
 #include <windowsx.h>
+#include <oleacc.h>
 
 #include <algorithm>
 #include <string>
@@ -32,6 +33,7 @@ struct MapState {
     bool focused = false;
     UINT fontDpi = 0;
     HFONT title = nullptr, body = nullptr, caption = nullptr, icon = nullptr;
+    class MapAccessible* acc = nullptr;  // MSAA provider, created on WM_GETOBJECT
 };
 
 MapState* state(HWND h) { return reinterpret_cast<MapState*>(GetWindowLongPtrW(h, GWLP_USERDATA)); }
@@ -322,11 +324,260 @@ int hitTest(const MapState& s, POINT pt) {
     return -1;
 }
 
-void select(HWND h, MapState& s, int row, bool notify) {
+void select(HWND h, MapState& s, int row, bool notifyParent) {
     s.selected = row;
     InvalidateRect(h, nullptr, FALSE);
-    if (notify) SendMessageW(GetParent(h), DMN_SELECT, static_cast<WPARAM>(row), 0);
+    NotifyWinEvent(EVENT_OBJECT_SELECTION, h, OBJID_CLIENT, row >= 0 ? row + 1 : CHILDID_SELF);
+    if (s.focused) NotifyWinEvent(EVENT_OBJECT_FOCUS, h, OBJID_CLIENT, row >= 0 ? row + 1 : CHILDID_SELF);
+    if (notifyParent) SendMessageW(GetParent(h), DMN_SELECT, static_cast<WPARAM>(row), 0);
 }
+
+// --- accessibility (MSAA) ------------------------------------------------------
+// The map is owner-drawn, so it exposes its segments itself: a list with one
+// simple child element per segment (name, state, location, selection), which
+// screen readers and UI Automation (through the MSAA proxy) can read.
+class MapAccessible final : public IAccessible {
+public:
+    explicit MapAccessible(HWND h) : hwnd_(h) {}
+    void detach() { hwnd_ = nullptr; }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override {
+        if (!out) return E_POINTER;
+        if (riid == IID_IUnknown || riid == IID_IDispatch || riid == IID_IAccessible) {
+            *out = static_cast<IAccessible*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return static_cast<ULONG>(InterlockedIncrement(&ref_)); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const LONG r = InterlockedDecrement(&ref_);
+        if (r == 0) delete this;
+        return static_cast<ULONG>(r);
+    }
+    HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* n) override {
+        if (n) *n = 0;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT, LCID, ITypeInfo**) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID, LPOLESTR*, UINT, LCID, DISPID*) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE Invoke(DISPID, REFIID, LCID, WORD, DISPPARAMS*, VARIANT*, EXCEPINFO*, UINT*) override {
+        return E_NOTIMPL;
+    }
+
+    HRESULT STDMETHODCALLTYPE get_accParent(IDispatch** out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (!hwnd_) return E_FAIL;
+        return AccessibleObjectFromWindow(hwnd_, static_cast<DWORD>(OBJID_WINDOW), IID_IDispatch, reinterpret_cast<void**>(out));
+    }
+    HRESULT STDMETHODCALLTYPE get_accChildCount(long* out) override {
+        if (!out) return E_POINTER;
+        *out = static_cast<long>(count());
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_accChild(VARIANT, IDispatch** out) override {
+        if (out) *out = nullptr;
+        return S_FALSE;  // children are simple elements
+    }
+    HRESULT STDMETHODCALLTYPE get_accName(VARIANT v, BSTR* out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        long i = 0;
+        if (!child(v, i)) return E_INVALIDARG;
+        std::wstring name;
+        if (i == 0) {
+            wchar_t t[128] = L"";
+            GetWindowTextW(hwnd_, t, 128);
+            name = t;
+        } else {
+            name = segmentName(static_cast<std::size_t>(i - 1));
+        }
+        *out = SysAllocString(name.c_str());
+        return *out ? S_OK : E_OUTOFMEMORY;
+    }
+    HRESULT STDMETHODCALLTYPE get_accValue(VARIANT, BSTR* out) override {
+        if (out) *out = nullptr;
+        return S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE get_accDescription(VARIANT, BSTR* out) override {
+        if (out) *out = nullptr;
+        return S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE get_accRole(VARIANT v, VARIANT* out) override {
+        long i = 0;
+        if (!out) return E_POINTER;
+        if (!child(v, i)) return E_INVALIDARG;
+        out->vt = VT_I4;
+        out->lVal = i == 0 ? ROLE_SYSTEM_LIST : ROLE_SYSTEM_LISTITEM;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_accState(VARIANT v, VARIANT* out) override {
+        long i = 0;
+        if (!out) return E_POINTER;
+        if (!child(v, i)) return E_INVALIDARG;
+        const MapState* s = st();
+        long state = STATE_SYSTEM_FOCUSABLE;
+        if (i == 0) {
+            if (s && s->focused) state |= STATE_SYSTEM_FOCUSED;
+        } else {
+            state |= STATE_SYSTEM_SELECTABLE;
+            if (s && s->selected == i - 1) {
+                state |= STATE_SYSTEM_SELECTED;
+                if (s->focused) state |= STATE_SYSTEM_FOCUSED;
+            }
+        }
+        out->vt = VT_I4;
+        out->lVal = state;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_accHelp(VARIANT, BSTR* out) override {
+        if (out) *out = nullptr;
+        return S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE get_accHelpTopic(BSTR* file, VARIANT, long* topic) override {
+        if (file) *file = nullptr;
+        if (topic) *topic = 0;
+        return S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE get_accKeyboardShortcut(VARIANT, BSTR* out) override {
+        if (out) *out = nullptr;
+        return S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE get_accFocus(VARIANT* out) override {
+        if (!out) return E_POINTER;
+        const MapState* s = st();
+        if (!s || !s->focused) {
+            out->vt = VT_EMPTY;
+            return S_FALSE;
+        }
+        out->vt = VT_I4;
+        out->lVal = s->selected >= 0 ? s->selected + 1 : CHILDID_SELF;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_accSelection(VARIANT* out) override {
+        if (!out) return E_POINTER;
+        const MapState* s = st();
+        if (!s || s->selected < 0) {
+            out->vt = VT_EMPTY;
+            return S_FALSE;
+        }
+        out->vt = VT_I4;
+        out->lVal = s->selected + 1;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE get_accDefaultAction(VARIANT v, BSTR* out) override {
+        long i = 0;
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (!child(v, i)) return E_INVALIDARG;
+        if (i == 0) return S_FALSE;
+        *out = SysAllocString(tr(S::MenuPartitionInfo));
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE accSelect(long flags, VARIANT v) override {
+        long i = 0;
+        if (!child(v, i) || i == 0) return E_INVALIDARG;
+        MapState* s = st();
+        if (!s) return E_FAIL;
+        if (flags & SELFLAG_TAKEFOCUS) SetFocus(hwnd_);
+        if (flags & (SELFLAG_TAKESELECTION | SELFLAG_TAKEFOCUS)) select(hwnd_, *s, static_cast<int>(i - 1), true);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE accLocation(long* x, long* y, long* w, long* h, VARIANT v) override {
+        long i = 0;
+        if (!x || !y || !w || !h) return E_POINTER;
+        if (!child(v, i)) return E_INVALIDARG;
+        RECT r{};
+        if (i == 0) GetClientRect(hwnd_, &r);
+        else r = st()->rects[static_cast<std::size_t>(i - 1)];
+        POINT tl{r.left, r.top};
+        ClientToScreen(hwnd_, &tl);
+        *x = tl.x;
+        *y = tl.y;
+        *w = r.right - r.left;
+        *h = r.bottom - r.top;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE accNavigate(long dir, VARIANT start, VARIANT* out) override {
+        long i = 0;
+        if (!out) return E_POINTER;
+        out->vt = VT_EMPTY;
+        if (!child(start, i)) return E_INVALIDARG;
+        const long n = static_cast<long>(count());
+        long to = 0;
+        switch (dir) {
+            case NAVDIR_FIRSTCHILD: to = i == 0 && n ? 1 : 0; break;
+            case NAVDIR_LASTCHILD: to = i == 0 && n ? n : 0; break;
+            case NAVDIR_NEXT:
+            case NAVDIR_RIGHT: to = i > 0 && i < n ? i + 1 : 0; break;
+            case NAVDIR_PREVIOUS:
+            case NAVDIR_LEFT: to = i > 1 ? i - 1 : 0; break;
+            default: return S_FALSE;
+        }
+        if (!to) return S_FALSE;
+        out->vt = VT_I4;
+        out->lVal = to;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE accHitTest(long x, long y, VARIANT* out) override {
+        if (!out) return E_POINTER;
+        out->vt = VT_EMPTY;
+        if (!hwnd_ || !st()) return S_FALSE;
+        POINT pt{x, y};
+        ScreenToClient(hwnd_, &pt);
+        RECT rc;
+        GetClientRect(hwnd_, &rc);
+        if (!PtInRect(&rc, pt)) return S_FALSE;
+        out->vt = VT_I4;
+        out->lVal = hitTest(*st(), pt) + 1;  // 0 = the map itself
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE accDoDefaultAction(VARIANT v) override {
+        long i = 0;
+        if (!child(v, i) || i == 0) return E_INVALIDARG;
+        MapState* s = st();
+        if (!s) return E_FAIL;
+        select(hwnd_, *s, static_cast<int>(i - 1), true);
+        SendMessageW(GetParent(hwnd_), DMN_ACTIVATE, static_cast<WPARAM>(i - 1), 0);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE put_accName(VARIANT, BSTR) override { return E_NOTIMPL; }
+    HRESULT STDMETHODCALLTYPE put_accValue(VARIANT, BSTR) override { return E_NOTIMPL; }
+
+private:
+    MapState* st() const { return hwnd_ ? state(hwnd_) : nullptr; }
+    std::size_t count() const {
+        const MapState* s = st();
+        return s && s->view ? std::min(s->view->rows.size(), s->rects.size()) : 0;
+    }
+    bool child(const VARIANT& v, long& i) const {
+        if (v.vt != VT_I4 || v.lVal < 0 || static_cast<std::size_t>(v.lVal) > count()) return false;
+        i = v.lVal;
+        return hwnd_ != nullptr;
+    }
+    std::wstring segmentName(std::size_t i) const {
+        const DiskView& v = *st()->view;
+        const Row& r = v.rows[i];
+        std::wstring n = rowTitle(v, r);
+        if (r.kind == Segment::Kind::Partition) {
+            const auto& p = v.layout->partitions[static_cast<std::size_t>(r.partitionIndex)];
+            n += L", " + std::wstring(p.kind == PartitionKind::Extended ? tr(S::KindExtended) : win::widen(fsTypeName(p.fs.type)));
+        }
+        return n + L", " + win::widen(formatSize(r.sectorCount * v.layout->sectorSize));
+    }
+
+    LONG ref_ = 1;
+    HWND hwnd_;
+};
+
+void notify(HWND h, DWORD event, int row) {
+    NotifyWinEvent(event, h, OBJID_CLIENT, row >= 0 ? row + 1 : CHILDID_SELF);
+}
+
+
 
 LRESULT CALLBACK mapProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     MapState* s = state(h);
@@ -338,6 +589,10 @@ LRESULT CALLBACK mapProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (s) {
                 for (HFONT f : {s->title, s->body, s->caption, s->icon})
                     if (f) DeleteObject(f);
+                if (s->acc) {
+                    s->acc->detach();  // clients may still hold it
+                    s->acc->Release();
+                }
             }
             delete s;
             SetWindowLongPtrW(h, GWLP_USERDATA, 0);
@@ -349,7 +604,14 @@ LRESULT CALLBACK mapProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             s->hot = -1;
             layoutRects(h, *s);
             InvalidateRect(h, nullptr, FALSE);
+            notify(h, EVENT_OBJECT_REORDER, -1);
             return 0;
+        case WM_GETOBJECT:
+            if (static_cast<long>(lp) == static_cast<long>(OBJID_CLIENT)) {
+                if (!s->acc) s->acc = new MapAccessible(h);
+                return LresultFromObject(IID_IAccessible, wp, s->acc);
+            }
+            break;
         case DM_SETSELECTION:
             select(h, *s, static_cast<int>(wp), false);
             return 0;
@@ -412,6 +674,7 @@ LRESULT CALLBACK mapProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_KILLFOCUS:
             s->focused = msg == WM_SETFOCUS;
             InvalidateRect(h, nullptr, FALSE);
+            if (s->focused) notify(h, EVENT_OBJECT_FOCUS, s->selected);
             return 0;
         default:
             break;

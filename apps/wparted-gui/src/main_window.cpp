@@ -257,7 +257,7 @@ void MainWindow::createChildren() {
     bannerBtn_ = CreateWindowExW(0, L"BUTTON", restart.c_str(), WS_CHILD | WS_CLIPSIBLINGS | WS_TABSTOP | BS_PUSHBUTTON, 0, 0, 10, 10,
                                  hwnd_, reinterpret_cast<HMENU>(IDC_BANNER_BTN), inst_, nullptr);
     SendMessageW(bannerBtn_, BCM_SETSHIELD, 0, TRUE);
-    map_ = CreateWindowExW(0, kDiskMapClass, L"Disk map", child | WS_TABSTOP, 0, 0, 10, 10, hwnd_,
+    map_ = CreateWindowExW(0, kDiskMapClass, tr(S::AccDiskMap), child | WS_TABSTOP, 0, 0, 10, 10, hwnd_,
                            reinterpret_cast<HMENU>(IDC_MAP), inst_, nullptr);
     list_ = CreateWindowExW(0, WC_LISTVIEWW, tr(S::SectionPartitions),
                             child | WS_TABSTOP | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER, 0, 0, 10, 10, hwnd_,
@@ -278,7 +278,7 @@ void MainWindow::createChildren() {
                                child | WS_TABSTOP | LBS_NOINTEGRALHEIGHT | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | WS_VSCROLL,
                                0, 0, 10, 10, hwnd_, reinterpret_cast<HMENU>(IDC_PENDING), inst_, nullptr);
     SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tr(S::PendingNone)));
-    inspector_ = CreateWindowExW(0, kInspectorClass, L"Details", child, 0, 0, 10, 10, hwnd_, nullptr, inst_, nullptr);
+    inspector_ = CreateWindowExW(0, kInspectorClass, tr(S::AccDetails), child, 0, 0, 10, 10, hwnd_, nullptr, inst_, nullptr);
     status_ = CreateWindowExW(0, L"STATIC", L"", child | SS_LEFTNOWORDWRAP | SS_ENDELLIPSIS | SS_NOPREFIX, 0, 0, 10, 10,
                               hwnd_, reinterpret_cast<HMENU>(IDC_STATUS), inst_, nullptr);
     statusRight_ = CreateWindowExW(0, L"STATIC", L"", child | SS_RIGHT | SS_NOPREFIX, 0, 0, 10, 10, hwnd_,

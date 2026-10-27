@@ -326,6 +326,8 @@ const Entry kStrings[] = {
     {S::ValProtected, L"yes - protected from changes", L"ja – vor Änderungen geschützt"},
     {S::InfoDiagnostics, L"Diagnostics", L"Diagnosen"},
     {S::ChipManaged, L"Managed by Windows", L"Von Windows verwaltet"},
+    {S::AccDiskMap, L"Disk map", L"Datenträgergrafik"},
+    {S::AccDetails, L"Details", L"Details"},
     {S::HintManaged, L"Windows manages this disk itself (dynamic disk or Storage Spaces). WParted shows it but does not change it; use Disk Management or Storage Spaces.",
                      L"Windows verwaltet diesen Datenträger selbst (dynamischer Datenträger oder Speicherplätze). WParted zeigt ihn an, ändert ihn aber nicht; bitte die Datenträgerverwaltung bzw. Speicherplätze verwenden."},
     // Applying a plan to a disk image file
