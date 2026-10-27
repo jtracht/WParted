@@ -48,6 +48,28 @@ private:
     std::uint32_t sectorSize_;
 };
 
+// A partition-sized window into a device: file-system tools get this, so
+// they cannot read or write outside the partition.
+class RegionDevice final : public BlockDevice {
+public:
+    RegionDevice(BlockDevice& parent, std::uint64_t offset, std::uint64_t length)
+        : parent_(parent), offset_(offset), length_(length) {}
+    std::uint64_t size() const override { return length_; }
+    std::uint32_t sectorSize() const override { return parent_.sectorSize(); }
+    bool read(std::uint64_t offset, void* buffer, std::size_t len) override {
+        return offset <= length_ && len <= length_ - offset && parent_.read(offset_ + offset, buffer, len);
+    }
+    bool write(std::uint64_t offset, const void* buffer, std::size_t len) override {
+        return offset <= length_ && len <= length_ - offset && parent_.write(offset_ + offset, buffer, len);
+    }
+    bool flush() override { return parent_.flush(); }
+
+private:
+    BlockDevice& parent_;
+    std::uint64_t offset_;
+    std::uint64_t length_;
+};
+
 // True for paths that name a device instead of a file (\\.\PhysicalDrive0,
 // \\?\Volume{...}, /dev/sda, ...). Image execution refuses them.
 bool isDevicePath(const std::string& path);

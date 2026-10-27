@@ -15,5 +15,7 @@ add_library(wparted_core STATIC
     src/layout_writer.cpp
     src/rescue.cpp
     src/operation_log.cpp
-    src/executor.cpp)
+    src/executor.cpp
+    src/fs_fat.cpp
+    src/fs_tools.cpp)
 target_include_directories(wparted_core PUBLIC include)

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-add_executable(wparted_core_tests unit/test_core.cpp unit/test_operations.cpp unit/test_rescue.cpp unit/test_executor.cpp)
+add_executable(wparted_core_tests unit/test_core.cpp unit/test_operations.cpp unit/test_rescue.cpp unit/test_executor.cpp unit/test_fstools.cpp)
 target_link_libraries(wparted_core_tests PRIVATE wparted_core)
 add_test(NAME core_unit_tests COMMAND wparted_core_tests WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 

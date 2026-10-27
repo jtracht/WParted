@@ -7,12 +7,14 @@
 // Used by tools/ci/image-apply-check.sh (verification with sgdisk, sfdisk,
 // e2fsck, debugfs) and by the CLI end-to-end test. Only touches the given file.
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <string>
 
 #include "wparted/core/executor.hpp"
+#include "wparted/core/fs_tools.hpp"
 
 using namespace wparted;
 
@@ -100,7 +102,51 @@ bool mbrDemo(OperationQueue& q) {
 
 }  // namespace
 
+FsType fsByName(const char* n) {
+    for (FsType t : allFsTypes())
+        if (std::strcmp(fsTypeName(t), n) == 0) return t;
+    return FsType::Unknown;
+}
+
+// image_tool fs <file> create <fs> [label] | label <fs> <label> | uuid <fs> | resize <fs> <bytes> | check <fs>
+// The whole file is the partition.
+int fsCommand(int argc, char** argv) {
+    if (argc < 5) return 2;
+    const std::string file = argv[2], cmd = argv[3];
+    const FsType t = fsByName(argv[4]);
+    ImageFileDevice dev;
+    std::string err;
+    if (!dev.open(file, 512, err)) {
+        std::fprintf(stderr, "fs: %s\n", err.c_str());
+        return 2;
+    }
+    RegionDevice part(dev, 0, dev.size());
+    bool ok = false;
+    if (cmd == "create") ok = fstools::create(part, t, argc > 5 ? argv[5] : "", 0, err);
+    else if (cmd == "label" && argc > 5) ok = fstools::setLabel(part, t, argv[5], err);
+    else if (cmd == "uuid") {
+        std::string uuid;
+        ok = fstools::setNewUuid(part, t, uuid, err);
+        if (ok) std::printf("%s\n", uuid.c_str());
+    } else if (cmd == "resize" && argc > 5) {
+        ok = fstools::resize(part, t, std::strtoull(argv[5], nullptr, 10), err);
+    } else if (cmd == "check") {
+        fstools::CheckReport rep;
+        ok = fstools::check(part, t, rep, err);
+        for (const auto& e : rep.errors) std::printf("ERROR %s\n", e.c_str());
+        for (const auto& w : rep.warnings) std::printf("WARNING %s\n", w.c_str());
+        std::printf("used %llu of %llu bytes\n", static_cast<unsigned long long>(rep.usedBytes),
+                    static_cast<unsigned long long>(rep.totalBytes));
+        ok = ok && rep.ok;
+    } else {
+        err = "unknown fs command";
+    }
+    if (!ok) std::fprintf(stderr, "fs %s: %s\n", cmd.c_str(), err.c_str());
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char** argv) {
+    if (argc >= 2 && std::strcmp(argv[1], "fs") == 0) return fsCommand(argc, argv);
     if (argc == 5 && std::strcmp(argv[1], "plan") == 0) {
         FileBlockReader r;
         if (!r.open(argv[2], 512)) return 2;
