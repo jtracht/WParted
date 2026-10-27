@@ -495,7 +495,7 @@ std::string describe(const Operation& op, const DiskLayout& before) {
         case OpType::Copy:
             return "Copy " + target + " to sector " + std::to_string(op.firstLba) + " (" + formatSize(op.sectorCount * ss) + ")";
         case OpType::Format: return "Format " + target + " as " + fsTypeName(op.fs);
-        case OpType::Check: return "Check and repair the file system of " + target;
+        case OpType::Check: return "Check the file system of " + target + " (read-only)";
         case OpType::SetLabel: return "Set file system label of " + target + " to \"" + op.label + "\"";
         case OpType::SetName: return "Set name of " + target + " to \"" + op.name + "\"";
         case OpType::SetFlags: {

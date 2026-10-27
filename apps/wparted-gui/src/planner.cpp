@@ -23,6 +23,7 @@
 #include "strings.hpp"
 #include "wparted/core/block_reader.hpp"
 #include "wparted/core/executor.hpp"
+#include "wparted/core/fs_tools.hpp"
 #include "wparted/core/log.hpp"
 #include "wparted/core/operation_log.hpp"
 
@@ -70,6 +71,31 @@ struct ImageApplyResult {
 };
 
 bool isImageDisk(const win::PhysicalDisk* d) { return d && d->busType == "Image file"; }
+
+// Images have no Windows volumes; for file systems whose usage WParted can
+// read itself (FAT) a volume entry carries used/free space, so the list shows
+// it and validation refuses shrinking below the data.
+void addImageVolumes(win::PhysicalDisk& d, BlockReader& r) {
+    d.volumes.clear();
+    for (const auto& p : d.layout.partitions) {
+        if (!fstools::canCheck(p.fs.type)) continue;
+        SubRangeReader part(r, p.firstLba * d.layout.sectorSize, p.sectorCount * d.layout.sectorSize);
+        fstools::CheckReport rep;
+        std::string err;
+        if (!fstools::check(part, p.fs.type, rep, err) || !rep.totalBytes) continue;
+        win::VolumeInfo v;
+        v.diskNumber = d.number;
+        v.startingOffset = p.firstLba * d.layout.sectorSize;
+        v.extentLength = p.sectorCount * d.layout.sectorSize;
+        v.extentCount = 1;
+        v.fileSystem = win::widen(fsTypeName(p.fs.type));
+        v.label = win::widen(p.fs.label);
+        v.hasUsage = true;
+        v.totalBytes = rep.totalBytes;
+        v.freeBytes = rep.totalBytes - std::min(rep.usedBytes, rep.totalBytes);
+        d.volumes.push_back(v);
+    }
+}
 
 // Result of the background rescue scan, posted to the window as LPARAM.
 struct RescueResult {
@@ -567,6 +593,13 @@ void MainWindow::planNew() {
     fs.kind = FormField::Kind::Choice;
     fs.label = tr(S::FieldFs);
     for (FsType t : kFormatChoices) fs.choices.push_back(fsChoiceName(t));
+    // On image files, preselect the first file system WParted can create there.
+    if (isImageDisk(currentDisk()))
+        for (int i = 0; i < kFormatChoiceCount; ++i)
+            if (fstools::canCreate(kFormatChoices[i])) {
+                fs.selected = i;
+                break;
+            }
     f.push_back(fs);
     FormField label;
     label.kind = FormField::Kind::Text;
@@ -930,9 +963,13 @@ void MainWindow::reloadImage(const std::wstring& path) {
             continue;
         }
         d.layout = parseDiskLayout(r, true);
+        addImageVolumes(d, r);
         log::info("Re-read image after apply: " + std::to_string(d.layout.partitions.size()) + " partition(s)");
         for (auto& img : images_)
-            if (img.path == path) img.layout = d.layout;
+            if (img.path == path) {
+                img.layout = d.layout;
+                img.volumes = d.volumes;
+            }
         selectDisk(static_cast<int>(i));
     }
 }
@@ -1070,6 +1107,10 @@ void MainWindow::openImage(const std::wstring& path) {
     d.rawReadable = true;
     d.layoutAvailable = true;
     d.layout = layout;
+    {
+        FileBlockReader r;  // read-only
+        if (r.open(win::narrow(path), sectorSize)) addImageVolumes(d, r);
+    }
     images_.push_back(d);
     result_->disks.push_back(d);
     fallbackLayouts_.push_back(DiskLayout{});

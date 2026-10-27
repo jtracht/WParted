@@ -827,9 +827,11 @@ void MainWindow::showPartitionInfo() {
     if (vol) {
         std::wstring mounts;
         for (const auto& m : vol->mountPoints) mounts += (mounts.empty() ? L"" : L", ") + m;
-        line(tr(S::InfoWindowsVolume), vol->guidPath);
-        line(tr(S::InfoMountPoints), mounts.empty() ? L"-" : mounts);
-        line(tr(S::InfoWindowsFileSystem), vol->fileSystem);
+        if (!vol->guidPath.empty()) {  // a real Windows volume (images only carry usage)
+            line(tr(S::InfoWindowsVolume), vol->guidPath);
+            line(tr(S::InfoMountPoints), mounts.empty() ? L"-" : mounts);
+            line(tr(S::InfoWindowsFileSystem), vol->fileSystem);
+        }
         if (vol->hasUsage) {
             line(tr(S::InfoUsed), sizeText(vol->totalBytes - vol->freeBytes));
             line(tr(S::InfoUnused), sizeText(vol->freeBytes));

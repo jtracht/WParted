@@ -6,6 +6,7 @@
 //   image_tool apply <image> <plan.json>                      executes it with the core executor
 // Used by tools/ci/image-apply-check.sh (verification with sgdisk, sfdisk,
 // e2fsck, debugfs) and by the CLI end-to-end test. Only touches the given file.
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -81,6 +82,48 @@ bool gptDemo(OperationQueue& q) {
     return add(q, del) && add(q, mk) && add(q, mv) && add(q, cp) && add(q, fl);
 }
 
+// GPT image: new FAT32 partition "WPFAT" (40 MiB) behind the last partition.
+bool fatCreate(OperationQueue& q) {
+    const DiskLayout& l = q.original();
+    const std::uint64_t spm = kMiB / l.sectorSize;
+    std::uint64_t end = 0;
+    for (const auto& p : l.partitions) end = std::max(end, p.firstLba + p.sectorCount);
+    Operation c;
+    c.type = OpType::CreatePartition;
+    c.firstLba = (end + spm - 1) / spm * spm;
+    c.sectorCount = 40 * spm;
+    c.fs = FsType::Fat32;
+    c.label = "WPFAT";
+    return add(q, c);
+}
+
+// Grows the last FAT32 partition by 16 MiB and gives it a new label and serial.
+bool fatGrow(OperationQueue& q) {
+    const PartitionEntry* last = nullptr;
+    for (const auto& p : q.original().partitions)
+        if (p.fs.type == FsType::Fat32 && (!last || p.firstLba > last->firstLba)) last = &p;
+    if (!last) {
+        std::fprintf(stderr, "plan: fat-grow needs a FAT32 partition\n");
+        return false;
+    }
+    Operation g;
+    g.type = OpType::ResizeMove;
+    g.target = last->planId;
+    g.firstLba = last->firstLba;
+    g.sectorCount = last->sectorCount + 16 * (kMiB / q.original().sectorSize);
+    Operation lb;
+    lb.type = OpType::SetLabel;
+    lb.target = last->planId;
+    lb.label = "WPGROWN";
+    Operation u;
+    u.type = OpType::NewUuid;
+    u.target = last->planId;
+    Operation ck;
+    ck.type = OpType::Check;
+    ck.target = last->planId;
+    return add(q, g) && add(q, lb) && add(q, u) && add(q, ck);
+}
+
 // Blank image: msdos table, primary, extended with two logicals.
 bool mbrDemo(OperationQueue& q) {
     const std::uint64_t spm = kMiB / q.original().sectorSize;
@@ -152,9 +195,12 @@ int main(int argc, char** argv) {
         if (!r.open(argv[2], 512)) return 2;
         const DiskLayout l = parseDiskLayout(r, true);
         OperationQueue q(l, identityOf(l, "", "image"));
-        const bool ok = std::strcmp(argv[3], "gpt-demo") == 0 ? gptDemo(q)
-                        : std::strcmp(argv[3], "mbr-demo") == 0 ? mbrDemo(q)
-                                                                : false;
+        const std::string scenario = argv[3];
+        const bool ok = scenario == "gpt-demo"   ? gptDemo(q)
+                        : scenario == "mbr-demo" ? mbrDemo(q)
+                        : scenario == "fat-create" ? fatCreate(q)
+                        : scenario == "fat-grow"   ? fatGrow(q)
+                                                   : false;
         if (!ok) return 1;
         std::ofstream out(argv[4], std::ios::binary);
         out << q.toJson();

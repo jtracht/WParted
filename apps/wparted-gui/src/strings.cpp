@@ -198,7 +198,7 @@ const Entry kStrings[] = {
     {S::OpResize, L"Resize/move %1 to sectors %2\u2013%3 (%4)", L"Größe/Position von %1 ändern: Sektoren %2\u2013%3 (%4)"},
     {S::OpCopy, L"Copy %1 to sector %2 (%3)", L"%1 nach Sektor %2 kopieren (%3)"},
     {S::OpFormat, L"Format %1 as %2", L"%1 als %2 formatieren"},
-    {S::OpCheck, L"Check and repair the file system of %1", L"Dateisystem von %1 prüfen und reparieren"},
+    {S::OpCheck, L"Check the file system of %1 (read-only)", L"Dateisystem von %1 prüfen (nur lesend)"},
     {S::OpLabel, L"Set file system label of %1 to \u201C%2\u201D", L"Dateisystembezeichnung von %1 auf \u201E%2\u201C setzen"},
     {S::OpName, L"Set name of %1 to \u201C%2\u201D", L"Name von %1 auf \u201E%2\u201C setzen"},
     {S::OpFlags, L"Set flags of %1: %2", L"Flags von %1 setzen: %2"},

@@ -59,7 +59,7 @@ jobs:
           bash tools/ci/mkfs-fixtures.sh build/linux/tests/wparted_detect_fs
       - name: Plan execution on image files, checked with sgdisk, sfdisk, e2fsck and debugfs
         run: |
-          apt-get install -y -qq --no-install-recommends gdisk fdisk >/dev/null
+          apt-get install -y -qq --no-install-recommends gdisk fdisk mtools >/dev/null
           bash tools/ci/image-apply-check.sh build/linux/tests/wparted_image_tool
       - name: File-system operations checked with dosfstools, mtools, exfatprogs, ntfs-3g, e2fsprogs
         run: |

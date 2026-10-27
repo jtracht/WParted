@@ -541,12 +541,17 @@ bool setNewUuid(BlockDevice& part, FsType t, std::string& uuid, std::string& err
         case FsType::Ext3:
         case FsType::Ext4:
         case FsType::LinuxSwap: {
-            const std::uint8_t* b = g.bytes.data();
+            // ext and swap store UUIDs in RFC 4122 byte order (randomGuid() is in
+            // GPT's mixed-endian order): version 4 in byte 6, variant in byte 8.
+            Guid rfc = g;
+            rfc.bytes[6] = static_cast<std::uint8_t>((rfc.bytes[6] & 0x0F) | 0x40);
+            rfc.bytes[8] = static_cast<std::uint8_t>((rfc.bytes[8] & 0x3F) | 0x80);
+            const std::uint8_t* b = rfc.bytes.data();
             std::snprintf(buf, sizeof buf, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", b[0], b[1],
                           b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
             uuid = buf;
             if (t == FsType::LinuxSwap) return swapWrite(part, 1024 + 12, b, 16, error);
-            return extSetUuid(part, g, error);
+            return extSetUuid(part, rfc, error);
         }
         default: error = "a new UUID cannot be set for this file system yet"; return false;
     }

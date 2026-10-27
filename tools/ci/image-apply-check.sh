@@ -78,6 +78,26 @@ dd if="$img" of="$W/new.img" bs=512 skip="$s1" count=4096 status=none
 if [[ -z "$(blkid -p -o value -s TYPE "$W/new.img" || true)" ]]; then pass "gpt: old FAT signature cleared in the new partition"
 else bad "gpt: old signature still present"; fi
 
+# --- file-system steps in plans: create FAT32, then grow, label, serial, check ---
+export MTOOLS_SKIP_CHECK=1
+"$TOOL" plan "$img" fat-create "$W/fat1.json"
+if "$TOOL" apply "$img" "$W/fat1.json"; then pass "fat: plan with new FAT32 partition applied"; else bad "fat: create plan"; fi
+fat_start=$(sfdisk --json "$img" | python3 -c 'import json,sys; print(max(p["start"] for p in json.load(sys.stdin)["partitiontable"]["partitions"]))')
+dd if="$img" of="$W/fat.img" bs=512 skip="$fat_start" count=$((40 * 2048)) status=none
+fsck.fat -n "$W/fat.img" >"$W/f.txt" 2>&1 && pass "fat: fsck.fat clean after create" || { bad "fat: fsck.fat after create"; cat "$W/f.txt"; }
+[[ "$(blkid -p -s LABEL -o value "$W/fat.img" || true)" == "WPFAT" ]] && pass "fat: label from the plan" || bad "fat: label"
+mcopy -i "$W/fat.img" "$W/root/payload.bin" ::/payload.bin
+dd if="$W/fat.img" of="$img" bs=512 seek="$fat_start" conv=notrunc status=none
+"$TOOL" plan "$img" fat-grow "$W/fat2.json"
+if "$TOOL" apply "$img" "$W/fat2.json"; then pass "fat: grow + label + serial + check plan applied"; else bad "fat: grow plan"; fi
+dd if="$img" of="$W/fat.img" bs=512 skip="$fat_start" count=$((56 * 2048)) status=none
+fsck.fat -n "$W/fat.img" >"$W/f.txt" 2>&1 && pass "fat: fsck.fat clean after grow" || { bad "fat: fsck.fat after grow"; cat "$W/f.txt"; }
+[[ "$(blkid -p -s LABEL -o value "$W/fat.img" || true)" == "WPGROWN" ]] && pass "fat: new label" || bad "fat: new label"
+rm -f "$W/out.bin"; mcopy -i "$W/fat.img" ::/payload.bin "$W/out.bin" 2>/dev/null || true
+[[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "fat: payload intact after grow" || bad "fat: payload after grow"
+sgdisk -v "$img" >"$W/verify.txt" 2>&1 || true
+grep -q "No problems found" "$W/verify.txt" && pass "fat: sgdisk -v still clean" || bad "fat: sgdisk -v"
+
 # --- msdos: new table, primary, extended, two logicals ---------------------------
 mbr=$W/mbr.img
 truncate -s 128M "$mbr"
