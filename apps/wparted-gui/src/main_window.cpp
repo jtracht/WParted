@@ -334,6 +334,7 @@ void MainWindow::buildMenu() {
     item(device, IDM_CREATE_TABLE, S::MenuCreateTable);
     AppendMenuW(device, MF_SEPARATOR, 0, nullptr);
     item(device, IDM_EXPORT_REPORT, S::MenuExportReport);
+    item(device, IDM_RESCUE, S::MenuRescue);
 
     partitionMenu_ = CreatePopupMenu();
     item(partitionMenu_, IDM_NEW, S::MenuNew);
@@ -1017,6 +1018,7 @@ void MainWindow::onCommand(int id) {
             if (auto* q = currentQueue()) { q->clear(); refreshView(); }
             break;
         case IDM_APPLY_OPS: showApplySummary(); break;
+        case IDM_RESCUE: startRescue(); break;
         case IDC_BANNER_BTN:
         case IDM_RESTART_ADMIN: restartElevated(); break;
         case IDM_QUIT: PostMessageW(hwnd_, WM_CLOSE, 0, 0); break;
@@ -1199,8 +1201,12 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_APP_DISCOVERED:
             onDiscovered(reinterpret_cast<win::DiscoveryResult*>(lp));
             return 0;
+        case WM_APP + 51:  // rescue scan finished
+            onRescueDone(lp);
+            return 0;
         case WM_DESTROY: {
             if (worker_.joinable()) worker_.join();
+            if (rescueWorker_.joinable()) rescueWorker_.join();
             MSG m;
             while (PeekMessageW(&m, hwnd_, WM_APP_DISCOVERED, WM_APP_DISCOVERED, PM_REMOVE))
                 delete reinterpret_cast<win::DiscoveryResult*>(m.lParam);

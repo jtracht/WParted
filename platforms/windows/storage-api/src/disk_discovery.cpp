@@ -312,6 +312,30 @@ const VolumeInfo* volumeForPartition(const PhysicalDisk& disk, const PartitionEn
     return nullptr;
 }
 
+bool rescueScanDisk(const PhysicalDisk& d, const RescueOptions& o, std::vector<RescueCandidate>& out, std::string& error) {
+    if (!d.layoutAvailable) {
+        error = "the partition table could not be read";
+        return false;
+    }
+    if (d.busType == "Image file") {
+        FileBlockReader r;  // read-only
+        if (!r.open(narrow(d.path), d.logicalSectorSize)) {
+            error = "the image file could not be opened";
+            return false;
+        }
+        out = rescueScan(r, d.layout, o);
+        return true;
+    }
+    Handle h(openReadOnly(d.path));
+    if (!h.valid()) {
+        error = lastErrorText(GetLastError());
+        return false;
+    }
+    DeviceReader r(h.h, d.sizeBytes, d.logicalSectorSize);
+    out = rescueScan(r, d.layout, o);
+    return true;
+}
+
 DiscoveryResult discoverDisks() {
     const auto t0 = std::chrono::steady_clock::now();
     DiscoveryResult r;

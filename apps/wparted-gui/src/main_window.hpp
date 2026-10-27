@@ -83,6 +83,8 @@ private:
     void showApplySummary();
     void savePlan();
     void openImage(const std::wstring& path);
+    void startRescue();
+    void onRescueDone(LPARAM lp);
     void chooseImage();
     bool saveTextFile(const std::wstring& path, const std::string& text);
     std::wstring askSavePath(const wchar_t* defaultName, const wchar_t* filter, const wchar_t* ext);
@@ -104,6 +106,8 @@ private:
     ThemeMode themeMode_ = ThemeMode::System;
 
     std::thread worker_;
+    std::thread rescueWorker_;
+    bool rescuing_ = false;
     bool scanning_ = false;
     std::unique_ptr<win::DiscoveryResult> result_;
     std::vector<DiskLayout> fallbackLayouts_;  // per disk, used when the raw table is unreadable

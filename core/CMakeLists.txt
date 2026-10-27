@@ -12,5 +12,7 @@ add_library(wparted_core STATIC
     src/json_value.cpp
     src/operations.cpp
     src/validation.cpp
-    src/layout_writer.cpp)
+    src/layout_writer.cpp
+    src/rescue.cpp
+    src/operation_log.cpp)
 target_include_directories(wparted_core PUBLIC include)

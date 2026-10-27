@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cwchar>
+#include <memory>
 
 #include "commands.hpp"
 #include "form_dialog.hpp"
@@ -20,10 +21,19 @@
 #include "strings.hpp"
 #include "wparted/core/block_reader.hpp"
 #include "wparted/core/log.hpp"
+#include "wparted/core/operation_log.hpp"
 
 namespace wparted::ui {
 
 namespace {
+
+// Result of the background rescue scan, posted to the window as LPARAM.
+struct RescueResult {
+    std::vector<RescueCandidate> found;
+    std::string error;
+    bool ok = false;
+    std::uint32_t ss = 512;
+};
 
 constexpr std::uint64_t kMiB = 1024 * 1024;
 
@@ -584,7 +594,7 @@ void MainWindow::showApplySummary() {
     const win::PhysicalDisk* d = currentDisk();
     std::wstring head = std::wstring(tr(S::ApplyTitle)) + L": " + (d ? w(d->modelName()) : L"") +
                        (d && !d->serial.empty() ? L" (" + w(d->serial) + L")" : L"");
-    TASKDIALOG_BUTTON buttons[] = {{100, tr(S::BtnExportPlan)}};
+    TASKDIALOG_BUTTON buttons[] = {{100, tr(S::BtnExportPlan)}, {101, tr(S::BtnSaveDetails)}};
     TASKDIALOGCONFIG cfg{sizeof cfg};
     cfg.hwndParent = hwnd_;
     cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
@@ -594,12 +604,70 @@ void MainWindow::showApplySummary() {
     cfg.pszExpandedInformation = text.c_str();
     cfg.dwFlags |= TDF_EXPANDED_BY_DEFAULT;
     cfg.pButtons = buttons;
-    cfg.cButtons = 1;
+    cfg.cButtons = 2;
     cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     cfg.pszMainIcon = TD_WARNING_ICON;
     int pressed = 0;
     TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr);
     if (pressed == 100) savePlan();
+    if (pressed == 101) {
+        const std::wstring path = askSavePath(L"wparted-plan-details.html", L"HTML (*.html)\0*.html\0", L"html");
+        if (!path.empty()) {
+            const std::string name = d ? d->modelName() : std::string("disk");
+            const bool ok = saveTextFile(path, logToHtml(planLog(*q, vr, name), "WParted plan details - " + name));
+            MessageBoxW(hwnd_, ok ? tr(S::ExportOk) : tr(S::ExportFailed), tr(S::AppTitle), ok ? MB_ICONINFORMATION : MB_ICONERROR);
+        }
+    }
+}
+
+void MainWindow::startRescue() {
+    const win::PhysicalDisk* d = currentDisk();
+    if (!d || rescuing_) return;
+    if (!d->layoutAvailable) {
+        MessageBoxW(hwnd_, tr(S::ErrNeedsTable), tr(S::RescueTitle), MB_ICONINFORMATION);
+        return;
+    }
+    if (rescueWorker_.joinable()) rescueWorker_.join();
+    rescuing_ = true;
+    SetWindowTextW(status_, tr(S::RescueRunning));
+    const win::PhysicalDisk copy = *d;  // the worker must not touch UI-owned data
+    HWND target = hwnd_;
+    rescueWorker_ = std::thread([copy, target] {
+        auto* r = new RescueResult;
+        r->ss = copy.logicalSectorSize;
+        r->ok = win::rescueScanDisk(copy, RescueOptions{}, r->found, r->error);
+        if (!PostMessageW(target, WM_APP + 51, 0, reinterpret_cast<LPARAM>(r))) delete r;
+    });
+}
+
+void MainWindow::onRescueDone(LPARAM lp) {
+    std::unique_ptr<RescueResult> r(reinterpret_cast<RescueResult*>(lp));
+    rescuing_ = false;
+    updateStatus();
+    std::wstring text;
+    if (!r->ok) {
+        text = w(r->error);
+    } else if (r->found.empty()) {
+        text = tr(S::RescueNone);
+    } else {
+        for (const auto& c : r->found)
+            text += L"\u2022 " + std::to_wstring(c.firstLba) + L":  " + w(fsTypeName(c.fs.type)) +
+                    (c.sectorCount ? L"  " + w(formatSize(c.sectorCount * r->ss)) : std::wstring()) +
+                    (c.fs.label.empty() ? std::wstring() : L"  \"" + w(c.fs.label) + L"\"") + L"  (" +
+                    tr((c.firstLba * r->ss) % kMiB == 0 ? S::RescueAligned : S::RescueUnaligned) + L")\n";
+        text += L"\n";
+        text += tr(S::RescueHint);
+    }
+    log::info("Rescue scan finished: " + std::to_string(r->found.size()) + " candidate(s)");
+    TASKDIALOGCONFIG cfg{sizeof cfg};
+    cfg.hwndParent = hwnd_;
+    cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
+    cfg.pszWindowTitle = tr(S::RescueTitle);
+    cfg.pszMainInstruction = tr(S::RescueTitle);
+    cfg.pszContent = text.c_str();
+    cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+    cfg.pszMainIcon = TD_INFORMATION_ICON;
+    TaskDialogIndirect(&cfg, nullptr, nullptr, nullptr);
 }
 
 // ---------------------------------------------------------------------------

@@ -13,6 +13,7 @@
 #include "wparted/core/filesystem.hpp"
 #include "wparted/core/json.hpp"
 #include "wparted/core/partition_table.hpp"
+#include "wparted/core/rescue.hpp"
 #include "wparted/win/disk_discovery.hpp"
 #include "wparted/win/report.hpp"
 #include "wparted_version.h"
@@ -29,6 +30,8 @@ void usage() {
         "  wparted-cli inspect-image <file> [--sector-size N] [--json]\n"
         "                                                 Analyse a raw disk image file\n"
         "  wparted-cli fs-support [--json]                Show file system capabilities of this build\n"
+        "  wparted-cli rescue-scan-image <file> [--sector-size N] [--json]\n"
+        "                                                 Search unallocated space for lost file systems\n"
         "  wparted-cli version                            Print version\n\n"
         "No command of this version modifies any disk or file.\n"
         "Raw partition table access to physical disks requires an elevated prompt.\n",
@@ -105,6 +108,36 @@ int cmdInspectImage(const std::string& path, std::uint32_t sectorSize, bool json
     return l.hasErrors() ? 1 : 0;
 }
 
+int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json) {
+    FileBlockReader reader;
+    if (!reader.open(path, sectorSize)) {
+        std::fprintf(stderr, "error: cannot open image '%s' for reading\n", path.c_str());
+        return 2;
+    }
+    const DiskLayout l = parseDiskLayout(reader, true);
+    const auto found = rescueScan(reader, l);
+    if (json) {
+        JsonWriter w;
+        w.beginArray();
+        for (const auto& c : found) {
+            w.beginObject();
+            w.key("firstLba").value(c.firstLba);
+            w.key("sectorCount").value(c.sectorCount);
+            w.key("filesystem").value(fsTypeName(c.fs.type));
+            w.key("label").value(c.fs.label);
+            w.endObject();
+        }
+        w.endArray();
+        std::printf("%s\n", w.str().c_str());
+        return 0;
+    }
+    std::printf("%zu candidate(s) in unallocated space of %s (read-only scan)\n", found.size(), path.c_str());
+    for (const auto& c : found)
+        std::printf("  sector %-12llu %-12s %-14s %s\n", static_cast<unsigned long long>(c.firstLba), fsTypeName(c.fs.type),
+                    c.sectorCount ? formatSize(c.sectorCount * l.sectorSize).c_str() : "size unknown", c.fs.label.c_str());
+    return 0;
+}
+
 int cmdFsSupport(bool json) {
     if (json) {
         JsonWriter w;
@@ -160,6 +193,16 @@ int wmain(int argc, wchar_t** argv) {
     }
     if (args[0] == "list") return cmdList(json);
     if (args[0] == "fs-support") return cmdFsSupport(json);
+    if (args[0] == "rescue-scan-image") {
+        if (args.size() < 2) {
+            usage();
+            return 2;
+        }
+        std::uint32_t ss = 512;
+        for (std::size_t i = 2; i + 1 < args.size(); ++i)
+            if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
+        return cmdRescueImage(args[1], ss, json);
+    }
     if (args[0] == "inspect-image") {
         if (args.size() < 2) {
             usage();

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "wparted/core/partition_table.hpp"
+#include "wparted/core/rescue.hpp"
 
 namespace wparted::win {
 
@@ -67,6 +68,11 @@ DiscoveryResult discoverDisks();
 
 // Finds the Windows volume (if any) that corresponds to a partition.
 const VolumeInfo* volumeForPartition(const PhysicalDisk& disk, const PartitionEntry& p);
+
+// Read-only data rescue scan on a physical disk (needs administrator rights)
+// or on a disk image file (busType "Image file").
+bool rescueScanDisk(const PhysicalDisk& disk, const RescueOptions& options, std::vector<RescueCandidate>& out,
+                    std::string& error);
 
 std::string narrow(const std::wstring& w);
 std::wstring widen(const std::string& s);

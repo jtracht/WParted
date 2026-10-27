@@ -35,7 +35,7 @@ enum class S {
     ImageOpenFailed, CopiedFmt,
     SectionPartitions, SectionPending, InsType, InsSize, InsUsage, InsRange, InsAlign, InsUuid, InsDevice, InsTable,
     InsPartitions, InsSectors, InsYes, InsNo, HintSelect, HintUnallocated, HintPartition, HintCritical, HintPlanned,
-    HintImage, Count_
+    HintImage, MenuRescue, RescueTitle, RescueRunning, RescueNone, RescueHint, RescueAligned, RescueUnaligned, BtnSaveDetails, Count_
 };
 
 void initLanguage();             // Selects the language from the Windows UI language.

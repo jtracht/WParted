@@ -6,6 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Data rescue scan (read-only): searches unallocated space at MiB steps and legacy cylinder boundaries
+  for lost file systems and reports start sector, type, size and label. `wparted-cli rescue-scan-image`
+  and GUI *Device → Attempt Data Rescue…* (background thread). Recovery itself is not automated; the
+  device scan has so far only been run on image files, not on real disks.
+- Operation log model (plan → steps with status) with JSON and escaped HTML export; *Save details
+  (HTML)…* in the Apply summary.
+- Validation refuses plans on disks managed by Windows (dynamic disks, Storage Spaces, spanned volumes).
+
 ## [0.1.0-alpha] – 2026-10-27
 
 First public pre-release: a **read-only** disk explorer. It cannot modify disks.

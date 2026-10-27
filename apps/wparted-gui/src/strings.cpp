@@ -179,6 +179,17 @@ const Entry kStrings[] = {
                      L"Geplant: Diese Partition existiert nur im Plan, bis die Operationen angewendet werden."},
     {S::HintImage, L"Disk image opened read-only. Plans can be made and exported safely.",
                    L"Datenträger-Image schreibgeschützt geöffnet. Pläne können gefahrlos erstellt und exportiert werden."},
+    {S::MenuRescue, L"Attempt Data &Rescue...", L"Daten&rettung versuchen..."},
+    {S::RescueTitle, L"Attempt data rescue", L"Datenrettung versuchen"},
+    {S::RescueRunning, L"Searching unallocated space for lost file systems (read-only)...",
+                       L"Nicht zugeordneter Bereich wird nach verlorenen Dateisystemen durchsucht (nur lesend)..."},
+    {S::RescueNone, L"No lost file systems were found in the unallocated space.",
+                    L"Im nicht zugeordneten Bereich wurden keine verlorenen Dateisysteme gefunden."},
+    {S::RescueHint, L"Recovery is not automated in this version. A New partition can only be placed in whole MiB, so it matches a found file system only if its start is MiB-aligned. Review any plan carefully before applying.",
+                    L"Die Wiederherstellung ist in dieser Version nicht automatisiert. Eine neue Partition lässt sich nur in ganzen MiB platzieren und passt daher nur zu einem gefundenen Dateisystem, dessen Beginn MiB-ausgerichtet ist. Jeden Plan vor dem Anwenden sorgfältig prüfen."},
+    {S::RescueAligned, L"MiB-aligned", L"MiB-ausgerichtet"},
+    {S::RescueUnaligned, L"not MiB-aligned", L"nicht MiB-ausgerichtet"},
+    {S::BtnSaveDetails, L"Save details (HTML)...", L"Details speichern (HTML)..."},
 };
 // clang-format on
 
