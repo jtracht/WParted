@@ -174,6 +174,24 @@ TEST("executor: new msdos table with primary, extended and logical partitions") 
     CHECK(im.b(510) == 0x55 && im.b(511) == 0xAA);
 }
 
+TEST("executor: a plan for a blank image survives the plan file round trip") {
+    Image im(64 * MiB, 512);  // no partition table at all
+    OperationQueue q = queueFor(im);
+    std::string err;
+    Operation t = op(OpType::CreateTable);
+    t.table = TableType::Gpt;
+    REQUIRE(q.add(t, err));
+    Operation c = op(OpType::CreatePartition);
+    c.firstLba = 2048;
+    c.sectorCount = 20480;
+    REQUIRE(q.add(c, err));
+    OperationQueue loaded;
+    REQUIRE(OperationQueue::fromJson(q.toJson(), parse(im), loaded, err));
+    CHECK(loaded.identity().table == TableType::None);
+    REQUIRE(run(im, loaded).ok);
+    CHECK(parse(im).type == TableType::Gpt);
+}
+
 TEST("executor: refuses invalid plans and changed images without writing") {
     Image im(64 * MiB, 512);
     im.gpt({{kLinux, 2048, 10239, "a", 0}});

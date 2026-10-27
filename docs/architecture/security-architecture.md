@@ -27,12 +27,33 @@
   Protocol details: [ADR-0002](adr-0002-privileged-helper-ipc.md). Offline/recovery mode for system
   partitions: [ADR-0003](adr-0003-recovery-offline-mode.md).
 
-## Read-only guarantees in v0.1
+## Read-only guarantees for disks
 
 - All device handles: `GENERIC_READ` at most, `FILE_SHARE_READ | FILE_SHARE_WRITE`.
 - No `IOCTL_DISK_SET_*`, `CREATE_DISK`, `FSCTL_LOCK/DISMOUNT/SHRINK/EXTEND`, mount point or label APIs.
-- CI fails on any such usage outside reviewed exemptions (currently: the user-chosen JSON report file).
+- CI fails on any such usage, and on any file opened for writing, outside reviewed exemptions
+  (`tools/ci/check_readonly.py` prints them: user-chosen report, plan and log files, and the image
+  file executor).
 - End-to-end test verifies that image analysis leaves the image byte-identical (SHA-256).
+
+## Writing to disk image files (v0.2)
+
+`core/src/executor.cpp` applies validated plans to **regular image files** only:
+
+- device paths (`\\.\…`, `\\?\…`, `\??\…`, `GLOBALROOT`, `/dev/…`, bare drive letters) are refused
+  before opening; the file must be an existing regular file, is opened exclusively on Windows
+  (`_wfsopen` with `_SH_DENYRW`, so an image held by a VM is refused) and is never created,
+  truncated or grown;
+- the plan is checked against the image's current table (geometry, GUIDs, identity) and validated in
+  `ImageExecution` mode before the first write;
+- after every operation the table is parsed back and compared with the simulated layout; the first
+  mismatch stops the plan (no automatic rollback; the result names the applied steps);
+- the GUI asks twice (Apply summary, then a confirmation naming the file), never with writing as the
+  default button; the CLI only writes with `--execute`.
+
+The results are verified independently in CI (`tools/ci/image-apply-check.sh`: `sgdisk -v`, `sfdisk`,
+`e2fsck`, `debugfs`, `blkid`). This path does not reach physical disks; that needs the helper of
+ADR-0002 and a human security review.
 
 ## Rules for future write paths
 

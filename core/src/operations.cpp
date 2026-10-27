@@ -63,6 +63,13 @@ bool tableFromName(const std::string& n, TableType& out) {
     return false;
 }
 
+// Identity of the disk the plan was made for: also a blank disk ("none").
+bool identityTableFromName(const std::string& n, TableType& out) {
+    for (TableType t : {TableType::None, TableType::Mbr, TableType::Gpt, TableType::Unknown})
+        if (n == tableTypeName(t)) { out = t; return true; }
+    return false;
+}
+
 bool kindFromName(const std::string& n, PartitionKind& out) {
     for (PartitionKind k : {PartitionKind::Primary, PartitionKind::Extended, PartitionKind::Logical})
         if (n == partitionKindName(k)) { out = k; return true; }
@@ -674,7 +681,7 @@ bool OperationQueue::fromJson(const std::string& json, const DiskLayout& origina
     id.model = idv->getString("model", "", &ok);
     id.sizeBytes = idv->getUint("sizeBytes", 0, &ok);
     id.sectorSize = static_cast<std::uint32_t>(idv->getUint("sectorSize", 0, &ok));
-    if (!tableFromName(idv->getString("table"), id.table)) id.table = TableType::Unknown;
+    if (!identityTableFromName(idv->getString("table"), id.table)) id.table = TableType::Unknown;
     Guid::parse(idv->getString("diskGuid", "", &ok), id.diskGuid);
     id.mbrSignature = static_cast<std::uint32_t>(idv->getUint("mbrSignature", 0, &ok));
     if (!ok) { error = "invalid identity fields"; return false; }

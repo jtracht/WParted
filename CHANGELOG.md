@@ -18,6 +18,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   risks and validation messages in the UI language (English/German).
 - High-contrast mode: the GUI uses the system colours.
 - Project website (EN/DE) generated from the repository, checked in CI; not deployed yet.
+- **Plans can be applied to disk image files** (GUI: *Apply to image file*; CLI: `apply-plan`, dry run
+  by default): partition tables, create/delete, move and copy as raw blocks, resize of unformatted
+  partitions, flags, names. Every step is read back and compared with the plan. Results are checked in
+  CI with sgdisk, sfdisk, e2fsck and debugfs. Physical disks are still never written.
+- Labels of NTFS, exFAT and F2FS (and the F2FS UUID) are read; detection is checked in CI against
+  images made by the real mkfs tools, with blkid as reference.
 
 ## [0.1.0-alpha] – 2026-10-27
 

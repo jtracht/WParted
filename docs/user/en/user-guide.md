@@ -33,7 +33,8 @@ between them as **unknown (hatched)**. To read the real partition tables, click
 ## Planning operations (development builds of v0.2)
 
 Development builds can **plan** changes the GParted way. Nothing is written: this version cannot
-execute operations, and *Apply* only shows the checks.
+execute operations on physical disks, and *Apply* only shows the checks. On **disk image files**
+plans can be applied (see below).
 
 1. Select a partition or unallocated space in the disk map or the list.
 2. Choose an action: *New*, *Delete*, *Resize/Move*, *Copy*/*Paste*, *Format to*, *Name Partition*,
@@ -49,7 +50,24 @@ execute operations, and *Apply* only shows the checks.
    GUID/signature), so a plan cannot silently be applied to a different disk.
 
 To try this without touching a real disk, use *WParted → Open Disk Image* (Ctrl+O) with a raw image
-file (`.img`). Images are opened read-only.
+file (`.img`).
+
+## Applying a plan to a disk image file
+
+For an opened image file, *Apply* validates the plan for the image and, if it passes, offers
+**Apply to image file…**. A second confirmation names the file; there is no automatic undo, so copy
+the file first if you may need its current state. WParted then
+
+- writes each operation and **reads the partition table back** before the next one (the first
+  mismatch stops the plan),
+- moves and copies partitions as raw blocks (any file system, same size),
+- clears old file system signatures at the start of new partitions,
+- shows every step in the result and re-reads the image.
+
+Possible on images: new partition table, new (unformatted) partition, delete, move, copy, resize of
+unformatted partitions, flags and names. Not yet possible: creating, growing, shrinking, checking,
+labelling or re-UUIDing file systems, and moving an extended partition; such plans are refused before
+anything is written. Physical disks are never written by this version.
 
 ## Data rescue (read-only)
 
@@ -80,6 +98,7 @@ wparted-cli list [--json]                       list disks, partitions, volumes
 wparted-cli inspect-image disk.img [--sector-size 4096] [--json]
 wparted-cli fs-support [--json]
 wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
+wparted-cli apply-plan disk.img plan.json [--execute] [--log details.html]   check, or apply to the image
 wparted-cli version
 ```
 

@@ -52,7 +52,25 @@ Version kann Operationen nicht ausführen, *Anwenden* zeigt nur die Prüfungen.
    Datenträger angewendet werden kann.
 
 Zum gefahrlosen Ausprobieren *WParted → Datenträger-Image öffnen* (Strg+O) mit einer Rohabbild-Datei
-(`.img`) verwenden. Abbilder werden nur lesend geöffnet.
+(`.img`) verwenden.
+
+## Plan auf eine Image-Datei anwenden
+
+Bei einer geöffneten Image-Datei prüft *Anwenden* den Plan für das Image und bietet, wenn er besteht,
+**Auf Image-Datei anwenden…** an. Eine zweite Bestätigung nennt die Datei; eine automatische
+Rückgängig-Funktion gibt es nicht, legen Sie daher bei Bedarf vorher eine Kopie an. WParted
+
+- schreibt jede Operation und **liest die Partitionstabelle zurück**, bevor die nächste beginnt (die
+  erste Abweichung stoppt den Plan),
+- verschiebt und kopiert Partitionen blockweise (jedes Dateisystem, gleiche Größe),
+- löscht alte Dateisystem-Signaturen am Anfang neuer Partitionen,
+- zeigt jeden Schritt im Ergebnis und liest das Image neu ein.
+
+Auf Images möglich: neue Partitionstabelle, neue (unformatierte) Partition, Löschen, Verschieben,
+Kopieren, Größenänderung unformatierter Partitionen, Flags und Namen. Noch nicht möglich: Dateisysteme
+erstellen, vergrößern, verkleinern, prüfen, benennen oder mit neuer UUID versehen sowie eine erweiterte
+Partition verschieben; solche Pläne werden abgelehnt, bevor etwas geschrieben wird. Physische
+Datenträger beschreibt diese Version nie.
 
 ## Datenrettung (nur lesend)
 
@@ -83,6 +101,7 @@ wparted-cli list [--json]                        Datenträger, Partitionen, Volu
 wparted-cli inspect-image disk.img [--sector-size 4096] [--json]
 wparted-cli fs-support [--json]
 wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
+wparted-cli apply-plan disk.img plan.json [--execute] [--log details.html]   prüfen bzw. auf das Image anwenden
 wparted-cli version
 ```
 
