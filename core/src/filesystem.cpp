@@ -101,6 +101,63 @@ private:
     std::vector<std::uint8_t> buf_;
 };
 
+// exFAT keeps its label as a directory entry (type 0x83) in the root
+// directory; read the first root cluster only (the label entry comes first
+// in practice and in mkfs.exfat / Windows format output).
+std::string exfatLabel(BlockReader& r, const std::uint8_t* bs) {
+    const unsigned bpsShift = bs[108], spcShift = bs[109];
+    if (bpsShift < 9 || bpsShift > 12 || spcShift > 25 - bpsShift) return {};
+    const std::uint64_t bps = 1ull << bpsShift, cluster = bps << spcShift;
+    const std::uint32_t root = le32(bs + 96);
+    if (root < 2) return {};
+    const std::uint64_t off = le32(bs + 88) * bps + (root - 2) * cluster;
+    std::vector<std::uint8_t> dir(static_cast<std::size_t>(std::min<std::uint64_t>(cluster, 64 * 1024)));
+    if (!r.read(off, dir.data(), dir.size())) return {};
+    for (std::size_t i = 0; i + 32 <= dir.size(); i += 32) {
+        if (dir[i] == 0x00) break;  // end of directory
+        if (dir[i] == 0x83) return utf16leToUtf8(&dir[i + 2], std::min<std::size_t>(dir[i + 1], 11));
+    }
+    return {};
+}
+
+// NTFS keeps its label in the $VOLUME_NAME attribute (0x60) of MFT record 3
+// ($Volume). Reads one MFT record and applies the update sequence fixups.
+std::string ntfsLabel(BlockReader& r, const std::uint8_t* bs) {
+    const std::uint32_t bps = le16(bs + 11);
+    const std::uint8_t spc = bs[13];
+    if (bps < 256 || bps > 4096 || (bps & (bps - 1)) || spc == 0 || (spc > 0x80 && 256 - spc > 20)) return {};
+    const std::uint64_t cluster = spc <= 0x80 ? std::uint64_t{spc} * bps : std::uint64_t{bps} << (256 - spc);
+    const auto recRaw = static_cast<std::int8_t>(bs[0x40]);
+    const std::uint64_t recSize = recRaw > 0 ? recRaw * cluster : (recRaw > -31 ? 1ull << -recRaw : 0);
+    if (recSize < 512 || recSize > 64 * 1024 || cluster == 0) return {};
+    const std::uint64_t mftLcn = le64(bs + 0x30);
+    if (mftLcn > r.size() / cluster) return {};
+    std::vector<std::uint8_t> rec(static_cast<std::size_t>(recSize));
+    if (!r.read(mftLcn * cluster + 3 * recSize, rec.data(), rec.size()) || std::memcmp(rec.data(), "FILE", 4) != 0)
+        return {};
+    const std::size_t usaOff = le16(&rec[4]), usaCount = le16(&rec[6]);
+    if (usaCount == 0 || usaOff + 2 * usaCount > rec.size()) return {};
+    for (std::size_t i = 1; i < usaCount; ++i) {  // fixup stride is 512 bytes
+        const std::size_t pos = i * 512 - 2;
+        if (pos + 2 > rec.size()) break;
+        if (rec[pos] != rec[usaOff] || rec[pos + 1] != rec[usaOff + 1]) return {};  // torn record
+        rec[pos] = rec[usaOff + 2 * i];
+        rec[pos + 1] = rec[usaOff + 2 * i + 1];
+    }
+    for (std::size_t a = le16(&rec[0x14]); a + 24 <= rec.size();) {
+        const std::uint32_t type = le32(&rec[a]), len = le32(&rec[a + 4]);
+        if (type == 0xFFFFFFFFu || len < 24 || a + len > rec.size()) break;
+        if (type == 0x60 && rec[a + 8] == 0) {  // resident $VOLUME_NAME
+            const std::uint32_t vlen = le32(&rec[a + 0x10]);
+            const std::size_t voff = le16(&rec[a + 0x14]);
+            if (std::uint64_t{voff} + vlen <= len) return utf16leToUtf8(&rec[a + voff], vlen / 2);
+            break;
+        }
+        a += len;
+    }
+    return {};
+}
+
 std::string trimmedAscii(const std::uint8_t* p, std::size_t len) {
     std::string s;
     for (std::size_t i = 0; i < len && p[i]; ++i) s += (p[i] >= 0x20 && p[i] < 0x7F) ? static_cast<char>(p[i]) : '?';
@@ -193,11 +250,13 @@ FsDetection detectFilesystem(BlockReader& reader) {
     if (pr.match(3, "NTFS    ", 8)) {
         d.type = FsType::Ntfs;
         if (const auto* p = pr.at(0x48, 8)) d.uuid = serialText(p, 8);
+        if (const auto* bs = pr.at(0, 512)) d.label = ntfsLabel(reader, bs);
         return d;
     }
     if (pr.match(3, "EXFAT   ", 8)) {
         d.type = FsType::ExFat;
         if (const auto* p = pr.at(100, 4)) d.uuid = serialText(p, 4);
+        if (const auto* bs = pr.at(0, 512)) d.label = exfatLabel(reader, bs);
         return d;
     }
     if (pr.match(3, "ReFS\0\0\0\0", 8)) { d.type = FsType::ReFs; return d; }
@@ -234,7 +293,12 @@ FsDetection detectFilesystem(BlockReader& reader) {
         }
     }
     if (const auto* p = pr.at(1024, 4)) {
-        if (le32(p) == 0xF2F52010u) { d.type = FsType::F2fs; return d; }
+        if (le32(p) == 0xF2F52010u) {  // superblock at 1 KiB: uuid at +108, UTF-16 volume_name[512] at +124
+            d.type = FsType::F2fs;
+            if (const auto* u = pr.at(1024 + 108, 16)) d.uuid = uuidText(u);
+            if (const auto* n = pr.at(1024 + 124, 1024)) d.label = utf16leToUtf8(n, 512);
+            return d;
+        }
     }
     // Linux MD RAID superblock v1.1 (offset 0) and v1.2 (offset 4 KiB).
     for (std::size_t off : {std::size_t{0}, std::size_t{4096}}) {

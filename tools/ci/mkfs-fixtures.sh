@@ -62,7 +62,9 @@ for c in "${cases[@]}"; do
   if ((${#problems[@]})); then
     echo "FAIL $name: ${problems[*]}"; fail=$((fail + 1))
   else
-    echo "PASS $name: $got_type '$got_label' $uuid_note ($($tool -V 2>&1 | head -1 || true))"; pass=$((pass + 1))
+    ver=$($tool -V 2>&1 | head -1 || true)
+    [[ "$ver" == *"invalid option"* ]] && ver=$($tool --version 2>&1 | head -1 || true)
+    echo "PASS $name: $got_type '$got_label' $uuid_note ($ver)"; pass=$((pass + 1))
   fi
 done
 echo "mkfs fixtures: $pass passed, $fail failed"

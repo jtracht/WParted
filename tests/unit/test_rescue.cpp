@@ -206,3 +206,78 @@ TEST("validation: diagnostics carry operation number and arguments for translati
     CHECK(capability);
     CHECK(busy);
 }
+
+// --- labels stored outside the boot sector (WP-011) ---------------------------------
+
+namespace {
+void putUtf16(Image& im, std::uint64_t off, const char* ascii) {
+    for (std::size_t i = 0; ascii[i]; ++i) im.put16(off + 2 * i, static_cast<std::uint8_t>(ascii[i]));
+}
+}  // namespace
+
+TEST("detection: exFAT label from the root directory entry") {
+    Image im(8 * MiB, 512);
+    im.putStr(3, "EXFAT   ", 8);
+    im.put32(88, 2048);   // cluster heap at sector 2048
+    im.put32(96, 4);      // root directory in cluster 4
+    im.b(108) = 9;        // 512-byte sectors
+    im.b(109) = 3;        // 8 sectors per cluster
+    im.b(510) = 0x55;
+    im.b(511) = 0xAA;
+    const std::uint64_t root = 2048ull * 512 + 2 * 4096;
+    im.b(root) = 0x81;    // allocation bitmap entry first, label second
+    im.b(root + 32) = 0x83;
+    im.b(root + 33) = 7;
+    putUtf16(im, root + 34, "WPEXFAT");
+    MemoryBlockReader r(im.data, 512);
+    const auto d = detectFilesystem(r);
+    CHECK(d.type == FsType::ExFat);
+    CHECK_EQ(d.label, std::string("WPEXFAT"));
+}
+
+TEST("detection: NTFS label from $Volume with update sequence fixups") {
+    Image im(8 * MiB, 512);
+    im.putStr(3, "NTFS    ", 8);
+    im.put16(11, 512);
+    im.b(13) = 8;                 // 4 KiB clusters
+    im.put64(0x30, 4);            // $MFT at cluster 4
+    im.b(0x40) = 0xF6;            // -10: 1024-byte records
+    im.b(510) = 0x55;
+    im.b(511) = 0xAA;
+    const std::uint64_t rec = 4ull * 4096 + 3 * 1024;
+    im.putStr(rec, "FILE", 4);
+    im.put16(rec + 4, 0x30);      // update sequence array offset
+    im.put16(rec + 6, 3);         // usn + 2 sector entries
+    im.put16(rec + 0x30, 0x0001); // usn
+    im.put16(rec + 0x32, 0x4141); // original last words of sector 1 and 2
+    im.put16(rec + 0x34, 0x4242);
+    im.put16(rec + 510, 0x0001);  // fixup placeholders carry the usn
+    im.put16(rec + 1022, 0x0001);
+    im.put16(rec + 0x14, 0x38);   // first attribute
+    im.put32(rec + 0x38, 0x60);   // $VOLUME_NAME, resident
+    im.put32(rec + 0x3C, 0x28);
+    im.b(rec + 0x40) = 0;
+    im.put32(rec + 0x48, 14);     // 7 UTF-16 units
+    im.put16(rec + 0x4C, 0x18);
+    putUtf16(im, rec + 0x38 + 0x18, "wp-ntfs");
+    im.put32(rec + 0x60, 0xFFFFFFFFu);
+    MemoryBlockReader r(im.data, 512);
+    auto d = detectFilesystem(r);
+    CHECK(d.type == FsType::Ntfs);
+    CHECK_EQ(d.label, std::string("wp-ntfs"));
+    im.put16(rec + 510, 0x0002);  // torn write: usn mismatch -> no label, no crash
+    MemoryBlockReader r2(im.data, 512);
+    CHECK(detectFilesystem(r2).label.empty());
+}
+
+TEST("detection: F2FS label and UUID from the superblock") {
+    Image im(8 * MiB, 512);
+    im.put32(1024, 0xF2F52010u);
+    for (int i = 0; i < 16; ++i) im.b(1024 + 108 + i) = static_cast<std::uint8_t>(0x10 + i);
+    putUtf16(im, 1024 + 124, "wp-f2fs");
+    MemoryBlockReader r(im.data, 512);
+    const auto d = detectFilesystem(r);
+    CHECK(d.type == FsType::F2fs);
+    CHECK_EQ(d.label, std::string("wp-f2fs"));
+    CHECK_EQ(d.uuid, std::string("10111213-1415-1617-1819-1a1b1c1d1e1f"));
+}
