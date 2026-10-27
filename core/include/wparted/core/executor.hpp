@@ -111,6 +111,11 @@ struct ExecuteResult {
     LogStep log;
 };
 
+// Fills ctx.state[planId].usedBytes for partitions whose usage the
+// file-system tools can read (FAT), so that validation refuses shrinking
+// below the data before anything is written.
+void addImageUsage(BlockReader& image, const DiskLayout& layout, ValidationContext& ctx);
+
 // Validates `plan` in ImageExecution mode against what is on `device` now and
 // executes it. Nothing is written if the device does not match the plan's
 // original layout or the validation reports an error.

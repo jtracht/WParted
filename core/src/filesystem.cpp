@@ -375,41 +375,44 @@ FsDetection detectFilesystem(BlockReader& reader) {
 }
 
 const FsCapabilities& capabilitiesFor(FsType t) {
-    // v0.1.0-alpha is a read-only release: every modifying action is Planned.
-    // Usage information is only available for volumes Windows itself mounts.
+    // What this build can do on disk *image files* (core/src/executor.cpp,
+    // fs_tools.cpp). Physical disks are never written; validation refuses
+    // execution on them (execution.unavailable). Move/copy are raw block
+    // operations of the same size ("Limited"); copies are not offered where a
+    // duplicate identity confuses the system (LUKS, LVM, RAID, ZFS, ...).
     using S = Support;
     static const FsCapabilities table[] = {
         {FsType::Unknown, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Ntfs, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Fat12, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Fat16, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Fat32, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::ExFat, S::Supported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::ReFs, S::Supported, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::BitLocker, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Ext2, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Ext3, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Ext4, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Btrfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Xfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::F2fs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported},
-        {FsType::Jfs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::ReiserFs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned},
-        {FsType::Reiser4, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported},
-        {FsType::Nilfs2, S::Experimental, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned},
-        {FsType::Udf, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned},
-        {FsType::Ufs, S::Experimental, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Hfs, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::HfsPlus, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported},
-        {FsType::Apfs, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::LinuxSwap, S::Supported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned},
-        {FsType::LinuxSuspend, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Luks, S::Supported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Lvm2Pv, S::Supported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported},
-        {FsType::LinuxRaid, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Zfs, S::Experimental, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Bcachefs, S::Experimental, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported},
-        {FsType::Minix, S::Experimental, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Unsupported},
+        {FsType::Ntfs, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::Fat12, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::Fat16, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
+        {FsType::Fat32, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
+        {FsType::ExFat, S::Supported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::ReFs, S::Supported, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::BitLocker, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::Ext2, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::Ext3, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Limited},
+        {FsType::Ext4, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Limited},
+        {FsType::Btrfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Planned, S::Planned},
+        {FsType::Xfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Planned, S::Planned},
+        {FsType::F2fs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Unsupported, S::Unsupported},
+        {FsType::Jfs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Planned, S::Planned},
+        {FsType::ReiserFs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Planned, S::Planned},
+        {FsType::Reiser4, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Unsupported, S::Unsupported},
+        {FsType::Nilfs2, S::Experimental, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Unsupported, S::Planned, S::Planned},
+        {FsType::Udf, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Planned, S::Planned},
+        {FsType::Ufs, S::Experimental, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::Hfs, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::HfsPlus, S::Experimental, S::Planned, S::Planned, S::Unsupported, S::Planned, S::Limited, S::Limited, S::Planned, S::Unsupported, S::Unsupported},
+        {FsType::Apfs, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::LinuxSwap, S::Supported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Unsupported, S::Supported, S::Supported},
+        {FsType::LinuxSuspend, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::Luks, S::Supported, S::Unsupported, S::Unsupported, S::Planned, S::Planned, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::Lvm2Pv, S::Supported, S::Unsupported, S::Planned, S::Planned, S::Planned, S::Limited, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported},
+        {FsType::LinuxRaid, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::Zfs, S::Experimental, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::Bcachefs, S::Experimental, S::Unsupported, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Planned, S::Planned, S::Unsupported, S::Unsupported},
+        {FsType::Minix, S::Experimental, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Unsupported, S::Unsupported},
     };
     for (const auto& c : table)
         if (c.type == t) return c;

@@ -12,6 +12,7 @@
 #include <cstring>
 #include <sys/stat.h>
 
+#include "wparted/core/fs_tools.hpp"
 #include "wparted/core/layout_writer.hpp"
 #include "wparted/core/types.hpp"
 
@@ -222,6 +223,14 @@ private:
 
 }  // namespace
 
+void addImageUsage(BlockReader& image, const DiskLayout& layout, ValidationContext& ctx) {
+    for (const auto& p : layout.partitions) {
+        if (!fstools::canCheck(p.fs.type)) continue;
+        SubRangeReader part(image, p.firstLba * layout.sectorSize, p.sectorCount * layout.sectorSize);
+        if (const std::uint64_t used = fstools::usedBytes(part, p.fs.type)) ctx.state[p.planId].usedBytes = used;
+    }
+}
+
 ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, const std::string& deviceName,
                                  const ExecuteOptions& o) {
     ExecuteResult r;
@@ -246,6 +255,7 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
     ctx.mode = ValidationMode::ImageExecution;
     ctx.haveCurrentIdentity = true;
     ctx.currentIdentity = identityOf(now, plan.identity().serial, plan.identity().model);
+    addImageUsage(dev, plan.original(), ctx);
     r.validation = validatePlan(plan, ctx);
     for (const auto& d : r.validation.diagnostics)
         if (d.severity != Severity::Info) r.log.messages.push_back(d.message);
@@ -280,22 +290,38 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
         const DiskLayout before = layout;
         std::string err;
         bool ok = simulate(op, layout, next, err);
+        bool warn = false;
         const std::uint32_t ss = layout.sectorSize;
-        if (ok && op.type == OpType::ResizeMove) {
-            const PartitionEntry* a = findPlanned(before, op.target);
-            const PartitionEntry* b = findPlanned(layout, op.target);
-            if (a && b && a->firstLba != b->firstLba && a->kind == PartitionKind::Extended) {
+        auto region = [&](const PartitionEntry& p) { return RegionDevice(dev, p.firstLba * ss, p.sectorCount * ss); };
+        const PartitionEntry* a = findPlanned(before, op.target);  // target before the operation
+        const PartitionEntry* b = findPlanned(layout, op.type == OpType::Copy || op.type == OpType::CreatePartition
+                                                          ? op.result
+                                                          : op.target);  // target/result after it
+        const FsType fs = a ? a->fs.type : FsType::Unknown;
+        const bool fsResize = ok && op.type == OpType::ResizeMove && a && b && a->kind != PartitionKind::Extended &&
+                              fs != FsType::Unknown && a->sectorCount != b->sectorCount;
+        if (ok && op.type == OpType::ResizeMove && a && b) {
+            if (a->firstLba != b->firstLba && a->kind == PartitionKind::Extended) {
                 ok = false;  // the logical partitions and EBR chain would have to move as well
                 err = "moving an extended partition is not supported yet";
-            } else if (a && b && a->firstLba != b->firstLba) {
+            }
+            if (ok && fsResize && !fstools::canResize(fs)) {
+                ok = false;
+                err = std::string("resizing ") + fsTypeName(fs) + " is not supported";
+            }
+            if (ok && fsResize && b->sectorCount < a->sectorCount) {  // shrink the file system first
+                step.messages.push_back("Shrinking the " + std::string(fsTypeName(fs)) + " file system to " +
+                                        formatSize(b->sectorCount * ss));
+                RegionDevice part = region(*a);
+                ok = fstools::resize(part, fs, b->sectorCount * ss, err);
+            }
+            if (ok && a->firstLba != b->firstLba) {
                 step.messages.push_back("Moving " + formatSize(std::min(a->sectorCount, b->sectorCount) * ss) +
                                         " of data from sector " + std::to_string(a->firstLba) + " to " +
                                         std::to_string(b->firstLba));
                 ok = run.copy(i, a->firstLba * ss, b->firstLba * ss, std::min(a->sectorCount, b->sectorCount) * ss, err);
             }
         } else if (ok && op.type == OpType::Copy) {
-            const PartitionEntry* a = findPlanned(before, op.target);
-            const PartitionEntry* b = findPlanned(layout, op.result);
             if (!a || !b) {
                 ok = false;
                 err = "copy source or destination not found";
@@ -306,15 +332,61 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
             }
         }
         if (ok) ok = run.writeTable(layout, err);
-        if (ok && op.type == OpType::CreatePartition && op.kind != PartitionKind::Extended) {
-            if (const PartitionEntry* p = findPlanned(layout, op.result)) {
-                step.messages.push_back("Clearing old signatures in the first MiB of the new partition");
-                ok = run.wipeStart(p->firstLba, p->sectorCount, err);
-            }
-        } else if (ok && op.type == OpType::Format && op.fs == FsType::Unknown) {
-            if (const PartitionEntry* p = findPlanned(layout, op.target)) {
-                step.messages.push_back("Clearing file system signatures in the first MiB");
-                ok = run.wipeStart(p->firstLba, p->sectorCount, err);
+        // File-system steps on the partition as it is now.
+        std::string newUuid;
+        if (ok && b) {
+            RegionDevice part = region(*b);
+            switch (op.type) {
+                case OpType::CreatePartition:
+                case OpType::Format:
+                    if (b->kind == PartitionKind::Extended) break;
+                    step.messages.push_back(op.type == OpType::Format ? "Clearing file system signatures in the first MiB"
+                                                                      : "Clearing old signatures in the first MiB of the new partition");
+                    ok = run.wipeStart(b->firstLba, b->sectorCount, err);
+                    if (ok && op.fs != FsType::Unknown) {
+                        step.messages.push_back("Creating " + std::string(fsTypeName(op.fs)) + " file system" +
+                                                (op.label.empty() ? std::string() : " labelled \"" + op.label + "\""));
+                        ok = fstools::create(part, op.fs, op.label, b->firstLba, err);
+                    }
+                    break;
+                case OpType::ResizeMove:
+                    if (fsResize && b->sectorCount > a->sectorCount) {  // grow the file system last
+                        step.messages.push_back("Growing the " + std::string(fsTypeName(fs)) + " file system to " +
+                                                formatSize(b->sectorCount * ss));
+                        ok = fstools::resize(part, fs, b->sectorCount * ss, err);
+                    }
+                    break;
+                case OpType::Copy:
+                    if (b->sectorCount > a->sectorCount && fstools::canResize(fs)) {
+                        step.messages.push_back("Growing the copied file system to the partition size");
+                        ok = fstools::resize(part, fs, b->sectorCount * ss, err);
+                    }
+                    break;
+                case OpType::SetLabel:
+                    step.messages.push_back("Setting the label to \"" + op.label + "\"");
+                    ok = fstools::setLabel(part, b->fs.type, op.label, err);
+                    break;
+                case OpType::NewUuid:
+                    ok = fstools::setNewUuid(part, b->fs.type, newUuid, err);
+                    if (ok) step.messages.push_back("New UUID/serial: " + newUuid);
+                    break;
+                case OpType::Check: {
+                    fstools::CheckReport rep;
+                    ok = fstools::check(part, b->fs.type, rep, err);
+                    if (ok) {
+                        for (const auto& e : rep.errors) step.messages.push_back("Error: " + e);
+                        for (const auto& w : rep.warnings) step.messages.push_back("Warning: " + w);
+                        step.messages.push_back("Checked (read-only, nothing repaired): " + formatSize(rep.usedBytes) +
+                                                " used of " + formatSize(rep.totalBytes));
+                        warn = !rep.warnings.empty();
+                        if (!rep.ok) {
+                            ok = false;
+                            err = "the file system has errors; repair it with chkdsk or fsck before changing it";
+                        }
+                    }
+                    break;
+                }
+                default: break;
             }
         }
         // Calibration: what is on the image now must be the simulated layout.
@@ -323,6 +395,36 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
             if (back.hasErrors() || !sameTable(back, layout, why)) {
                 ok = false;
                 err = "verification after writing failed: " + (back.hasErrors() ? std::string("table has errors") : why);
+            }
+        }
+        // ... and the file system must be what the operation produced.
+        if (ok && b && b->kind != PartitionKind::Extended) {
+            RegionDevice part = region(*b);
+            const FsDetection d = detectFilesystem(part);
+            auto upper = [](std::string x) {
+                for (char& c : x) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                return x;
+            };
+            std::string bad;
+            if ((op.type == OpType::CreatePartition || op.type == OpType::Format) && d.type != op.fs) bad = "file system type";
+            if (op.type == OpType::SetLabel && upper(d.label) != upper(op.label)) bad = "label";
+            if (op.type == OpType::NewUuid && upper(d.uuid) != upper(newUuid)) bad = "UUID";
+            if (op.type != OpType::CreatePartition && op.type != OpType::Format && op.type != OpType::Check &&
+                fs != FsType::Unknown && d.type != fs)
+                bad = "file system type";
+            if (!bad.empty()) {
+                ok = false;
+                err = "verification after writing failed: the " + bad + " read back differs from the plan";
+            } else if ((fsResize || (op.type == OpType::CreatePartition && op.fs != FsType::Unknown) ||
+                        (op.type == OpType::Format && op.fs != FsType::Unknown)) &&
+                       fstools::canCheck(d.type)) {
+                fstools::CheckReport rep;  // new or resized file systems must pass the check
+                if (!fstools::check(part, d.type, rep, err) || !rep.ok) {
+                    ok = false;
+                    err = "the file system check after writing failed" + (rep.errors.empty() ? ": " + err : ": " + rep.errors.front());
+                } else {
+                    step.messages.push_back("File system check after writing: no errors");
+                }
             }
         }
         step.endMs = nowMs();
@@ -335,7 +437,7 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
                                                         " operation(s) before it were applied; there is no automatic rollback."
                                                   : std::string("Nothing before it was applied.")));
         }
-        step.status = LogStep::Status::Success;
+        step.status = warn ? LogStep::Status::Warning : LogStep::Status::Success;
         step.messages.push_back("Verified: the partition table read back matches the plan");
         ++r.completed;
     }

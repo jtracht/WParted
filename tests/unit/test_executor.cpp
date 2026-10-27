@@ -3,12 +3,15 @@
 //
 // Plan execution on image files (WP-030, WP-032, WP-041, WP-042): every test
 // executes a plan on an in-memory or temporary image and parses the result.
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 
 #include "image_builder.hpp"
 #include "test_framework.hpp"
 #include "wparted/core/executor.hpp"
+#include "wparted/core/fs_tools.hpp"
 
 using namespace wparted;
 using wptest::Image;
@@ -172,6 +175,89 @@ TEST("executor: new msdos table with primary, extended and logical partitions") 
     REQUIRE(back.partitions.size() == 3);
     CHECK(byNumber(back, 5) != nullptr && byNumber(back, 5)->kind == PartitionKind::Logical);
     CHECK(im.b(510) == 0x55 && im.b(511) == 0xAA);
+}
+
+TEST("executor: file-system steps (create, label, UUID, check, grow, shrink+move, format)") {
+    Image im(256 * MiB, 512);
+    im.gpt({{kData, 2048, 4095, "small", 0}});
+    std::string err;
+    {
+        OperationQueue q = queueFor(im);
+        Operation c = op(OpType::CreatePartition);
+        c.firstLba = 8192;
+        c.sectorCount = 40 * 2048;  // 40 MiB
+        c.fs = FsType::Fat32;
+        c.label = "Daten";
+        REQUIRE(q.add(c, err));
+        REQUIRE(run(im, q).ok);
+    }
+    // Copy, not a pointer: parse() returns a temporary layout.
+    auto part = [&](int n) {
+        const DiskLayout l = parse(im);
+        const PartitionEntry* p = byNumber(l, n);
+        return p ? std::optional<PartitionEntry>(*p) : std::nullopt;
+    };
+    REQUIRE(part(2).has_value());
+    CHECK(part(2)->fs.type == FsType::Fat32);
+    CHECK_EQ(part(2)->fs.label, std::string("DATEN"));
+    const std::string oldUuid = part(2)->fs.uuid;
+    {
+        OperationQueue q = queueFor(im);
+        Operation l = op(OpType::SetLabel, 2);
+        l.label = "Archiv";
+        REQUIRE(q.add(l, err));
+        REQUIRE(q.add(op(OpType::NewUuid, 2), err));
+        REQUIRE(q.add(op(OpType::Check, 2), err));
+        Operation g = op(OpType::ResizeMove, 2);
+        g.firstLba = 8192;
+        g.sectorCount = 100 * 2048;  // grow to 100 MiB
+        REQUIRE(q.add(g, err));
+        const ExecuteResult r = run(im, q);
+        REQUIRE(r.ok);
+        CHECK_EQ(r.completed, std::size_t{4});
+    }
+    CHECK_EQ(part(2)->fs.label, std::string("ARCHIV"));
+    CHECK(part(2)->fs.uuid != oldUuid);
+    CHECK_EQ(part(2)->sectorCount, 100u * 2048);
+    {
+        OperationQueue q = queueFor(im);
+        Operation s = op(OpType::ResizeMove, 2);
+        s.firstLba = 16384;          // move right and shrink to 60 MiB
+        s.sectorCount = 60 * 2048;
+        REQUIRE(q.add(s, err));
+        REQUIRE(run(im, q).ok);
+    }
+    REQUIRE(part(2).has_value());
+    CHECK_EQ(part(2)->firstLba, 16384u);
+    CHECK(part(2)->fs.type == FsType::Fat32);
+    CHECK_EQ(part(2)->fs.label, std::string("ARCHIV"));
+    {
+        MemoryBlockDevice dev(im.data, 512);
+        RegionDevice p2(dev, 16384ull * 512, 60ull * MiB);
+        fstools::CheckReport rep;
+        REQUIRE(fstools::check(p2, FsType::Fat32, rep, err));
+        CHECK(rep.ok);
+        CHECK(rep.totalBytes > 55 * MiB && rep.totalBytes < 60 * MiB);  // 60 MiB minus FAT and reserved area
+    }
+    {
+        OperationQueue q = queueFor(im);
+        Operation f = op(OpType::Format, 2);
+        f.fs = FsType::Fat16;
+        f.label = "NEU";
+        REQUIRE(q.add(f, err));
+        REQUIRE(run(im, q).ok);
+    }
+    CHECK(part(2)->fs.type == FsType::Fat16);
+    CHECK_EQ(part(2)->fs.label, std::string("NEU"));
+    {  // invalid labels and shrinking below the data are refused before writing
+        OperationQueue q = queueFor(im);
+        Operation l = op(OpType::SetLabel, 2);
+        l.label = "way too long label";
+        REQUIRE(q.add(l, err));
+        const auto before = im.data;
+        CHECK(!run(im, q).ok);
+        CHECK(im.data == before);
+    }
 }
 
 TEST("executor: a plan for a blank image survives the plan file round trip") {

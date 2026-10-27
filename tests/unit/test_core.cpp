@@ -9,6 +9,7 @@
 #include "test_framework.hpp"
 #include "wparted/core/block_reader.hpp"
 #include "wparted/core/filesystem.hpp"
+#include "wparted/core/fs_tools.hpp"
 #include "wparted/core/json.hpp"
 #include "wparted/core/layout_view.hpp"
 #include "wparted/core/partition_table.hpp"
@@ -334,13 +335,24 @@ TEST("detection on a partition smaller than the probe window") {
     CHECK(detectFilesystem(r).type == FsType::Ntfs);
 }
 
-TEST("capability table marks every write action as not yet supported") {
+TEST("capability table claims only what is implemented") {
+    // No fake features: an action counts as available only if the code behind
+    // it exists (fs_tools for file systems, raw block moves/copies in the executor).
+    auto available = [](Support s) { return s == Support::Supported || s == Support::Limited; };
     for (FsType t : allFsTypes()) {
         const auto& c = capabilitiesFor(t);
         CHECK(c.type == t);
-        for (Support s : {c.create, c.grow, c.shrink, c.move, c.copy, c.check, c.label, c.uuid})
-            CHECK(s == Support::Planned || s == Support::Unsupported);
+        CHECK(available(c.create) == fstools::canCreate(t));
+        CHECK(available(c.grow) == fstools::canResize(t));
+        CHECK(available(c.shrink) == fstools::canResize(t));
+        CHECK(available(c.check) == fstools::canCheck(t));
+        CHECK(available(c.label) == fstools::canLabel(t));
+        CHECK(available(c.uuid) == fstools::canSetUuid(t));
+        CHECK(!available(c.move) || c.move == Support::Limited);  // raw block move only
+        CHECK(!available(c.copy) || c.copy == Support::Limited);
     }
+    for (FsType t : {FsType::Luks, FsType::Lvm2Pv, FsType::LinuxRaid, FsType::Zfs, FsType::BitLocker})
+        CHECK(!available(capabilitiesFor(t).copy));  // duplicate identities
 }
 
 // --- layout view --------------------------------------------------------------

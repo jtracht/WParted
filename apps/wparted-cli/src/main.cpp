@@ -163,6 +163,8 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
         json = text.str();
     }
     DiskLayout original;
+    ValidationContext ctx;
+    OperationQueue q;
     {
         FileBlockReader r;  // closed before the exclusive write handle is opened
         if (!r.open(image, ss)) {
@@ -170,17 +172,16 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
             return 2;
         }
         original = parseDiskLayout(r, true);
-    }
-    OperationQueue q;
-    if (!OperationQueue::fromJson(json, original, q, err)) {
-        std::fprintf(stderr, "error: the plan does not fit this image: %s\n", err.c_str());
-        return 3;
+        if (!OperationQueue::fromJson(json, original, q, err)) {
+            std::fprintf(stderr, "error: the plan does not fit this image: %s\n", err.c_str());
+            return 3;
+        }
+        addImageUsage(r, q.original(), ctx);
     }
     if (!execute) {
         const auto descriptions = q.descriptions();
         for (std::size_t i = 0; i < descriptions.size(); ++i)
             std::printf("%zu. [%s] %s\n", i + 1, riskName(riskOf(q.operations()[i])), descriptions[i].c_str());
-        ValidationContext ctx;
         ctx.mode = ValidationMode::ImageExecution;
         ctx.haveCurrentIdentity = true;
         ctx.currentIdentity = identityOf(original, q.identity().serial, q.identity().model);

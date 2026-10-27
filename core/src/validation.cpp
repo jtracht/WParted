@@ -2,6 +2,8 @@
 // Copyright (C) 2026 The WParted contributors
 #include "wparted/core/validation.hpp"
 
+#include "wparted/core/fs_tools.hpp"
+
 #include <algorithm>
 #include <set>
 
@@ -27,6 +29,14 @@ std::uint64_t minimumSize(FsType t) noexcept {
         case FsType::F2fs: return 64 * MiB;
         case FsType::ReFs: return 64 * MiB;
         default: return 1 * MiB;
+    }
+}
+
+std::uint64_t maximumSize(FsType t, std::uint32_t sectorSize) noexcept {
+    switch (t) {
+        case FsType::Fat16: return 4ull * 1024 * 1024 * 1024;               // 65524 clusters of 64 KiB
+        case FsType::Fat32: return 0xFFFFFFFFull * sectorSize;              // 32-bit sector count
+        default: return 0;                                                   // no limit checked
     }
 }
 
@@ -117,8 +127,20 @@ private:
                             " in this build.",
                         index, {"create", fsTypeName(op.fs), supportName(cap.create)});
             }
-            if (op.type == OpType::CreatePartition || op.type == OpType::ResizeMove || op.type == OpType::Copy)
-                touched_.insert(op.type == OpType::ResizeMove ? op.target : 0);
+            // op.label_invalid args: {reason}
+            {
+                const bool labelled = op.type == OpType::SetLabel ||
+                                      ((op.type == OpType::CreatePartition || op.type == OpType::Format) &&
+                                       op.fs != FsType::Unknown && !op.label.empty());
+                const FsType lfs = op.type == OpType::SetLabel ? (t ? t->fs.type : FsType::Unknown) : op.fs;
+                if (labelled && fstools::canLabel(lfs)) {
+                    const std::string why = fstools::labelProblem(lfs, op.label);
+                    if (!why.empty()) add(Severity::Error, "op.label_invalid", where(index) + "invalid label: " + why + ".", index, {why});
+                }
+            }
+            if (op.type == OpType::CreatePartition || op.type == OpType::ResizeMove || op.type == OpType::Copy ||
+                op.type == OpType::Format)
+                touched_.insert(op.type == OpType::ResizeMove || op.type == OpType::Format ? op.target : 0);
             if (!simulate(op, layout, next, err)) {
                 add(Severity::Error, "op.invalid", where(index) + err, index, {err});
                 return;
@@ -181,15 +203,13 @@ private:
                 if (fs == FsType::Unknown) return;  // no file system: partition boundaries only
                 if (op.sectorCount > p.sectorCount) need(cap.grow, "grow", "growing");
                 if (op.sectorCount < p.sectorCount) need(cap.shrink, "shrink", "shrinking");
-                // Image files: a move that keeps the size is a raw block move and
-                // works for every file system.
-                const bool rawMove = c_.mode == ValidationMode::ImageExecution && op.sectorCount == p.sectorCount;
-                if (op.firstLba != p.firstLba && !rawMove) need(cap.move, "move", "moving");
+                // A move is a raw block move ("Limited" in the capability table).
+                if (op.firstLba != p.firstLba) need(cap.move, "move", "moving");
                 (void)layout;
                 return;
             }
-            case OpType::Copy:  // image files: raw block copy, any file system
-                if (fs != FsType::Unknown && c_.mode != ValidationMode::ImageExecution) need(cap.copy, "copy", "copying");
+            case OpType::Copy:  // raw block copy; not offered for LUKS, LVM, RAID, ...
+                if (fs != FsType::Unknown) need(cap.copy, "copy", "copying");
                 return;
             case OpType::Check: need(cap.check, "check", "checking"); return;
             case OpType::SetLabel: need(cap.label, "label", "labelling"); return;
@@ -234,6 +254,12 @@ private:
                     what + " is smaller than the minimum for " + fsTypeName(p.fs.type) + " (" +
                         formatSize(minimumSize(p.fs.type)) + ").",
                     0, {num, fsTypeName(p.fs.type), formatSize(minimumSize(p.fs.type))});
+            if (p.kind != PartitionKind::Extended && maximumSize(p.fs.type, ss) &&
+                p.sectorCount * ss > maximumSize(p.fs.type, ss))  // args: {number, file system, maximum}
+                add(Severity::Error, "op.too_large",
+                    what + " is larger than " + fsTypeName(p.fs.type) + " allows (" +
+                        formatSize(maximumSize(p.fs.type, ss)) + ").",
+                    0, {num, fsTypeName(p.fs.type), formatSize(maximumSize(p.fs.type, ss))});
             const std::uint64_t start = p.firstLba * ss;
             if (c_.alignmentBytes && start % c_.alignmentBytes != 0)
                 add(Severity::Warning, "layout.unaligned", what + " does not start on a " + formatSize(c_.alignmentBytes) + " boundary.",

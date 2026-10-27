@@ -53,5 +53,7 @@ ValidationResult validatePlan(const OperationQueue& queue, const ValidationConte
 
 // Minimum partition size WParted accepts for a new file system (bytes).
 std::uint64_t minimumSize(FsType t) noexcept;
+// Largest partition a file system can fill (0 = not checked).
+std::uint64_t maximumSize(FsType t, std::uint32_t sectorSize) noexcept;
 
 }  // namespace wparted
