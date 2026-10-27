@@ -20,13 +20,18 @@ sector_of() { sgdisk -i "$2" "$1" | awk -v k="$3" '$0 ~ k {print $3; exit}'; }
 # --- GPT: delete, create, move (+16 MiB), copy, flag -----------------------------
 img=$W/gpt.img
 truncate -s 256M "$img"
-sgdisk -q -n1:2048:+32M -t1:8300 -c1:first -n2:0:+64M -t2:8300 -c2:data "$img"
-s1=$(sector_of "$img" 1 "First sector"); e1=$(sector_of "$img" 1 "Last sector")
-s2=$(sector_of "$img" 2 "First sector"); e2=$(sector_of "$img" 2 "Last sector")
+s1=2048; e1=67583; s2=67584; e2=198655   # 32 MiB and 64 MiB
+sgdisk -n1:$s1:$e1 -t1:8300 -c1:first -n2:$s2:$e2 -t2:8300 -c2:data "$img" >"$W/sgdisk.txt" 2>&1 ||
+  { cat "$W/sgdisk.txt"; exit 1; }
+for i in 1 2; do
+  sgdisk -i "$i" "$img" | grep -E "First sector|Last sector"
+done
+[[ "$(sector_of "$img" 1 "First sector")" == "$s1" && "$(sector_of "$img" 2 "Last sector")" == "$e2" ]] ||
+  { echo "sgdisk did not create the expected partitions"; sgdisk -p "$img"; exit 1; }
 n2=$((e2 - s2 + 1))
 # Partition 1: a FAT file system that the new partition must not show any more.
 truncate -s $(((e1 - s1 + 1) * 512)) "$W/p1.img"
-mkfs.vfat -n OLDFAT "$W/p1.img" >/dev/null
+mkfs.vfat -F 16 -n OLDFAT "$W/p1.img" >/dev/null
 dd if="$W/p1.img" of="$img" bs=512 seek="$s1" conv=notrunc status=none
 # Partition 2: ext4 with a random payload.
 mkdir "$W/root"
@@ -39,7 +44,8 @@ dd if="$W/p2.img" of="$img" bs=512 seek="$s2" conv=notrunc status=none
 "$TOOL" plan "$img" gpt-demo "$W/plan.json"
 if "$TOOL" apply "$img" "$W/plan.json"; then pass "gpt: plan applied"; else bad "gpt: apply failed"; fi
 
-if sgdisk -v "$img" | tee "$W/verify.txt" | grep -q "No problems found"; then pass "gpt: sgdisk -v reports no problems"
+sgdisk -v "$img" >"$W/verify.txt" 2>&1 || true
+if grep -q "No problems found" "$W/verify.txt"; then pass "gpt: sgdisk -v reports no problems"
 else bad "gpt: sgdisk -v"; cat "$W/verify.txt"; fi
 
 sfdisk --json "$img" >"$W/layout.json"
