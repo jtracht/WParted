@@ -4,6 +4,7 @@
 
 #include <commctrl.h>
 #include <objbase.h>
+#include <shellapi.h>
 #include <shlobj.h>
 
 #include <string>
@@ -43,6 +44,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     wparted::log::info(std::string("WParted ") + WPARTED_VERSION_STRING + " starting (read-only build)");
 
     wparted::ui::MainWindow window;
+    // Like GParted, an image file can be given on the command line (opened read-only).
+    int argc = 0;
+    if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
+        if (argc >= 2) window.setStartupImage(argv[1]);
+        LocalFree(argv);
+    }
     if (!window.create(inst, show)) {
         wparted::log::error("Main window creation failed");
         return 1;

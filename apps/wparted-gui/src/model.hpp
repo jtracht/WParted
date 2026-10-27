@@ -29,9 +29,22 @@ struct DiskView {
     const win::PhysicalDisk* disk = nullptr;
     // False when only Windows volumes are known: gaps are then *unknown*, not free.
     bool tableRead = false;
-    const DiskLayout* layout = nullptr;  // disk->layout or a volumes-only fallback
+    const DiskLayout* layout = nullptr;    // planned layout, disk->layout or a volumes-only fallback
+    const DiskLayout* original = nullptr;  // layout before planned operations (for volume mapping)
     std::vector<Row> rows;
 };
+
+// Windows volume of a partition shown in the view. Planned partitions keep the
+// volume of the partition they originate from; new partitions have none.
+inline const win::VolumeInfo* viewVolume(const DiskView& v, const PartitionEntry& p) {
+    if (!v.disk) return nullptr;
+    if (v.original && p.planId > 0) {
+        for (const auto& op : v.original->partitions)
+            if (op.planId == p.planId) return win::volumeForPartition(*v.disk, op);
+        return nullptr;
+    }
+    return win::volumeForPartition(*v.disk, p);
+}
 
 inline std::vector<Row> flattenSegments(const DiskLayout& layout, const std::vector<Segment>& segs) {
     std::vector<Row> rows;

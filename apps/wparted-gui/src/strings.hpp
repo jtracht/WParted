@@ -26,7 +26,13 @@ enum class S {
     StatusWindows, StatusSystemCritical, StatusMounted, StatusEncrypted, StatusNotReadable,
     InfoTitle, DeviceInfoTitle, AboutTitle, AboutText, FsSupportTitle,
     ColFsDetect, ColFsUsage, ColFsCreate, ColFsGrow, ColFsShrink, ColFsMove, ColFsCopy, ColFsCheck, ColFsLabel, ColFsUuid,
-    ExportOk, ExportFailed, Count_
+    ExportOk, ExportFailed,
+    Cancel, MenuName, MenuOpenImage, MenuSavePlan, PlanningTitle, FormatCleared,
+    DlgNewTitle, DlgResizeTitle, DlgPasteTitle, DlgLabelTitle, DlgNameTitle, DlgFlagsTitle, DlgTableTitle,
+    FieldFreeBefore, FieldNewSize, FieldFreeAfter, FieldAlign, AlignMiB, AlignNone, FieldCreateAs,
+    KindPrimary, KindExtended, KindLogical, FieldFs, FieldLabel, FieldName, FieldTableType, FieldSource,
+    TableWarning, ErrTooLarge, ErrNeedsTable, PendingFmt, ApplyTitle, ApplyNoExec, BtnExportPlan, OpRejected,
+    ImageOpenFailed, CopiedFmt, Count_
 };
 
 void initLanguage();             // Selects the language from the Windows UI language.

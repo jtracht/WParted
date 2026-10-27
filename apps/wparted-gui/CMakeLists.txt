@@ -14,6 +14,8 @@ add_executable(wparted WIN32
     src/disk_map.cpp
     src/theme.cpp
     src/strings.cpp
+    src/form_dialog.cpp
+    src/planner.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/wparted.rc)
 target_include_directories(wparted PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(wparted PRIVATE wparted_win_storage comctl32 comdlg32 shell32 ole32)

@@ -6,12 +6,16 @@
 
 #include <commctrl.h>
 
+#include <map>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 
 #include "model.hpp"
 #include "theme.hpp"
+#include "wparted/core/operations.hpp"
+#include "wparted/core/validation.hpp"
 #include "wparted/win/disk_discovery.hpp"
 
 namespace wparted::ui {
@@ -50,6 +54,33 @@ private:
     void showContextMenu(POINT screenPt);
     bool isDark() const;
 
+    // Planning (planner.cpp). Nothing here writes to a disk.
+    OperationQueue* currentQueue();
+    const win::PhysicalDisk* currentDisk() const;
+    ValidationContext validationContext(ValidationMode mode) const;
+    void refreshView();
+    void updateCommandState();
+    const PartitionEntry* selectedPartition() const;
+    const Row* selectedRowData() const;
+    bool addOperation(Operation op);
+    void planNew();
+    void planDelete();
+    void planResize();
+    void planCopy();
+    void planPaste();
+    void planFormat(FsType fs);
+    void planLabel();
+    void planName();
+    void planFlags();
+    void planSimple(OpType type);
+    void planCreateTable();
+    void showApplySummary();
+    void savePlan();
+    void openImage(const std::wstring& path);
+    void chooseImage();
+    bool saveTextFile(const std::wstring& path, const std::string& text);
+    std::wstring askSavePath(const wchar_t* defaultName, const wchar_t* filter, const wchar_t* ext);
+
     HINSTANCE inst_ = nullptr;
     HWND hwnd_ = nullptr;
     HACCEL accel_ = nullptr;
@@ -70,6 +101,16 @@ private:
     DiskView view_;
     int diskIndex_ = -1;
     int selectedRow_ = -1;
+
+    std::map<std::wstring, OperationQueue> queues_;  // pending operations per device path
+    std::vector<win::PhysicalDisk> images_;           // opened disk image files (read-only)
+    std::wstring pendingImage_;                       // image given on the command line
+    std::wstring copySourceDisk_;
+    std::uint32_t copySource_ = 0;                    // planId of the copied partition
+    HMENU formatMenu_ = nullptr;
+
+public:
+    void setStartupImage(const std::wstring& path) { pendingImage_ = path; }
 };
 
 }  // namespace wparted::ui

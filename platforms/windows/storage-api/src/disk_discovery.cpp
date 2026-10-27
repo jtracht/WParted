@@ -289,7 +289,9 @@ bool isProcessElevated() {
     return ok && e.TokenIsElevated;
 }
 
-std::string PhysicalDisk::displayName() const { return "Disk " + std::to_string(number); }
+std::string PhysicalDisk::displayName() const {
+    return busType == "Image file" ? std::string("Image") : "Disk " + std::to_string(number);
+}
 
 std::string PhysicalDisk::modelName() const {
     std::string m = vendor;

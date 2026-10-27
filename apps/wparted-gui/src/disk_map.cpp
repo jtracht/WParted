@@ -66,7 +66,7 @@ std::vector<int> distribute(const std::vector<std::uint64_t>& weights, int width
 std::wstring rowTitle(const DiskView& v, const Row& r) {
     if (r.kind == Segment::Kind::Unallocated) return v.tableRead ? tr(S::Unallocated) : L"?";
     const auto& p = v.layout->partitions[static_cast<std::size_t>(r.partitionIndex)];
-    if (const auto* vol = win::volumeForPartition(*v.disk, p)) {
+    if (const auto* vol = viewVolume(v, p)) {
         if (!vol->mountPoints.empty()) return vol->mountPoints.front();
     }
     std::wstring t = p.number > 0 ? L"#" + std::to_wstring(p.number) : std::wstring(tr(S::VolumeOnly));
@@ -173,7 +173,7 @@ void paint(HWND h, MapState& s) {
                 } else {
                     const auto& p = s.view->layout->partitions[static_cast<std::size_t>(row.partitionIndex)];
                     fill(dc, box, pal.unused);
-                    const auto* vol = win::volumeForPartition(*s.view->disk, p);
+                    const auto* vol = viewVolume(*s.view, p);
                     if (vol && vol->hasUsage && vol->totalBytes) {
                         RECT used = box;
                         InflateRect(&used, -border, -border);

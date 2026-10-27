@@ -12,7 +12,9 @@
 #include <cstdio>
 #include <string>
 
+#include "commands.hpp"
 #include "strings.hpp"
+#include "wparted/core/json.hpp"
 #include "wparted/core/log.hpp"
 #include "wparted/win/report.hpp"
 #include "wparted_version.h"
@@ -24,29 +26,9 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"WPartedMainWindow";
 constexpr UINT WM_APP_DISCOVERED = WM_APP + 50;
 
-enum : int {
-    IDC_COMBO = 100, IDC_MAP, IDC_LIST, IDC_PENDING, IDC_STATUS, IDC_STATUS_RIGHT, IDC_BANNER, IDC_BANNER_BTN,
-    IDC_BTN_FIRST = 120,  // toolbar buttons map 1:1 to the command ids below
-    IDM_REFRESH = 1000, IDM_RESTART_ADMIN, IDM_QUIT,
-    IDM_UNDO, IDM_CLEAR_OPS, IDM_APPLY_OPS,
-    IDM_DEVICE_INFO, IDM_PENDING_OPS, IDM_THEME_SYSTEM, IDM_THEME_LIGHT, IDM_THEME_DARK, IDM_FS_SUPPORT,
-    IDM_CREATE_TABLE, IDM_EXPORT_REPORT,
-    IDM_NEW, IDM_DELETE, IDM_RESIZE, IDM_COPY, IDM_PASTE, IDM_FORMAT, IDM_FLAGS, IDM_CHECK, IDM_LABEL, IDM_UUID,
-    IDM_PART_INFO,
-    IDM_OPEN_LOGS, IDM_HELP, IDM_ABOUT,
-    IDM_DEVICE_BASE = 2000,
-};
-
-// Commands that modify disks. They exist in the UI to keep the GParted
-// workflow familiar, but stay disabled until the operation engine ships.
-const int kPlannedCommands[] = {IDM_UNDO, IDM_CLEAR_OPS, IDM_APPLY_OPS, IDM_CREATE_TABLE, IDM_NEW, IDM_DELETE,
-                                IDM_RESIZE, IDM_COPY, IDM_PASTE, IDM_FORMAT, IDM_FLAGS, IDM_CHECK, IDM_LABEL, IDM_UUID};
-
-bool isPlanned(int id) {
-    for (int p : kPlannedCommands)
-        if (p == id) return true;
-    return false;
-}
+// Every command now has a (planning) implementation; availability depends on
+// the selection and is computed in MainWindow::updateCommandState().
+bool isPlanned(int) { return false; }
 
 struct ToolButton {
     int command;
@@ -294,6 +276,7 @@ void MainWindow::buildMenu() {
     menu_ = CreateMenu();
     HMENU app = CreatePopupMenu();
     item(app, IDM_REFRESH, S::MenuRefresh);
+    item(app, IDM_OPEN_IMAGE, S::MenuOpenImage);
     devicesMenu_ = CreatePopupMenu();
     AppendMenuW(app, MF_POPUP, reinterpret_cast<UINT_PTR>(devicesMenu_), tr(S::MenuDevices));
     AppendMenuW(app, MF_SEPARATOR, 0, nullptr);
@@ -305,6 +288,8 @@ void MainWindow::buildMenu() {
     item(edit, IDM_UNDO, S::MenuUndo);
     item(edit, IDM_CLEAR_OPS, S::MenuClearOps);
     item(edit, IDM_APPLY_OPS, S::MenuApplyOps);
+    AppendMenuW(edit, MF_SEPARATOR, 0, nullptr);
+    item(edit, IDM_SAVE_PLAN, S::MenuSavePlan);
 
     HMENU view = CreatePopupMenu();
     item(view, IDM_DEVICE_INFO, S::MenuDeviceInfo);
@@ -332,8 +317,15 @@ void MainWindow::buildMenu() {
     item(partitionMenu_, IDM_COPY, S::MenuCopy);
     item(partitionMenu_, IDM_PASTE, S::MenuPaste);
     AppendMenuW(partitionMenu_, MF_SEPARATOR, 0, nullptr);
-    item(partitionMenu_, IDM_FORMAT, S::MenuFormatTo);
+    formatMenu_ = CreatePopupMenu();
+    for (int i = 0; i < kFormatChoiceCount; ++i) {
+        const FsType fs = kFormatChoices[i];
+        AppendMenuW(formatMenu_, MF_STRING, static_cast<UINT_PTR>(IDM_FORMAT_BASE + i),
+                    fs == FsType::Unknown ? tr(S::FormatCleared) : w(fsTypeName(fs)).c_str());
+    }
+    AppendMenuW(partitionMenu_, MF_POPUP, reinterpret_cast<UINT_PTR>(formatMenu_), tr(S::MenuFormatTo));
     AppendMenuW(partitionMenu_, MF_SEPARATOR, 0, nullptr);
+    item(partitionMenu_, IDM_NAME, S::MenuName);
     item(partitionMenu_, IDM_LABEL, S::MenuLabelFs);
     item(partitionMenu_, IDM_UUID, S::MenuNewUuid);
     item(partitionMenu_, IDM_FLAGS, S::MenuManageFlags);
@@ -362,6 +354,8 @@ void MainWindow::buildMenu() {
         {FCONTROL | FVIRTKEY, 'R', IDM_REFRESH}, {FVIRTKEY, VK_F5, IDM_REFRESH}, {FCONTROL | FVIRTKEY, 'Q', IDM_QUIT},
         {FVIRTKEY, VK_F1, IDM_HELP},            {FCONTROL | FVIRTKEY, 'Z', IDM_UNDO},
         {FCONTROL | FVIRTKEY, VK_RETURN, IDM_APPLY_OPS}, {FVIRTKEY, VK_INSERT, IDM_NEW}, {FVIRTKEY, VK_DELETE, IDM_DELETE},
+        {FCONTROL | FVIRTKEY, 'O', IDM_OPEN_IMAGE}, {FCONTROL | FVIRTKEY, 'S', IDM_SAVE_PLAN},
+        {FCONTROL | FVIRTKEY, 'C', IDM_COPY}, {FCONTROL | FVIRTKEY, 'V', IDM_PASTE},
     };
     accel_ = CreateAcceleratorTableW(acc, static_cast<int>(sizeof acc / sizeof acc[0]));
 }
@@ -477,6 +471,16 @@ void MainWindow::onDiscovered(win::DiscoveryResult* result) {
     scanning_ = false;
     std::uint32_t previousDisk = (result_ && diskIndex_ >= 0) ? result_->disks[static_cast<std::size_t>(diskIndex_)].number : 0;
     result_.reset(result);
+    for (const auto& img : images_) result_->disks.push_back(img);  // opened disk images survive a refresh
+    // A plan is only kept if the disk still has exactly the layout it was made for.
+    for (auto it = queues_.begin(); it != queues_.end();) {
+        bool keep = false;
+        for (const auto& d : result_->disks)
+            if (d.path == it->first && d.layoutAvailable && layoutToJson(d.layout) == layoutToJson(it->second.original()))
+                keep = true;
+        if (!keep) log::warn("Discarded pending operations for " + win::narrow(it->first) + ": the disk changed");
+        it = keep ? std::next(it) : queues_.erase(it);
+    }
     fallbackLayouts_.clear();
     for (const auto& d : result_->disks) fallbackLayouts_.push_back(d.layoutAvailable ? DiskLayout{} : win::layoutFromVolumes(d));
     EnableWindow(buttons_[0], TRUE);
@@ -489,26 +493,23 @@ void MainWindow::onDiscovered(win::DiscoveryResult* result) {
     layout();
     selectDisk(index);
     updateStatus();
+    if (!pendingImage_.empty()) {
+        std::wstring img;
+        img.swap(pendingImage_);
+        openImage(img);
+    }
 }
 
 void MainWindow::selectDisk(int index) {
     diskIndex_ = index;
     selectedRow_ = -1;
-    view_ = DiskView{};
     if (result_ && index >= 0 && index < static_cast<int>(result_->disks.size())) {
-        const auto& d = result_->disks[static_cast<std::size_t>(index)];
-        view_.disk = &d;
-        view_.layout = d.layoutAvailable ? &d.layout : &fallbackLayouts_[static_cast<std::size_t>(index)];
-        view_.tableRead = d.layoutAvailable;
-        view_.rows = flattenSegments(*view_.layout, buildSegments(*view_.layout));
         SendMessageW(combo_, CB_SETCURSEL, static_cast<WPARAM>(index), 0);
         for (std::size_t i = 0; i < result_->disks.size(); ++i)
             CheckMenuItem(devicesMenu_, IDM_DEVICE_BASE + static_cast<UINT>(i),
                           MF_BYCOMMAND | (static_cast<int>(i) == index ? MF_CHECKED : MF_UNCHECKED));
     }
-    SendMessageW(map_, DM_SETVIEW, reinterpret_cast<WPARAM>(&palette(isDark())),
-                 reinterpret_cast<LPARAM>(view_.layout ? &view_ : nullptr));
-    fillPartitionList();
+    refreshView();
     selectRow(-1, false);
 }
 
@@ -529,7 +530,7 @@ void MainWindow::fillPartitionList() {
                 cells[ColSize] = sizeText(r.sectorCount * l.sectorSize);
             } else {
                 const auto& p = l.partitions[static_cast<std::size_t>(r.partitionIndex)];
-                const auto* vol = win::volumeForPartition(*view_.disk, p);
+                const auto* vol = viewVolume(view_, p);
                 cells[ColPartition] = indent + (p.kind == PartitionKind::WholeDevice ? std::wstring(L"(whole device)")
                                                 : p.number > 0 ? L"#" + std::to_wstring(p.number)
                                                                : std::wstring(tr(S::VolumeOnly)));
@@ -595,8 +596,7 @@ void MainWindow::selectRow(int row, bool fromMap) {
     } else {
         SendMessageW(map_, DM_SETSELECTION, static_cast<WPARAM>(row), 0);
     }
-    const bool isPartition = row >= 0 && view_.rows[static_cast<std::size_t>(row)].kind == Segment::Kind::Partition;
-    EnableMenuItem(menu_, IDM_PART_INFO, MF_BYCOMMAND | (isPartition ? MF_ENABLED : MF_GRAYED));
+    updateCommandState();
 }
 
 void MainWindow::updateStatus() {
@@ -620,7 +620,7 @@ void MainWindow::showPartitionInfo() {
     if (r.kind != Segment::Kind::Partition) return;
     const auto& l = *view_.layout;
     const auto& p = l.partitions[static_cast<std::size_t>(r.partitionIndex)];
-    const auto* vol = win::volumeForPartition(*view_.disk, p);
+    const auto* vol = viewVolume(view_, p);
     const std::uint64_t ss = l.sectorSize;
     const std::uint64_t startBytes = p.firstLba * ss;
     std::wstring t;
@@ -816,7 +816,10 @@ void MainWindow::showContextMenu(POINT pt) {
 }
 
 void MainWindow::onCommand(int id) {
-    if (isPlanned(id)) return;  // defensive: planned actions have no implementation
+    if (id >= IDM_FORMAT_BASE && id < IDM_FORMAT_BASE + kFormatChoiceCount) {
+        planFormat(kFormatChoices[id - IDM_FORMAT_BASE]);
+        return;
+    }
     if (id >= IDM_DEVICE_BASE && result_ && id < IDM_DEVICE_BASE + static_cast<int>(result_->disks.size())) {
         selectDisk(id - IDM_DEVICE_BASE);
         updateStatus();
@@ -824,6 +827,26 @@ void MainWindow::onCommand(int id) {
     }
     switch (id) {
         case IDM_REFRESH: startDiscovery(); break;
+        case IDM_OPEN_IMAGE: chooseImage(); break;
+        case IDM_SAVE_PLAN: savePlan(); break;
+        case IDM_NEW: planNew(); break;
+        case IDM_DELETE: planDelete(); break;
+        case IDM_RESIZE: planResize(); break;
+        case IDM_COPY: planCopy(); break;
+        case IDM_PASTE: planPaste(); break;
+        case IDM_LABEL: planLabel(); break;
+        case IDM_NAME: planName(); break;
+        case IDM_FLAGS: planFlags(); break;
+        case IDM_CHECK: planSimple(OpType::Check); break;
+        case IDM_UUID: planSimple(OpType::NewUuid); break;
+        case IDM_CREATE_TABLE: planCreateTable(); break;
+        case IDM_UNDO:
+            if (auto* q = currentQueue(); q && q->undoLast()) refreshView();
+            break;
+        case IDM_CLEAR_OPS:
+            if (auto* q = currentQueue()) { q->clear(); refreshView(); }
+            break;
+        case IDM_APPLY_OPS: showApplySummary(); break;
         case IDC_BANNER_BTN:
         case IDM_RESTART_ADMIN: restartElevated(); break;
         case IDM_QUIT: PostMessageW(hwnd_, WM_CLOSE, 0, 0); break;
@@ -919,7 +942,13 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 updateStatus();
                 return 0;
             }
-            onCommand(id);
+            // Exceptions must never cross the window procedure boundary.
+            try {
+                onCommand(id);
+            } catch (const std::exception& e) {
+                log::error(std::string("Command ") + std::to_string(id) + " failed: " + e.what());
+                MessageBoxW(hwnd_, win::widen(e.what()).c_str(), tr(S::AppTitle), MB_ICONERROR);
+            }
             return 0;
         }
         case WM_MENUSELECT: {
