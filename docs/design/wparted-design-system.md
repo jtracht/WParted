@@ -67,7 +67,7 @@ Icons, falling back to Segoe MDL2 Assets; without an icon font, buttons show tex
 | Device selector | Drop-down list of disks and opened images | – | Tab, Alt+↓ | Native combo |
 | Info bar | Warning-coloured strip with action button (e.g. *Restart as Administrator*); hidden for images | visible only when relevant | Tab to button | Native static + button |
 | Device card | Header with device icon, model, size · bus · table · sector sizes and chips (Image, Windows, SSD/HDD, not read) | – | – | Text mirrored in the status bar |
-| Disk map | Rounded segments sized proportionally, file system colour bar on top, usage fill, nested logicals, hatched "unknown" | hover, selected (2 px accent ring), focused | ←/→/Home/End, Enter = information, Shift+F10 = context menu | Window name "Disk map"; UIA provider pending (list mirrors all data) |
+| Disk map | Rounded segments sized proportionally, file system colour bar on top, usage fill, nested logicals, hatched "unknown" | hover, selected (2 px accent ring), focused | ←/→/Home/End, Enter = information, Shift+F10 = context menu | MSAA list, one item per segment ("#1 ESP, fat32, 16.00 MiB"), selection and focus events |
 | Partition list | Report view in a card; file system pills; accent selection; Status column fills the width | selected, hover | ↑/↓, Enter, context menu | Native list view |
 | Details pane (inspector) | Title, status pill, key/value rows, hint (normal or warning) for the selection; scrolls | – | mouse wheel | Static text |
 | Pending operations | Owner-drawn list: risk dot (low → critical: success, accent, caution, danger) and description; validation warnings/errors indented with icon | empty / items / warning / error | Tab, ↑/↓ | Native list box |
@@ -85,7 +85,9 @@ Icons, falling back to Segoe MDL2 Assets; without an icon font, buttons show tex
 
 ## Known gaps
 
-- No UIA provider for the disk map yet (the partition list mirrors all data).
+- The disk map exposes its segments through MSAA (a list with one item per segment: name, state,
+  location, selection and focus events); UI Automation reaches it through the MSAA proxy. A native
+  UIA provider is not implemented.
 - High-contrast mode maps the palette to system colours (`GetSysColor`), but has not been checked
   visually yet (WP-017).
 - All planning texts, validation and partition-table diagnostics and the information dialogs are
