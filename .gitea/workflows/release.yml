@@ -56,6 +56,15 @@ jobs:
             [ -s "dist/$f" ] || { echo "missing artefact $f"; exit 1; }
           done
 
+      # Same files as an Actions artefact (v4 protocol): downloadable through the
+      # authenticated API for the manual real-Windows gate (the instance requires
+      # sign-in for release downloads, also for drafts).
+      - name: Upload release files as workflow artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: dist/*
+
       - name: Create draft Gitea release and upload artefacts
         env:
           TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}

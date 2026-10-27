@@ -15,7 +15,7 @@
     {"key": "WP-007", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Branch protection with required checks"},
     {"key": "WP-008", "area": "CI/CD", "weight": 1, "state": "in_progress", "title": "GitHub push mirror"},
     {"key": "WP-009", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Code signing"},
-    {"key": "WP-016", "area": "CI/CD", "weight": 2, "state": "implemented", "title": "Portable packaging and v0.1 release"},
+    {"key": "WP-016", "area": "CI/CD", "weight": 2, "state": "released", "title": "Portable packaging and v0.1 release"},
 
     {"key": "WP-010", "area": "Partition Engine", "weight": 4, "state": "implemented", "title": "GPT/MBR parser"},
     {"key": "WP-020", "area": "Partition Engine", "weight": 5, "state": "planned", "title": "Operation queue"},

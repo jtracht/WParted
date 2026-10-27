@@ -12,7 +12,8 @@
    writes `WParted-v<version>-checksums.sha256` and `WParted-v<version>-sbom.json`, creates a source
    ZIP and a **draft** Gitea release with all artefacts. It fails - and creates no release - if any
    step fails or an artefact is missing.
-5. **Manual real-Windows gate:** the draft artefacts are downloaded on a real Windows machine, the
+5. **Manual real-Windows gate:** the draft artefacts (also attached to the release run as workflow
+   artefact `release-files`, downloadable via the authenticated API) are downloaded on a real Windows machine, the
    checksums verified, `wparted.exe` started and `wparted-cli version`, `list --json` and
    `inspect-image` run. Only then the draft is published. Results go into
    `docs/compatibility/windows-support-matrix.md`.

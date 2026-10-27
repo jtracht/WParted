@@ -32,6 +32,9 @@ First public pre-release: a **read-only** disk explorer. It cannot modify disks.
 - The build contains no code path that writes to disks (enforced in CI).
 
 ### Known limitations
+- The binaries attached to the release were not run on a real Windows machine before publication
+  (maintainer decision). They passed all tests and a GUI start-up smoke test under Wine in the release
+  pipeline; an equivalent build (same toolchain, commit 8385354) was run on Windows 11 x64 unelevated.
 - **Administrator mode is not yet verified on real hardware.** Reading raw partition tables (WParted →
   Restart as Administrator, or an elevated `wparted-cli list`) is covered by tests on synthetic disk
   images and under Wine, but has not been checked against real disks (tracked in WP-014). Without
