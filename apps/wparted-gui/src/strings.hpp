@@ -35,7 +35,17 @@ enum class S {
     ImageOpenFailed, CopiedFmt,
     SectionPartitions, SectionPending, InsType, InsSize, InsUsage, InsRange, InsAlign, InsUuid, InsDevice, InsTable,
     InsPartitions, InsSectors, InsYes, InsNo, HintSelect, HintUnallocated, HintPartition, HintCritical, HintPlanned,
-    HintImage, MenuRescue, RescueTitle, RescueRunning, RescueNone, RescueHint, RescueAligned, RescueUnaligned, BtnSaveDetails, Count_
+    HintImage, MenuRescue, RescueTitle, RescueRunning, RescueNone, RescueHint, RescueAligned, RescueUnaligned, BtnSaveDetails,
+    OpCreateTable, OpCreate, OpDelete, OpResize, OpCopy, OpFormat, OpCheck, OpLabel, OpName, OpFlags, OpUuid,
+    OpPartRef, OpExtRef, OpPartUnknown, KindPrimaryAdj, KindLogicalAdj, KindExtendedAdj, FsUnformatted,
+    RiskLow, RiskMedium, RiskHigh, RiskCritical, RiskLabel,
+    DiagOperation, DiagSourceErrors, DiagWriteProtected, DiagManaged, DiagIdentityMismatch, DiagIdentityUnknown,
+    DiagExecUnavailable, DiagShrinkBelowUsed, DiagCapability, DiagSystemWindows, DiagSystemType, DiagBusy,
+    DiagEncrypted, DiagEncryptedFormat, DiagOutOfBounds, DiagMbr2TiB, DiagTooSmall, DiagUnaligned,
+    DiagPhysUnaligned, DiagTooManyPrimary, DiagMultipleExtended, DiagLogicalNoExt, DiagMultipleBootable,
+    DiagLogicalOutside, DiagNoRoomEbr, DiagOverlapPrimary, DiagOverlapLogical,
+    ActCreate, ActGrow, ActShrink, ActMove, ActCopy, ActCheck, ActLabel, ActUuid,
+    SupSupported, SupLimited, SupOffline, SupExperimental, SupReadOnly, SupUnsupported, SupPlanned, Count_
 };
 
 void initLanguage();             // Selects the language from the Windows UI language.

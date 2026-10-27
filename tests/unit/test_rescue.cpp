@@ -163,3 +163,46 @@ TEST("validation: disks managed by Windows (LDM, Storage Spaces) are refused") {
     CHECK(managed);
     CHECK(critical);
 }
+
+TEST("validation: diagnostics carry operation number and arguments for translations") {
+    Image im(64 * MiB, 512);
+    im.gpt({{kLinux, 2048, 4095, "a", 0}, {kLinux, 4096, 8191, "b", 0}});
+    DiskLayout l = parse(im);
+    OperationQueue q(l, identityOf(l, "S", "M"));
+    Operation del;
+    del.type = OpType::DeletePartition;
+    del.target = 2;
+    Operation mk;
+    mk.type = OpType::CreatePartition;
+    mk.firstLba = 4096;
+    mk.sectorCount = 4096;
+    mk.fs = FsType::Ntfs;
+    std::string err;
+    REQUIRE(q.add(del, err));
+    REQUIRE(q.add(mk, err));
+    ValidationContext ctx;
+    ctx.state[1].mounted = true;
+    Operation fmt;
+    fmt.type = OpType::Format;
+    fmt.target = 1;
+    fmt.fs = FsType::Ext4;
+    REQUIRE(q.add(fmt, err));
+    bool capability = false, busy = false;
+    for (const auto& d : validatePlan(q, ctx).diagnostics) {
+        if (d.code == "op.capability" && d.operation == 2) {
+            REQUIRE(d.args.size() == 3);
+            CHECK_EQ(d.args[0], std::string("create"));
+            CHECK_EQ(d.args[1], std::string("ntfs"));
+            CHECK_EQ(d.args[2], std::string(supportName(capabilitiesFor(FsType::Ntfs).create)));
+            capability = true;
+        }
+        if (d.code == "op.busy") {
+            CHECK_EQ(d.operation, 3);
+            REQUIRE(d.args.size() == 1);
+            CHECK_EQ(d.args[0], std::string("1"));
+            busy = true;
+        }
+    }
+    CHECK(capability);
+    CHECK(busy);
+}

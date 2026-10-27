@@ -13,7 +13,9 @@
 
 #include <algorithm>
 #include <cwchar>
+#include <initializer_list>
 #include <memory>
+#include <vector>
 
 #include "commands.hpp"
 #include "form_dialog.hpp"
@@ -39,7 +41,141 @@ constexpr std::uint64_t kMiB = 1024 * 1024;
 
 std::wstring w(const std::string& s) { return win::widen(s); }
 
-std::wstring fsChoiceName(FsType fs) { return fs == FsType::Unknown ? std::wstring(L"unformatted") : w(fsTypeName(fs)); }
+std::wstring fsChoiceName(FsType fs) { return fs == FsType::Unknown ? std::wstring(tr(S::FsUnformatted)) : w(fsTypeName(fs)); }
+
+// Replaces %1..%9 in a translated pattern.
+std::wstring formatText(S pattern, std::initializer_list<std::wstring> args) {
+    std::wstring out;
+    const std::vector<std::wstring> a(args);
+    for (const wchar_t* p = tr(pattern); *p; ++p) {
+        if (p[0] == L'%' && p[1] >= L'1' && p[1] <= L'9' && static_cast<std::size_t>(p[1] - L'1') < a.size()) {
+            out += a[static_cast<std::size_t>(p[1] - L'1')];
+            ++p;
+        } else {
+            out += *p;
+        }
+    }
+    return out;
+}
+
+const wchar_t* riskText(Risk r) {
+    switch (r) {
+        case Risk::Low: return tr(S::RiskLow);
+        case Risk::Medium: return tr(S::RiskMedium);
+        case Risk::High: return tr(S::RiskHigh);
+        case Risk::Critical: return tr(S::RiskCritical);
+    }
+    return L"";
+}
+
+// Localised counterpart of core describe() (which stays English for logs,
+// CLI and plan files).
+std::wstring describeOp(const Operation& op, const DiskLayout& before) {
+    const std::uint32_t ss = before.sectorSize;
+    const auto size = [ss](std::uint64_t sectors) { return w(formatSize(sectors * ss)); };
+    std::wstring target = tr(S::OpPartUnknown);
+    if (const PartitionEntry* t = findPlanned(before, op.target))
+        target = t->kind == PartitionKind::Extended
+                     ? formatText(S::OpExtRef, {std::to_wstring(t->number), size(t->sectorCount)})
+                     : formatText(S::OpPartRef, {std::to_wstring(t->number), fsChoiceName(t->fs.type), size(t->sectorCount)});
+    switch (op.type) {
+        case OpType::CreateTable: return formatText(S::OpCreateTable, {w(tableTypeName(op.table))});
+        case OpType::CreatePartition: {
+            const S kind = op.kind == PartitionKind::Logical    ? S::KindLogicalAdj
+                           : op.kind == PartitionKind::Extended ? S::KindExtendedAdj
+                                                                : S::KindPrimaryAdj;
+            return formatText(S::OpCreate, {tr(kind), op.kind == PartitionKind::Extended ? tr(S::KindExtendedAdj)
+                                                                                           : fsChoiceName(op.fs),
+                                            size(op.sectorCount), std::to_wstring(op.firstLba)});
+        }
+        case OpType::DeletePartition: return formatText(S::OpDelete, {target});
+        case OpType::ResizeMove:
+            return formatText(S::OpResize, {target, std::to_wstring(op.firstLba),
+                                            std::to_wstring(op.firstLba + op.sectorCount - 1), size(op.sectorCount)});
+        case OpType::Copy: return formatText(S::OpCopy, {target, std::to_wstring(op.firstLba), size(op.sectorCount)});
+        case OpType::Format: return formatText(S::OpFormat, {target, fsChoiceName(op.fs)});
+        case OpType::Check: return formatText(S::OpCheck, {target});
+        case OpType::SetLabel: return formatText(S::OpLabel, {target, w(op.label)});
+        case OpType::SetName: return formatText(S::OpName, {target, w(op.name)});
+        case OpType::SetFlags: {
+            std::wstring flags;
+            for (const auto& f : op.flagsOn) flags += L" +" + w(f);
+            for (const auto& f : op.flagsOff) flags += L" -" + w(f);
+            return formatText(S::OpFlags, {target, flags.empty() ? flags : flags.substr(1)});
+        }
+        case OpType::NewUuid: return formatText(S::OpUuid, {target});
+    }
+    return w(describe(op, before));
+}
+
+// Translates a validation diagnostic by its code; unknown codes or argument
+// counts fall back to the English message from the core.
+std::wstring diagText(const Diagnostic& d) {
+    struct Entry { const char* code; S text; std::size_t args; };
+    static const Entry plain[] = {
+        {"plan.source_errors", S::DiagSourceErrors, 0}, {"device.write_protected", S::DiagWriteProtected, 0},
+        {"device.managed_by_windows", S::DiagManaged, 0}, {"plan.identity_mismatch", S::DiagIdentityMismatch, 1},
+        {"plan.identity_unknown", S::DiagIdentityUnknown, 0}, {"execution.unavailable", S::DiagExecUnavailable, 0},
+        {"op.shrink_below_used", S::DiagShrinkBelowUsed, 1}, {"op.busy", S::DiagBusy, 1},
+        {"op.encrypted", S::DiagEncrypted, 1}, {"op.encrypted_format", S::DiagEncryptedFormat, 1},
+        {"layout.out_of_bounds", S::DiagOutOfBounds, 1}, {"mbr.limit_2tib", S::DiagMbr2TiB, 1},
+        {"op.too_small", S::DiagTooSmall, 3}, {"layout.unaligned", S::DiagUnaligned, 2},
+        {"layout.physical_unaligned", S::DiagPhysUnaligned, 1}, {"layout.too_many_primary", S::DiagTooManyPrimary, 0},
+        {"layout.multiple_extended", S::DiagMultipleExtended, 0}, {"layout.logical_without_extended", S::DiagLogicalNoExt, 0},
+        {"mbr.multiple_bootable", S::DiagMultipleBootable, 0}, {"layout.logical_outside_extended", S::DiagLogicalOutside, 1},
+        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1},
+    };
+    std::vector<std::wstring> a;
+    for (const auto& s : d.args) a.push_back(w(s));
+    auto fmt = [&](S text) {
+        std::initializer_list<std::wstring> none{};
+        switch (a.size()) {
+            case 0: return formatText(text, none);
+            case 1: return formatText(text, {a[0]});
+            case 2: return formatText(text, {a[0], a[1]});
+            default: return formatText(text, {a[0], a[1], a[2]});
+        }
+    };
+    std::wstring body;
+    for (const auto& e : plain)
+        if (d.code == e.code && d.args.size() == e.args) body = fmt(e.text);
+    if (d.code == "op.system_critical" && a.size() == 2 && a[0] == L"windows") body = formatText(S::DiagSystemWindows, {a[1]});
+    if (d.code == "op.system_critical" && a.size() == 3 && a[0] == L"type") body = formatText(S::DiagSystemType, {a[1], a[2]});
+    if (d.code == "layout.overlap" && a.size() == 3)
+        body = formatText(a[0] == L"logical" ? S::DiagOverlapLogical : S::DiagOverlapPrimary, {a[1], a[2]});
+    if (d.code == "op.capability" && a.size() == 3) {
+        static const std::pair<const wchar_t*, S> actions[] = {{L"create", S::ActCreate}, {L"grow", S::ActGrow},
+            {L"shrink", S::ActShrink}, {L"move", S::ActMove}, {L"copy", S::ActCopy}, {L"check", S::ActCheck},
+            {L"label", S::ActLabel}, {L"uuid", S::ActUuid}};
+        static const std::pair<const char*, S> levels[] = {{"Supported", S::SupSupported},
+            {"Supported with limitations", S::SupLimited}, {"Requires offline mode", S::SupOffline},
+            {"Experimental", S::SupExperimental}, {"Read-only", S::SupReadOnly}, {"Unsupported", S::SupUnsupported},
+            {"Planned", S::SupPlanned}};
+        const wchar_t* act = nullptr;
+        const wchar_t* level = nullptr;
+        for (const auto& x : actions)
+            if (a[0] == x.first) act = tr(x.second);
+        for (const auto& x : levels)
+            if (d.args[2] == x.first) level = tr(x.second);
+        if (act && level) body = formatText(S::DiagCapability, {act, a[1], level});
+    }
+    if (body.empty()) return w(d.message);
+    return d.operation > 0 ? formatText(S::DiagOperation, {std::to_wstring(d.operation), body}) : body;
+}
+
+// One line per operation, each described against the layout before it
+// (same walk as OperationQueue::descriptions()).
+std::vector<std::wstring> describeQueue(const OperationQueue& q) {
+    std::vector<std::wstring> out;
+    DiskLayout l = q.original();
+    std::uint32_t next = static_cast<std::uint32_t>(l.partitions.size()) + 1;
+    std::string err;
+    for (Operation op : q.operations()) {
+        out.push_back(describeOp(op, l));
+        simulate(op, l, next, err);
+    }
+    return out;
+}
 
 std::uint64_t ceilDiv(std::uint64_t a, std::uint64_t b) { return (a + b - 1) / b; }
 
@@ -186,17 +322,17 @@ void MainWindow::refreshView() {
     SendMessageW(pending_, LB_RESETCONTENT, 0, 0);
     int errors = 0, warnings = 0;
     if (q && !q->empty()) {
-        const auto descriptions = q->descriptions();
+        const auto descriptions = describeQueue(*q);
         for (std::size_t i = 0; i < descriptions.size(); ++i) {
-            std::wstring line = std::to_wstring(i + 1) + L".  " + w(descriptions[i]) + L"   ·  " +
-                                w(riskName(riskOf(q->operations()[i])));
+            std::wstring line = std::to_wstring(i + 1) + L".  " + descriptions[i] + L"   ·  " +
+                                formatText(S::RiskLabel, {riskText(riskOf(q->operations()[i]))});
             const LRESULT idx = SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
             SendMessageW(pending_, LB_SETITEMDATA, static_cast<WPARAM>(idx), static_cast<LPARAM>(riskOf(q->operations()[i])) + 1);
         }
         const ValidationResult vr = validatePlan(*q, validationContext(ValidationMode::Planning));
         for (const auto& diag : vr.diagnostics) {
             (diag.severity == Severity::Error ? errors : warnings)++;
-            const std::wstring line = w(diag.message);
+            const std::wstring line = diagText(diag);
             const LRESULT idx = SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
             SendMessageW(pending_, LB_SETITEMDATA, static_cast<WPARAM>(idx), diag.severity == Severity::Error ? 11 : 10);
         }
@@ -585,12 +721,13 @@ void MainWindow::showApplySummary() {
     if (!q || q->empty()) return;
     const ValidationResult vr = validatePlan(*q, validationContext(ValidationMode::Execution));
     std::wstring text;
-    const auto descriptions = q->descriptions();
+    const auto descriptions = describeQueue(*q);
     for (std::size_t i = 0; i < descriptions.size(); ++i)
-        text += std::to_wstring(i + 1) + L". [" + w(riskName(riskOf(q->operations()[i]))) + L"] " + w(descriptions[i]) + L"\n";
+        text += std::to_wstring(i + 1) + L". [" + formatText(S::RiskLabel, {riskText(riskOf(q->operations()[i]))}) + L"] " +
+                descriptions[i] + L"\n";
     text += L"\n";
     for (const auto& d : vr.diagnostics)
-        text += std::wstring(d.severity == Severity::Error ? L"✖ " : L"⚠ ") + w(d.message) + L"\n";
+        text += std::wstring(d.severity == Severity::Error ? L"✖ " : L"⚠ ") + diagText(d) + L"\n";
     const win::PhysicalDisk* d = currentDisk();
     std::wstring head = std::wstring(tr(S::ApplyTitle)) + L": " + (d ? w(d->modelName()) : L"") +
                        (d && !d->serial.empty() ? L" (" + w(d->serial) + L")" : L"");

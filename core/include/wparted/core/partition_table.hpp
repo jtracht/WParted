@@ -31,6 +31,11 @@ struct Diagnostic {
     Severity severity;
     std::string code;     // Stable identifier, e.g. "gpt.primary_header_crc".
     std::string message;  // Human-readable English text.
+    // Structured form for translations (validation diagnostics): 1-based
+    // operation number (0 = whole plan/layout) and the values the message
+    // was built from, in the order documented per code in validation.cpp.
+    int operation = 0;
+    std::vector<std::string> args;
 };
 
 struct PartitionEntry {

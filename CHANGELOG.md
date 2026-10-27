@@ -14,6 +14,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Operation log model (plan → steps with status) with JSON and escaped HTML export; *Save details
   (HTML)…* in the Apply summary.
 - Validation refuses plans on disks managed by Windows (dynamic disks, Storage Spaces, spanned volumes).
+- Validation diagnostics carry the operation number and their parameters; the GUI shows operations,
+  risks and validation messages in the UI language (English/German).
+- High-contrast mode: the GUI uses the system colours.
+- Project website (EN/DE) generated from the repository, checked in CI; not deployed yet.
 
 ## [0.1.0-alpha] – 2026-10-27
 

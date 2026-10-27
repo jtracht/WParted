@@ -85,7 +85,11 @@ Icons, falling back to Segoe MDL2 Assets; without an icon font, buttons show tex
 
 ## Known gaps
 
-No UIA provider for the disk map yet; high-contrast mode maps the palette to system colours
-(`GetSysColor`) but has not been checked visually yet (WP-017); no reduced-motion setting needed until
-animations exist. Dark mode for native controls
-and the menu bar uses undocumented uxtheme ordinals on Windows 10 1809+ and is skipped elsewhere.
+- No UIA provider for the disk map yet (the partition list mirrors all data).
+- High-contrast mode maps the palette to system colours (`GetSysColor`), but has not been checked
+  visually yet (WP-017).
+- Planning texts (operations, risks, validation messages) are translated in the GUI; partition-table
+  diagnostics in *Device Information* are still English.
+- Dark mode for native controls and the menu bar uses undocumented uxtheme ordinals on Windows 10
+  1809+ and is skipped elsewhere.
+- No reduced-motion setting needed until animations exist.
