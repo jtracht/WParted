@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(WParted
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "WParted - Windows Partition Editor"
     HOMEPAGE_URL "https://git.tracht-digital.de/jtracht/WParted"
     LANGUAGES CXX)

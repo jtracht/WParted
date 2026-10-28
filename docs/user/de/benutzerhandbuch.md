@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted Benutzerhandbuch (v0.1.0-alpha; Planung und Rettung: Entwicklungs-Builds von v0.2)
+# WParted Benutzerhandbuch (v0.3.0-alpha)
 
 ## Was ist WParted?
 
@@ -31,7 +31,7 @@ starten*).
 | Ausstehende Operationen | Die geplanten Änderungen in Reihenfolge mit Risiko und Prüfstatus (Entwicklungs-Builds). |
 | Statuszeile | Suchergebnis, gefundene Tabellenwarnungen und ob WParted mit Administratorrechten läuft. |
 
-## Operationen planen (Entwicklungs-Builds von v0.2)
+## Operationen planen
 
 Entwicklungs-Builds können Änderungen wie in GParted **planen**. Es wird nichts geschrieben: Diese
 Version kann Operationen nicht ausführen, *Anwenden* zeigt nur die Prüfungen.
@@ -71,9 +71,9 @@ Auf Images möglich:
 | | erstellen | vergrößern | verkleinern | verschieben / kopieren | prüfen | Bezeichnung | neue UUID |
 |---|---|---|---|---|---|---|---|
 | FAT16 / FAT32 | ✓ | ✓ | ✓ (Daten werden umgelagert) | ✓ | ✓ nur lesend | ✓ | ✓ |
-| NTFS | – | ✓ | ✓ wenn der Bereich hinter dem neuen Ende frei ist | ✓ | – | ✓ | ✓ |
-| exFAT | ✓ | – | – | ✓ | – | ✓ | ✓ |
-| ext2 / ext3 / ext4 | ✓ (Entwicklungs-Builds) | ✓ innerhalb der Deskriptorblöcke (Entwicklungs-Builds) | ✓ wenn der Bereich hinter dem neuen Ende frei ist (Entwicklungs-Builds) | ✓ | ✓ nur lesend (Entwicklungs-Builds) | ✓ | ✓ |
+| NTFS | ✓ vereinfachte Systemdateien¹ | ✓ | ✓ wenn der Bereich hinter dem neuen Ende frei ist | ✓ | ✓ nur lesend | ✓ | ✓ |
+| exFAT | ✓ | ✓ solange die FAT Platz hat² | ✓ wenn der Bereich hinter dem neuen Ende frei ist | ✓ | – | ✓ | ✓ |
+| ext2 / ext3 / ext4 | ✓ ohne Metadaten-Prüfsummen | ✓ innerhalb der Deskriptorblöcke | ✓ wenn der Bereich hinter dem neuen Ende frei ist | ✓ | ✓ nur lesend | ✓ | ✓ |
 | Linux-Swap | – | – | – | ✓ | – | ✓ | ✓ |
 | andere | – | – | – | verschieben ✓, kopieren wo sicher | – | – | – |
 
@@ -83,10 +83,13 @@ vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, be
 wird – ebenso das Verkleinern von NTFS mit Daten hinter dem neuen Ende und Dateisysteme mit Fehlern.
 Physische Datenträger beschreibt diese Version nie.
 
-Entwicklungs-Builds nach 0.2 verschieben auch erweiterte Partitionen (ihre Grenzen; die logischen
+¹ Mit ntfs-3g geprüft; chkdsk von Windows hat es noch nicht geprüft und ergänzt ggf. `$Secure`, `$Extend`
+und die Großbuchstabentabelle. ² Von WParted erstellte exFAT-Volumes lassen Platz zum Wachsen.
+
+Auch erweiterte Partitionen lassen sich verschieben (ihre Grenzen; die logischen
 Partitionen bleiben, wo sie sind).
 
-### Unterbrochene Ausführungen (Entwicklungs-Builds nach 0.2)
+### Unterbrochene Ausführungen
 
 Während WParted einen Plan anwendet, führt es ein Journal neben dem Image (`<Image>.wparted-journal`).
 Fallen Programm, Rechner oder Strom aus oder brechen Sie während eines Verschiebens ab, zeigt das
@@ -104,16 +107,19 @@ Journal, wo die Ausführung stehen geblieben ist:
 *Journal verwerfen* (bzw. `--discard`) löscht nur das Journal, nie das Image. Einzelheiten:
 [Fehlerfälle](../../architecture/failure-modes.md) (englisch).
 
-## Datenrettung (nur lesend)
+## Datenrettung
 
 *Gerät → Datenrettung versuchen* durchsucht den nicht zugeordneten Bereich des gewählten Datenträgers oder
 Abbilds nach Dateisystemen, die keine Partition mehr abdeckt (z. B. nach dem Löschen einer Partition).
 Geprüft werden 1-MiB-Schritte und alte Zylindergrenzen; die Suche läuft im Hintergrund und liest nur.
 
 Das Ergebnis nennt Startsektor, Dateisystem, Größe, Bezeichnung und ob der Beginn MiB-ausgerichtet ist.
-Die Wiederherstellung ist **nicht automatisiert**: Sie können in diesem Bereich eine *neue* Partition
-planen und prüfen; sie wird aber in ganzen MiB platziert und passt nur zu einem Dateisystem mit
-MiB-ausgerichtetem Beginn. Für physische Datenträger sind Administratorrechte nötig.
+**Zum Plan hinzufügen** legt die Partitionen genau um die gefundenen Dateisysteme neu an (auch bei
+nicht MiB-ausgerichtetem Beginn). In ihnen wird nichts geschrieben; nach dem Schreiben der Tabelle wird
+jedes Dateisystem erneut erkannt und geprüft. Prüfen Sie den Plan, behalten Sie eine Kopie und wenden Sie
+ihn dann an (Image-Dateien) – auf der Kommandozeile mit `wparted-cli rescue-scan-image <Image> --plan
+rettung.json` und `apply-plan`. Für physische Datenträger sind Administratorrechte nötig; auf echter
+Hardware wurde der Scan noch nicht ausprobiert.
 
 ## Nützliche Funktionen
 

@@ -8,9 +8,10 @@ schema: FAQPage
 <details open><summary>Ist WParted kostenlos?</summary>
 <p>Ja. WParted ist freie Software unter der Lizenz GPL-2.0-or-later. Eine kostenpflichtige Ausgabe gibt es nicht.</p></details>
 <details open><summary>Kann WParted Partitionen verkleinern, verschieben oder löschen?</summary>
-<p>Auf Image-Dateien ja: Version 0.2 erstellt, löscht, verschiebt, kopiert und ändert dort die Größe von
-Partitionen (FAT- und NTFS-Dateisysteme werden mit angepasst). Auf physischen Datenträgern plant und
-prüft sie, führt aber noch nicht aus.</p></details>
+<p>Auf Image-Dateien ja: Version 0.3 erstellt, löscht, verschiebt, kopiert und ändert dort die Größe von
+Partitionen und erstellt bzw. ändert FAT-, exFAT-, NTFS- und ext2/3/4-Dateisysteme (mit Einschränkungen).
+Ein unterbrochenes Verschieben lässt sich fortsetzen. Auf physischen Datenträgern plant und prüft sie,
+führt aber noch nicht aus.</p></details>
 <details open><summary>Verändert WParted meine Datenträger?</summary>
 <p>Nein. Die aktuelle Version liest physische Datenträger nur; die Continuous Integration lehnt jeden Code
 ab, der auf ein Gerät schreiben würde. Geschrieben wird nur in Image-Dateien, die Sie öffnen und zweimal
@@ -25,7 +26,8 @@ GParted-Code.</p></details>
 <p>Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM und weitere Dateisysteme und zeigt ihre Bezeichnungen.
 Änderungen erfordern den geplanten Offline-Modus.</p></details>
 <details open><summary>Kann WParted eine gelöschte Partition wiederherstellen?</summary>
-<p>Version 0.2 enthält einen nur lesenden Rettungs-Scan, der Dateisysteme im nicht zugeordneten
-Bereich findet. Die Wiederherstellung selbst ist noch nicht automatisiert.</p></details>
+<p>Version 0.3 findet mit einem nur lesenden Scan Dateisysteme im nicht zugeordneten Bereich und kann die
+Partitionen um sie herum in einen Plan aufnehmen; in ihnen wird nichts geschrieben. Auf Image-Dateien lässt
+sich der Plan anwenden.</p></details>
 <details open><summary>Sammelt WParted Daten oder braucht es eine Internetverbindung?</summary>
 <p>Nein. WParted hat keine Telemetrie, verbindet sich nicht mit dem Netzwerk und braucht kein Konto.</p></details>

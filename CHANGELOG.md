@@ -6,6 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0-alpha] – 2026-10-28
+
+Third pre-release: file systems, data rescue and resumable executions on **disk image files**.
+Physical disks are still never written.
+
 ### Added
 - **Interrupted executions can be resumed.** A journal next to the image records the plan and the
   progress; after a crash, power loss or cancel during a block move or between operations, WParted
@@ -21,6 +26,19 @@ versions follow [Semantic Versioning](https://semver.org/).
   file are shown; new validation rules `op.bitlocker_active`, `op.bitlocker_unknown`,
   `op.bitlocker_recovery` and `op.bcd_offset` (moving the start of the Windows or boot-manager
   partition on msdos disks breaks booting).
+- **NTFS create** (NTFS 3.1, simplified system files) and a **read-only NTFS check** (records,
+  `$MFTMirr`, every referenced cluster marked in `$Bitmap`, no cluster used twice). Verified in CI:
+  ntfsfix, ntfsls and `ntfsresize --check` accept volumes WParted creates, ntfs-3g writes files into
+  them, and they stay consistent after growing and shrinking; the WParted check is clean on mkntfs
+  volumes.
+- **exFAT grow and shrink** (the FAT may use the space in front of the cluster heap; shrinking needs a
+  free tail). exFAT volumes WParted creates align FAT and cluster heap to 1 MiB from 32 MiB on, which
+  leaves room to grow. Verified with fsck.exfat on WParted- and mkfs.exfat-made volumes.
+- **Lost partitions can be recreated** from the rescue scan: *Add to the plan* in the GUI,
+  `wparted-cli rescue-scan-image --plan`. The partition is recreated exactly around the file system,
+  nothing inside it is written, and the file system is detected and checked afterwards. CI: ext4,
+  NTFS and FAT32 whose table entries were deleted with sgdisk are recreated at their sectors and pass
+  e2fsck, `ntfsresize --check` and fsck.fat with intact payloads.
 - CI builds Windows on ARM64 binaries with llvm-mingw (not run: no ARM64 Windows in CI).
 
 ### Changed
@@ -30,8 +48,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 - ext: no data relocation when shrinking; growing beyond the existing group descriptor blocks, and
   meta_bg, bigalloc, sparse_super2, MMP and external journals are refused. File systems created by
   WParted have no metadata checksums.
+- NTFS created by WParted has not been checked by Windows' chkdsk; it uses version-1.2 standard
+  information without security ids, an empty `$Secure` and `$Extend`, and an up-case table built from
+  the Unicode simple mappings of the common scripts – Windows may complete these on first use.
+- exFAT cannot grow beyond the space in front of the cluster heap; no exFAT check yet. No data is
+  relocated when shrinking NTFS, exFAT or ext.
 - The BitLocker state is only available to administrators; it has not been checked on a machine with
-  BitLocker. ARM64 binaries have not been run.
+  BitLocker. ARM64 binaries have not been run. Windows 7–10 and administrator mode are not verified.
+- The release binaries were **not run on a real Windows machine before publication** (maintainer
+  decision for alpha releases); equivalent MSVC builds were tested on Windows 11 x64 (unelevated):
+  creating and growing NTFS, ext4 and exFAT on image files with `wparted-cli`, a full rescue cycle,
+  the resume dialog and the rescue dialog in the GUI.
+- Only disk image files can be changed; physical disks are planned and validated only.
 
 ## [0.2.0-alpha] – 2026-10-28
 

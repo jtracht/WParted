@@ -5,8 +5,9 @@
 to Windows 11). Its long-term goal is functional parity with [GParted](https://gparted.org) where this is
 technically safe on Windows, with a familiar layout, a modern Windows UI and strict data-safety rules.
 
-> **Status: v0.2.0-alpha (pre-release).** WParted shows disks, partition tables, file systems and
-> volumes, plans changes GParted-style for every disk and **executes plans on disk image files only**.
+> **Status: v0.3.0-alpha (pre-release).** WParted shows disks, partition tables, file systems and
+> volumes, plans changes GParted-style for every disk and **executes plans on disk image files only**:
+> partitions, FAT/exFAT/NTFS/ext2-4 file systems, data rescue, and resuming after an interruption.
 > **Physical disks are never written** by this version (see [Roadmap](ROADMAP.md)).
 
 WParted is an independent project. It is not affiliated with or endorsed by the GParted or GNOME projects.

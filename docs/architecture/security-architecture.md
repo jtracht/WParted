@@ -36,7 +36,7 @@
   file executor).
 - End-to-end test verifies that image analysis leaves the image byte-identical (SHA-256).
 
-## Writing to disk image files (v0.2)
+## Writing to disk image files (since v0.2)
 
 `core/src/executor.cpp` applies validated plans to **regular image files** only:
 

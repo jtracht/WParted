@@ -218,6 +218,7 @@ def main():
             "that follows the GParted workflow. Native Win32 program, portable, no telemetry.", "",
             f"- Latest release: {ctx['version']} (pre-release): plans partition operations for every disk and applies them to disk image files only.",
             "- Physical disks are never written by this version; image files are written after two confirmations, every step is read back.",
+            "- On image files: FAT, exFAT, NTFS and ext2/3/4 can be created and resized (with limitations), lost partitions found by the rescue scan can be recreated, and an interrupted execution can be resumed from its journal.",
             "- Verified on Windows 11 x64; Windows 7 to 10 are build targets, not yet verified.",
             f"- Progress towards 1.0: {overall:.0f} % (weighted, from status/progress.json).",
             f"- Source, issues and releases: {REPO_URL}", "", "## Pages", ""]

@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted user guide (v0.1.0-alpha; planning and rescue: development builds of v0.2)
+# WParted user guide (v0.3.0-alpha)
 
 ## What is WParted?
 
@@ -30,7 +30,7 @@ between them as **unknown (hatched)**. To read the real partition tables, click
 | Pending operations | The planned changes in order, with risk and validation status (development builds). |
 | Status line | Scan result, warnings found in the partition table, and whether WParted runs with administrator rights. |
 
-## Planning operations (development builds of v0.2)
+## Planning operations
 
 Development builds can **plan** changes the GParted way. Nothing is written: this version cannot
 execute operations on physical disks, and *Apply* only shows the checks. On **disk image files**
@@ -69,9 +69,9 @@ Possible on images:
 | | create | grow | shrink | move / copy | check | label | new UUID |
 |---|---|---|---|---|---|---|---|
 | FAT16 / FAT32 | ✓ | ✓ | ✓ (data is relocated) | ✓ | ✓ read-only | ✓ | ✓ |
-| NTFS | – | ✓ | ✓ if the space behind the new end is free | ✓ | – | ✓ | ✓ |
-| exFAT | ✓ | – | – | ✓ | – | ✓ | ✓ |
-| ext2 / ext3 / ext4 | ✓ (development builds) | ✓ within the descriptor blocks (development builds) | ✓ if the space behind the new end is free (development builds) | ✓ | ✓ read-only (development builds) | ✓ | ✓ |
+| NTFS | ✓ simplified system files¹ | ✓ | ✓ if the space behind the new end is free | ✓ | ✓ read-only | ✓ | ✓ |
+| exFAT | ✓ | ✓ while the FAT has room² | ✓ if the space behind the new end is free | ✓ | – | ✓ | ✓ |
+| ext2 / ext3 / ext4 | ✓ without metadata checksums | ✓ within the descriptor blocks | ✓ if the space behind the new end is free | ✓ | ✓ read-only | ✓ | ✓ |
 | Linux swap | – | – | – | ✓ | – | ✓ | ✓ |
 | any other | – | – | – | move ✓, copy where safe | – | – | – |
 
@@ -81,10 +81,13 @@ with steps WParted cannot do are refused before anything is written, as are shri
 with data behind the new end and file systems with errors. Physical disks are never written by this
 version.
 
-Development builds after 0.2 also move extended partitions (their boundaries; the logical partitions
+¹ Verified with ntfs-3g; Windows' chkdsk has not checked it yet and may complete `$Secure`, `$Extend`
+and the up-case table. ² exFAT volumes WParted creates leave room to grow.
+
+Extended partitions can be moved too (their boundaries; the logical partitions
 stay where they are).
 
-### Interrupted executions (development builds after 0.2)
+### Interrupted executions
 
 WParted keeps a journal next to the image (`<image>.wparted-journal`) while it applies a plan. If the
 program, the computer or the power fails, or you cancel during a move, the journal shows where it
@@ -100,16 +103,18 @@ stopped:
 *Discard the journal* (or `--discard`) deletes only the journal, never the image. Details:
 [failure modes](../../architecture/failure-modes.md).
 
-## Data rescue (read-only)
+## Data rescue
 
 *Device → Attempt Data Rescue* searches the unallocated space of the selected disk or image for file
 systems that no partition covers any more (for example after a partition was deleted). It checks
 1 MiB steps and old cylinder boundaries, runs in the background and only reads.
 
 The result lists start sector, file system, size and label, and whether the start is MiB-aligned.
-Recovery is **not automated**: you can plan a *New* partition in that space and review it, but a
-New partition is placed in whole MiB and only matches a file system whose start is MiB-aligned.
-Scanning a physical disk needs administrator rights.
+**Add to the plan** recreates the partitions exactly around the found file systems (also at non-MiB
+starts). Nothing inside them is written; after the table is written each file system is detected and
+checked again. Review the plan, keep a copy, then apply it (image files) – the command line does the
+same with `wparted-cli rescue-scan-image <image> --plan rescue.json` and `apply-plan`. Scanning a
+physical disk needs administrator rights and has not been tried on real hardware yet.
 
 ## Useful functions
 
