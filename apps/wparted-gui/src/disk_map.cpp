@@ -343,7 +343,7 @@ public:
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override {
         if (!out) return E_POINTER;
-        if (riid == IID_IUnknown || riid == IID_IDispatch || riid == IID_IAccessible) {
+        if (riid == IID_IUnknown || riid == IID_IDispatch || riid == __uuidof(IAccessible)) {
             *out = static_cast<IAccessible*>(this);
             AddRef();
             return S_OK;
@@ -609,7 +609,7 @@ LRESULT CALLBACK mapProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_GETOBJECT:
             if (static_cast<long>(lp) == static_cast<long>(OBJID_CLIENT)) {
                 if (!s->acc) s->acc = new MapAccessible(h);
-                return LresultFromObject(IID_IAccessible, wp, s->acc);
+                return LresultFromObject(__uuidof(IAccessible), wp, s->acc);
             }
             break;
         case DM_SETSELECTION:

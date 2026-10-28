@@ -20,7 +20,7 @@ add_executable(wparted WIN32
     src/menubar.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/wparted.rc)
 target_include_directories(wparted PRIVATE src ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(wparted PRIVATE wparted_win_storage comctl32 comdlg32 shell32 ole32 oleaut32 oleacc uuid)
+target_link_libraries(wparted PRIVATE wparted_win_storage comctl32 comdlg32 shell32 ole32 oleaut32 oleacc)
 if(MSVC)
     # The manifest is embedded through the .rc file.
     target_link_options(wparted PRIVATE /MANIFEST:NO)
