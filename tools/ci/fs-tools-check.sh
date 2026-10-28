@@ -81,6 +81,25 @@ if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "exfat created by WParted: f
 same "exfat created: blkid label" "$(blk "$img" LABEL)" "WP Neu"
 same "exfat created: exfatlabel" "$(exfatlabel "$img" 2>/dev/null | sed -n 's/^label: //p')" "WP Neu"
 
+# exFAT grow and shrink (WParted-made and mkfs.exfat-made); fsck.exfat checks
+# the boot checksum, FAT, allocation bitmap and directory entries.
+exfat_cycle() {  # image, context, grow MiB, shrink MiB
+  local img=$1 ctx=$2
+  truncate -s "$3M" "$img"
+  "$TOOL" fs "$img" resize exfat $(($3 * 1048576)) && pass "$ctx: grown to $3 MiB" || bad "$ctx: grow"
+  if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "$ctx after grow: fsck.exfat -n clean"; else bad "$ctx after grow: fsck.exfat"; cat "$W/x.txt"; fi
+  dump.exfat "$img" 2>/dev/null | grep -i "cluster count" | head -1
+  "$TOOL" fs "$img" resize exfat $(($4 * 1048576)) && pass "$ctx: shrunk to $4 MiB" || bad "$ctx: shrink"
+  truncate -s "$4M" "$img"
+  if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "$ctx after shrink: fsck.exfat -n clean"; else bad "$ctx after shrink: fsck.exfat"; cat "$W/x.txt"; fi
+  same "$ctx after resize: blkid type" "$(blk "$img" TYPE)" "exfat"
+}
+exfat_cycle "$W/exfat-new.img" "exfat created by WParted" 600 300
+img=$W/exfat-mk.img
+truncate -s 64M "$img"
+mkfs.exfat -L MK "$img" >/dev/null
+exfat_cycle "$img" "mkfs.exfat volume" 400 100
+
 # --- NTFS ----------------------------------------------------------------------
 img=$W/ntfs.img
 truncate -s 64M "$img"
@@ -106,6 +125,26 @@ ntfs_ok "ntfs after grow"
 truncate -s 200M "$img"
 ntfs_ok "ntfs after shrink"
 ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs after shrink: writable" || bad "ntfs: write after shrink"
+ours "$img" ntfs "mkntfs volume after resize and writes"
+
+# --- NTFS created by WParted ----------------------------------------------------
+img=$W/wp-ntfs.img
+truncate -s 96M "$img"
+if "$TOOL" fs "$img" create ntfs "WP NTFS"; then pass "ntfs: created by WParted"; else bad "ntfs: create"; fi
+same "ntfs created: blkid type" "$(blk "$img" TYPE)" "ntfs"
+same "ntfs created: ntfslabel" "$(ntfslabel "$img" 2>/dev/null || true)" "WP NTFS"
+ours "$img" ntfs "ntfs created"
+if ntfsls "$img" >"$W/ls.txt" 2>&1; then pass "ntfs created: ntfsls reads the root directory"; else bad "ntfs created: ntfsls"; cat "$W/ls.txt"; fi
+if ntfsfix --no-action "$img" >"$W/fix.txt" 2>&1; then pass "ntfs created: ntfsfix --no-action"; else bad "ntfs created: ntfsfix"; cat "$W/fix.txt"; fi
+ntfscp -f "$img" "$W/payload.bin" payload.bin >"$W/cp.txt" 2>&1 && pass "ntfs created: ntfs-3g writes a file (ntfscp)" || { bad "ntfs created: ntfscp"; cat "$W/cp.txt"; }
+ntfs_ok "ntfs created by WParted"
+ours "$img" ntfs "ntfs created, after ntfs-3g wrote a file"
+truncate -s 300M "$img"
+"$TOOL" fs "$img" resize ntfs $((300 * 1024 * 1024)) && pass "ntfs created: grown to 300 MiB" || bad "ntfs created: grow"
+ntfs_ok "ntfs created, after grow"
+"$TOOL" fs "$img" resize ntfs $((128 * 1024 * 1024)) && pass "ntfs created: shrunk to 128 MiB" || bad "ntfs created: shrink"
+truncate -s 128M "$img"
+ntfs_ok "ntfs created, after shrink"
 
 # --- ext2 / ext4 ---------------------------------------------------------------
 for fs in ext2 ext4; do

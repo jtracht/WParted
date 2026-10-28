@@ -286,7 +286,7 @@ TEST("executor: refuses invalid plans and changed images without writing") {
     {
         OperationQueue q = queueFor(im);
         Operation f = op(OpType::Format, 1);
-        f.fs = FsType::Ntfs;  // creating file systems is not possible on images yet
+        f.fs = FsType::Xfs;  // creating XFS is not possible on images yet
         REQUIRE(q.add(f, err));
         const auto before = im.data;
         const ExecuteResult r = run(im, q);

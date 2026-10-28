@@ -383,11 +383,12 @@ const FsCapabilities& capabilitiesFor(FsType t) {
     using S = Support;
     static const FsCapabilities table[] = {
         {FsType::Unknown, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Ntfs, S::Supported, S::Supported, S::Planned, S::Supported, S::Limited, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        // NTFS create: simplified system files (fs_ntfs_make.cpp); check is read-only.
+        {FsType::Ntfs, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
         {FsType::Fat12, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::Fat16, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
         {FsType::Fat32, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
-        {FsType::ExFat, S::Supported, S::Limited, S::Supported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::ExFat, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::ReFs, S::Supported, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
         {FsType::BitLocker, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
         // ext: create without metadata checksums/flex_bg; grow within the descriptor blocks;

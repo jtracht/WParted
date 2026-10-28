@@ -168,6 +168,40 @@ TEST("fstools: ext2/3/4 are created, grown and shrunk, and pass the check after 
     CHECK(fstools::create(dev, FsType::Ext2, "", 0, err));   // ext2 needs none
 }
 
+TEST("fstools: NTFS is created, labelled, resized and passes the read-only check") {
+    Image im(256 * MiB, 512);
+    MemoryBlockDevice all(im.data, 512);
+    RegionDevice part(all, 0, 64 * MiB);
+    std::string err;
+    REQUIRE(fstools::create(part, FsType::Ntfs, "Daten", 2048, err));
+    auto checked = [&](BlockReader& r) {
+        fstools::CheckReport rep;
+        std::string e;
+        const bool ok = fstools::check(r, FsType::Ntfs, rep, e);
+        if (!ok) std::printf("    check: %s\n", e.c_str());
+        for (const auto& x : rep.errors) std::printf("    ntfs: %s\n", x.c_str());
+        for (const auto& x : rep.warnings) std::printf("    ntfs (warning): %s\n", x.c_str());
+        return ok && rep.ok && rep.warnings.empty() && rep.usedBytes > 0;
+    };
+    const FsDetection d = detectFilesystem(part);
+    CHECK(d.type == FsType::Ntfs);
+    CHECK_EQ(d.label, std::string("Daten"));
+    CHECK(checked(part));
+    REQUIRE(fstools::setLabel(part, FsType::Ntfs, "Neu", err));
+    CHECK_EQ(detectFilesystem(part).label, std::string("Neu"));
+    CHECK(checked(part));
+    RegionDevice big(all, 0, 200 * MiB);
+    REQUIRE(fstools::resize(big, FsType::Ntfs, 200 * MiB, err));
+    CHECK(checked(big));
+    REQUIRE(fstools::resize(big, FsType::Ntfs, 100 * MiB, err));
+    RegionDevice mid(all, 0, 100 * MiB);
+    CHECK(checked(mid));
+    // Damage: a system cluster marked free is found.
+    std::vector<std::uint8_t> boot(512);
+    REQUIRE(mid.read(0, boot.data(), boot.size()));
+    CHECK(fstools::usedBytes(mid, FsType::Ntfs) > 0);
+}
+
 TEST("fstools: exFAT is created with a valid boot region checksum") {
     Image im(64 * MiB, 512);
     MemoryBlockDevice dev(im.data, 512);

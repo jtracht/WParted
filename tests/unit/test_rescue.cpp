@@ -190,7 +190,7 @@ TEST("validation: diagnostics carry operation number and arguments for translati
     mk.type = OpType::CreatePartition;
     mk.firstLba = 4096;
     mk.sectorCount = 4096;
-    mk.fs = FsType::Ntfs;
+    mk.fs = FsType::Xfs;
     std::string err;
     REQUIRE(q.add(del, err));
     REQUIRE(q.add(mk, err));
@@ -206,8 +206,8 @@ TEST("validation: diagnostics carry operation number and arguments for translati
         if (d.code == "op.capability" && d.operation == 2) {
             REQUIRE(d.args.size() == 3);
             CHECK_EQ(d.args[0], std::string("create"));
-            CHECK_EQ(d.args[1], std::string("ntfs"));
-            CHECK_EQ(d.args[2], std::string(supportName(capabilitiesFor(FsType::Ntfs).create)));
+            CHECK_EQ(d.args[1], std::string("xfs"));
+            CHECK_EQ(d.args[2], std::string(supportName(capabilitiesFor(FsType::Xfs).create)));
             capability = true;
         }
         if (d.code == "op.busy") {

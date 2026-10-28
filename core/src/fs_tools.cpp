@@ -128,10 +128,13 @@ bool exfatCreate(BlockDevice& d, const std::string& label, std::uint64_t hidden,
         return false;
     }
     auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) / a * a; };
-    const std::uint32_t fatOffset = static_cast<std::uint32_t>(alignUp(24, spc));
+    // From 32 MiB on, FAT and cluster heap start on 1 MiB boundaries (like SD
+    // card formats); the gap leaves the FAT room to grow with the volume.
+    const std::uint64_t boundary = sectors >= (32ull << 20) / bps ? (1ull << 20) / bps : spc;
+    const std::uint32_t fatOffset = static_cast<std::uint32_t>(alignUp(24, std::max<std::uint64_t>(spc, boundary)));
     std::uint32_t fatLength = 1, clusterCount = 0, heapOffset = 0;
     for (int i = 0; i < 32; ++i) {  // FAT length and cluster count depend on each other
-        heapOffset = static_cast<std::uint32_t>(alignUp(std::uint64_t{fatOffset} + fatLength, spc));
+        heapOffset = static_cast<std::uint32_t>(alignUp(std::uint64_t{fatOffset} + fatLength, std::max<std::uint64_t>(spc, boundary)));
         clusterCount = static_cast<std::uint32_t>((sectors - heapOffset) / spc);
         const std::uint32_t need = static_cast<std::uint32_t>(alignUp((std::uint64_t{clusterCount} + 2) * 4, bps) / bps);
         if (need <= fatLength) break;
@@ -301,6 +304,171 @@ bool exfatSetLabel(BlockDevice& d, const std::string& label, std::string& err) {
         return false;
     }
     return d.flush() || (err = "flush failed", false);
+}
+
+// Grow or shrink exFAT in place (exFAT specification 1.00). Grow: the FAT may
+// use the space up to the cluster heap; the allocation bitmap gets clusters
+// from the added area if it needs more. Shrink: only if every cluster behind
+// the new end is free. TexFAT (two FATs) and dirty volumes are refused.
+struct ExFatBitmap {
+    std::uint64_t entryAt = 0;            // byte offset of the bitmap directory entry
+    std::uint64_t length = 0;             // bitmap size in bytes
+    std::vector<std::uint32_t> clusters;  // bitmap clusters in chain order
+};
+
+bool exfatChain(BlockReader& r, const ExFat& x, std::uint32_t first, std::vector<std::uint32_t>& out) {
+    out.clear();
+    for (std::uint32_t c = first; c >= 2 && c < x.clusterCount + 2;) {
+        if (out.size() > x.clusterCount) return false;  // loop
+        out.push_back(c);
+        std::uint8_t next[4];
+        if (!r.read(std::uint64_t{x.fatOffset} * x.bps + 4ull * c, next, 4)) return false;
+        c = le32(next);
+    }
+    return !out.empty();
+}
+
+bool exfatFindBitmap(BlockReader& r, const ExFat& x, ExFatBitmap& bm, std::string& err) {
+    std::vector<std::uint32_t> root;
+    if (!exfatChain(r, x, x.root, root)) {
+        err = "the exFAT root directory chain is invalid";
+        return false;
+    }
+    std::vector<std::uint8_t> buf(x.cb);
+    for (std::uint32_t c : root) {
+        const std::uint64_t at = std::uint64_t{x.heapOffset} * x.bps + std::uint64_t{c - 2} * x.cb;
+        if (!r.read(at, buf.data(), buf.size())) break;
+        for (std::uint32_t o = 0; o + 32 <= x.cb; o += 32) {
+            if (buf[o] == 0x00) break;
+            if (buf[o] == 0x81 && (buf[o + 1] & 1) == 0) {
+                bm.entryAt = at + o;
+                bm.length = le64(&buf[o + 24]);
+                std::vector<std::uint32_t> chain;
+                if (!exfatChain(r, x, le32(&buf[o + 20]), chain)) {
+                    err = "the exFAT allocation bitmap chain is invalid";
+                    return false;
+                }
+                bm.clusters = chain;
+                return true;
+            }
+        }
+    }
+    err = "the exFAT allocation bitmap was not found";
+    return false;
+}
+
+bool exfatBitmapIo(BlockDevice* w, BlockReader& r, const ExFat& x, const ExFatBitmap& bm, std::vector<std::uint8_t>& bits,
+                   bool write) {
+    std::size_t done = 0;
+    for (std::uint32_t c : bm.clusters) {
+        if (done >= bits.size()) break;
+        const std::size_t n = std::min<std::size_t>(x.cb, bits.size() - done);
+        const std::uint64_t at = std::uint64_t{x.heapOffset} * x.bps + std::uint64_t{c - 2} * x.cb;
+        if (write ? !w->write(at, &bits[done], n) : !r.read(at, &bits[done], n)) return false;
+        done += n;
+    }
+    return done >= bits.size();
+}
+
+std::string exfatResizeProblem(BlockReader& r, std::uint64_t newBytes) {
+    ExFat x;
+    std::vector<std::uint8_t> boot;
+    std::string err;
+    if (!exfatParse(r, x, boot, err)) return err;
+    if (boot[110] != 1) return "exFAT with two FATs (TexFAT) is not supported";
+    if (le16(&boot[106]) & 0x0002) return "the exFAT volume is marked dirty; check it in Windows first";
+    const std::uint32_t spc = x.cb / x.bps;
+    const std::uint64_t sectors = newBytes / x.bps;
+    if (sectors <= std::uint64_t{x.heapOffset} + spc * 16ull) return "the new size is too small for this exFAT volume";
+    const std::uint64_t want = std::min<std::uint64_t>((sectors - x.heapOffset) / spc, 0xFFFFFFF5ull);
+    const std::uint64_t fatRoom = std::uint64_t{x.heapOffset - x.fatOffset} * x.bps / 4;
+    if (want + 2 > fatRoom)
+        return "growing to this size needs a larger FAT than the space in front of the cluster heap allows (at most " +
+               formatSize((fatRoom - 2) * x.cb + std::uint64_t{x.heapOffset} * x.bps) + ")";
+    if (want < x.clusterCount) {
+        ExFatBitmap bm;
+        if (!exfatFindBitmap(r, x, bm, err)) return err;
+        std::vector<std::uint8_t> bits(static_cast<std::size_t>(bm.length));
+        if (!exfatBitmapIo(nullptr, r, x, bm, bits, false)) return "the exFAT allocation bitmap cannot be read";
+        for (std::uint64_t c = want; c < x.clusterCount; ++c)
+            if ((bits[static_cast<std::size_t>(c / 8)] >> (c % 8)) & 1)
+                return "exFAT data lies behind the new end (WParted does not move exFAT data yet)";
+    }
+    return {};
+}
+
+bool exfatResize(BlockDevice& d, std::uint64_t newBytes, std::string& err) {
+    if (const std::string p = exfatResizeProblem(d, newBytes); !p.empty()) {
+        err = p;
+        return false;
+    }
+    ExFat x;
+    std::vector<std::uint8_t> boot;
+    if (!exfatParse(d, x, boot, err)) return false;
+    const std::uint32_t spc = x.cb / x.bps;
+    const std::uint64_t sectors = newBytes / x.bps;
+    const std::uint32_t count = static_cast<std::uint32_t>(std::min<std::uint64_t>((sectors - x.heapOffset) / spc, 0xFFFFFFF5ull));
+    if (count == x.clusterCount) return true;
+    ExFatBitmap bm;
+    if (!exfatFindBitmap(d, x, bm, err)) return false;
+    std::vector<std::uint8_t> bits(static_cast<std::size_t>(bm.length));
+    if (!exfatBitmapIo(nullptr, d, x, bm, bits, false)) {
+        err = "the exFAT allocation bitmap cannot be read";
+        return false;
+    }
+    const std::uint64_t newLength = (std::uint64_t{count} + 7) / 8;
+    const std::uint64_t oldFatLength = le32(&boot[84]);
+    const std::uint64_t needFat = ((std::uint64_t{count} + 2) * 4 + x.bps - 1) / x.bps;
+    auto putFat = [&](std::uint32_t c, std::uint32_t v) {
+        std::uint8_t b[4];
+        put32(b, v);
+        return d.write(std::uint64_t{x.fatOffset} * x.bps + 4ull * c, b, 4);
+    };
+    if (count > x.clusterCount) {
+        // Larger FAT: the added sectors start out free (zero).
+        if (needFat > oldFatLength) {
+            std::vector<std::uint8_t> zero(static_cast<std::size_t>((needFat - oldFatLength) * x.bps), 0);
+            if (!d.write((x.fatOffset + oldFatLength) * x.bps, zero.data(), zero.size())) {
+                err = "extending the exFAT FAT failed";
+                return false;
+            }
+            put32(&boot[84], static_cast<std::uint32_t>(needFat));
+        }
+        bits.resize(static_cast<std::size_t>(newLength), 0);
+        // More bitmap clusters, taken from the added area and chained in the FAT.
+        std::uint32_t nextFree = x.clusterCount + 2;
+        while (std::uint64_t{bm.clusters.size()} * x.cb < newLength) {
+            const std::uint32_t c = nextFree++;
+            if (!putFat(bm.clusters.back(), c) || !putFat(c, 0xFFFFFFFFu)) {
+                err = "extending the exFAT bitmap chain failed";
+                return false;
+            }
+            bm.clusters.push_back(c);
+            bits[static_cast<std::size_t>((c - 2) / 8)] |= static_cast<std::uint8_t>(1u << ((c - 2) % 8));
+        }
+    } else {
+        bits.resize(static_cast<std::size_t>(newLength));
+        if (count % 8) bits.back() &= static_cast<std::uint8_t>((1u << (count % 8)) - 1);
+    }
+    std::vector<std::uint8_t> full(static_cast<std::size_t>(bm.clusters.size() * x.cb), 0);
+    std::memcpy(full.data(), bits.data(), bits.size());
+    ExFatBitmap whole = bm;
+    if (!exfatBitmapIo(&d, d, x, whole, full, true)) {
+        err = "writing the exFAT allocation bitmap failed";
+        return false;
+    }
+    std::uint8_t len[8];
+    put64le(len, newLength);
+    if (!d.write(bm.entryAt + 24, len, 8)) {
+        err = "updating the exFAT bitmap entry failed";
+        return false;
+    }
+    std::uint64_t used = 0;
+    for (std::uint32_t c = 0; c < count; ++c) used += (bits[c / 8] >> (c % 8)) & 1;
+    put64le(&boot[72], sectors);
+    put32(&boot[92], count);
+    boot[112] = static_cast<std::uint8_t>(used * 100 / count);
+    return exfatWriteBootRegion(d, x, boot, err);
 }
 
 // --- NTFS ---------------------------------------------------------------------
@@ -704,15 +872,19 @@ std::uint32_t crc32c(std::uint32_t crc, const std::uint8_t* data, std::size_t le
 }
 
 static bool isExt(FsType t) noexcept { return t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4; }
-bool canCreate(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || isExt(t); }
+bool canCreate(FsType t) noexcept {
+    return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || t == FsType::Ntfs || isExt(t);
+}
 bool canLabel(FsType t) noexcept {
     return t == FsType::Fat12 || t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || t == FsType::Ntfs ||
            t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4 || t == FsType::LinuxSwap || t == FsType::Xfs ||
            t == FsType::Btrfs;
 }
 bool canSetUuid(FsType t) noexcept { return canLabel(t); }
-bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || isExt(t); }
-bool canResize(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || isExt(t); }
+bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || isExt(t); }
+bool canResize(FsType t) noexcept {
+    return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || t == FsType::ExFat || isExt(t);
+}
 
 std::string labelProblem(FsType t, const std::string& label) {
     if (hasControl(label)) return "the label contains control characters";
@@ -746,6 +918,7 @@ bool create(BlockDevice& part, FsType t, const std::string& label, std::uint64_t
         return false;
     }
     if (isExt(t)) return ext::create(part, t, label, error);
+    if (t == FsType::Ntfs) return ntfs::create(part, label, hidden, error);
     return t == FsType::ExFat ? exfatCreate(part, label, hidden, error) : fat::create(part, t, label, hidden, error);
 }
 
@@ -821,18 +994,21 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
         return false;
     }
     if (isExt(t)) return ext::resize(part, newBytes, error);
+    if (t == FsType::ExFat) return exfatResize(part, newBytes, error);
     return t == FsType::Ntfs ? ntfs::resize(part, newBytes, error) : fat::resize(part, newBytes, error);
 }
 
 std::string resizeProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
     if (!canResize(t)) return std::string("resizing ") + fsTypeName(t) + " is not supported";
     if (newBytes < part.size()) return shrinkProblem(part, t, newBytes);
+    if (t == FsType::ExFat) return exfatResizeProblem(part, newBytes);
     return isExt(t) ? ext::growProblem(part, newBytes) : std::string();
 }
 
 std::string shrinkProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
     if (t == FsType::Ntfs) return ntfs::shrinkProblem(part, newBytes);
     if (isExt(t)) return ext::shrinkProblem(part, newBytes);
+    if (t == FsType::ExFat) return exfatResizeProblem(part, newBytes);
     if (t == FsType::Fat16 || t == FsType::Fat32) {
         CheckReport rep;
         std::string err;
@@ -849,6 +1025,7 @@ bool check(BlockReader& part, FsType t, CheckReport& report, std::string& error)
         error = std::string("checking ") + fsTypeName(t) + " is not supported";
         return false;
     }
+    if (t == FsType::Ntfs) return ntfs::check(part, report, error);
     return isExt(t) ? ext::check(part, report, error) : fat::check(part, report, error);
 }
 
