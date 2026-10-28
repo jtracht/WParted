@@ -8,6 +8,7 @@ Only results that were actually observed are marked as verified. Everything else
 | Windows | Arch | Builds | Tests | GUI | Writes | Evidence / open check |
 |---|---|---|---|---|---|---|
 | Windows 11 Pro (26300) | x64 | ✔ MSVC + MinGW | ✔ 81/81 unit + CLI E2E incl. `apply-plan` | ✔ planning, apply to image file, rescue, information dialogs, managed-disk marker, MSAA (checked with an MSAA client), DE locale | image files only ✔ | Local MSVC runs 2026-10-27/28, unelevated |
+| Windows 11 Pro (26300), published release ZIP | x64 | ✔ release pipeline (MinGW) | ✔ CLI from the published ZIP: `version`, `fs-support`, `apply-plan` dry run and `--execute` (FAT32 create on a GPT test image, read back), device path `\\.\PhysicalDrive99` refused | ☐ | image files only ✔ | Checked 2026-10-28 after publication, unelevated; checksums matched |
 | Wine 9 (Ubuntu 24.04, CI) | x64 / x86 | ✔ MinGW | ✔ unit + CLI E2E | ✔ start-up smoke | image files only ✔ | Every CI run; Wine is not Windows |
 | Linux CI (reference tools) | – | ✔ GCC (core) | ✔ results of WParted checked with sgdisk, sfdisk, fsck.fat, mtools, fsck.exfat, ntfs-3g, e2fsck, xfs_repair, btrfs check, blkid | – | image files | Every CI run |
 | Windows 10 / 8.x / 7 SP1 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |

@@ -1,7 +1,7 @@
 {
   "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue.",
   "updated": "2026-10-28",
-  "milestone": "v0.2.0-alpha",
+  "milestone": "v0.3.0-alpha",
   "packages": [
     {"key": "WP-001", "area": "Architecture", "weight": 3, "state": "tested", "title": "GParted analysis and parity matrix"},
     {"key": "WP-002", "area": "Architecture", "weight": 1, "state": "tested", "title": "Licence and third-party baseline"},
@@ -9,21 +9,21 @@
     {"key": "WP-023", "area": "Architecture", "weight": 3, "state": "implemented", "title": "Privileged helper and IPC design"},
     {"key": "WP-070", "area": "Architecture", "weight": 3, "state": "implemented", "title": "Recovery/offline mode concept"},
 
-    {"key": "WP-004", "area": "CI/CD", "weight": 2, "state": "tested", "title": "Windows builds without Windows runner (MinGW cross build + Wine)"},
-    {"key": "WP-005", "area": "CI/CD", "weight": 1, "state": "tested", "title": "Use existing instance runner (ubuntu-latest)"},
-    {"key": "WP-006", "area": "CI/CD", "weight": 3, "state": "tested", "title": "CI and release pipelines"},
+    {"key": "WP-004", "area": "CI/CD", "weight": 2, "state": "released", "title": "Windows builds without Windows runner (MinGW cross build + Wine)"},
+    {"key": "WP-005", "area": "CI/CD", "weight": 1, "state": "released", "title": "Use existing instance runner (ubuntu-latest)"},
+    {"key": "WP-006", "area": "CI/CD", "weight": 3, "state": "released", "title": "CI and release pipelines"},
     {"key": "WP-008", "area": "CI/CD", "weight": 1, "state": "in_progress", "title": "GitHub push mirror"},
     {"key": "WP-009", "area": "CI/CD", "weight": 1, "state": "planned", "title": "Code signing"},
     {"key": "WP-016", "area": "CI/CD", "weight": 2, "state": "released", "title": "Portable packaging and v0.1 release"},
 
-    {"key": "WP-010", "area": "Partition Engine", "weight": 4, "state": "tested", "title": "GPT/MBR parser"},
-    {"key": "WP-020", "area": "Partition Engine", "weight": 5, "state": "tested", "title": "Operation queue"},
-    {"key": "WP-021", "area": "Partition Engine", "weight": 5, "state": "tested", "title": "Validation engine and protection"},
-    {"key": "WP-030", "area": "Partition Engine", "weight": 6, "state": "tested", "title": "Create/delete partitions and tables"},
-    {"key": "WP-032", "area": "Partition Engine", "weight": 2, "state": "tested", "title": "Manage flags"},
+    {"key": "WP-010", "area": "Partition Engine", "weight": 4, "state": "released", "title": "GPT/MBR parser"},
+    {"key": "WP-020", "area": "Partition Engine", "weight": 5, "state": "released", "title": "Operation queue"},
+    {"key": "WP-021", "area": "Partition Engine", "weight": 5, "state": "released", "title": "Validation engine and protection"},
+    {"key": "WP-030", "area": "Partition Engine", "weight": 6, "state": "released", "title": "Create/delete partitions and tables"},
+    {"key": "WP-032", "area": "Partition Engine", "weight": 2, "state": "released", "title": "Manage flags"},
     {"key": "WP-041", "area": "Partition Engine", "weight": 8, "state": "implemented", "title": "Resize/move"},
-    {"key": "WP-042", "area": "Partition Engine", "weight": 6, "state": "tested", "title": "Copy/paste and block copier"},
-    {"key": "WP-050", "area": "Partition Engine", "weight": 2, "state": "tested", "title": "Other table types"},
+    {"key": "WP-042", "area": "Partition Engine", "weight": 6, "state": "released", "title": "Copy/paste and block copier"},
+    {"key": "WP-050", "area": "Partition Engine", "weight": 2, "state": "released", "title": "Other table types"},
     {"key": "WP-051", "area": "Partition Engine", "weight": 3, "state": "implemented", "title": "Data rescue scan"},
 
     {"key": "WP-012", "area": "Windows Core", "weight": 4, "state": "implemented", "title": "Read-only disk discovery"},
@@ -31,22 +31,22 @@
     {"key": "WP-015", "area": "Windows Core", "weight": 3, "state": "planned", "title": "Windows 7-10 / ARM64 verification"},
     {"key": "WP-044", "area": "Windows Core", "weight": 2, "state": "planned", "title": "Mount/unmount"},
     {"key": "WP-071", "area": "Windows Core", "weight": 4, "state": "in_progress", "title": "BitLocker/EFI/BCD safety"},
-    {"key": "WP-072", "area": "Windows Core", "weight": 3, "state": "tested", "title": "Dynamic disks and Storage Spaces"},
+    {"key": "WP-072", "area": "Windows Core", "weight": 3, "state": "released", "title": "Dynamic disks and Storage Spaces"},
 
-    {"key": "WP-011", "area": "Filesystem Support", "weight": 3, "state": "tested", "title": "FS signature detection"},
+    {"key": "WP-011", "area": "Filesystem Support", "weight": 3, "state": "released", "title": "FS signature detection"},
     {"key": "WP-040", "area": "Filesystem Support", "weight": 8, "state": "implemented", "title": "NTFS/FAT/exFAT operations"},
-    {"key": "WP-043", "area": "Filesystem Support", "weight": 2, "state": "tested", "title": "New UUID"},
+    {"key": "WP-043", "area": "Filesystem Support", "weight": 2, "state": "released", "title": "New UUID"},
     {"key": "WP-060", "area": "Filesystem Support", "weight": 8, "state": "in_progress", "title": "Linux file systems (offline)"},
 
-    {"key": "WP-013", "area": "User Interface", "weight": 5, "state": "tested", "title": "Read-only main window"},
+    {"key": "WP-013", "area": "User Interface", "weight": 5, "state": "released", "title": "Read-only main window"},
     {"key": "WP-017", "area": "User Interface", "weight": 2, "state": "implemented", "title": "Accessibility and dark menu bar"},
-    {"key": "WP-022", "area": "User Interface", "weight": 3, "state": "tested", "title": "Planning UI: dialogs, layout preview, queue, Apply summary"},
-    {"key": "WP-024", "area": "User Interface", "weight": 1, "state": "tested", "title": "Operation log export"},
+    {"key": "WP-022", "area": "User Interface", "weight": 3, "state": "released", "title": "Planning UI: dialogs, layout preview, queue, Apply summary"},
+    {"key": "WP-024", "area": "User Interface", "weight": 1, "state": "released", "title": "Operation log export"},
 
     {"key": "WP-018", "area": "Testing", "weight": 2, "state": "tested", "title": "Performance baseline"},
     {"key": "WP-031", "area": "Testing", "weight": 4, "state": "implemented", "title": "Image write harness (CI) + manual VHDX gate"},
 
     {"key": "WP-090", "area": "Documentation", "weight": 4, "state": "tested", "title": "Website (SEO/GEO/AEO)"},
-    {"key": "WP-091", "area": "Documentation", "weight": 3, "state": "tested", "title": "User and developer documentation"}
+    {"key": "WP-091", "area": "Documentation", "weight": 3, "state": "released", "title": "User and developer documentation"}
   ]
 }
