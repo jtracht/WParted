@@ -62,6 +62,10 @@ void printLayoutText(const DiskLayout& l, const win::PhysicalDisk* disk) {
             if (const auto* v = win::volumeForPartition(*disk, p)) {
                 for (const auto& m : v->mountPoints) extra += " [" + win::narrow(m) + "]";
                 if (v->containsWindows) extra += " (Windows)";
+                if (v->isSystemPartition) extra += " (boot manager)";
+                if (v->isPageFileVolume) extra += " (page file)";
+                if (v->bitLocker != BitLockerState::NotReported && v->bitLocker != BitLockerState::NotEncrypted)
+                    extra += std::string(" (BitLocker: ") + bitLockerStateName(v->bitLocker) + ")";
             }
         }
         std::string flags;

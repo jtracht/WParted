@@ -16,6 +16,7 @@
 #include <memory>
 
 #include "wparted/core/log.hpp"
+#include "system_volumes.hpp"
 
 namespace wparted::win {
 
@@ -343,6 +344,7 @@ DiscoveryResult discoverDisks() {
     log::info(std::string("Discovery started (elevated: ") + (r.elevated ? "yes" : "no") + ")");
 
     std::vector<VolumeInfo> volumes = enumerateVolumes();
+    annotateSystemVolumes(volumes);
 
     // PhysicalDrive numbers are not guaranteed to be contiguous (removed USB
     // devices leave gaps), so probe a fixed range.

@@ -8,6 +8,7 @@
 
 #include "wparted/core/partition_table.hpp"
 #include "wparted/core/rescue.hpp"
+#include "wparted/core/validation.hpp"
 
 namespace wparted::win {
 
@@ -26,6 +27,8 @@ struct VolumeInfo {
     int extentCount = 0;                   // > 1 means spanned/striped (dynamic disk, Storage Spaces)
     bool containsWindows = false;          // The running Windows installation lives here
     bool isPageFileVolume = false;
+    bool isSystemPartition = false;        // Holds the boot manager Windows started from
+    BitLockerState bitLocker = BitLockerState::NotReported;  // Reported to administrators only
 };
 
 enum class Tristate { Unknown, No, Yes };

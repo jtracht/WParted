@@ -25,10 +25,25 @@ enum class ValidationMode {
 };
 
 // Facts about the real device that the core cannot know by itself.
+// BitLocker state as Windows reports it (Win32_EncryptableVolume; needs
+// administrator rights, otherwise NotReported). WParted never suspends,
+// disables or decrypts BitLocker; these states only make validation stricter.
+enum class BitLockerState {
+    NotReported,    // unknown (not elevated, no BitLocker on this Windows, not a Windows volume)
+    NotEncrypted,
+    ProtectionOff,  // encrypted, protection suspended
+    ProtectionOn,
+    Locked,
+    Converting,     // encryption or decryption in progress or paused
+};
+const char* bitLockerStateName(BitLockerState s) noexcept;
+
 struct PartitionState {
     bool mounted = false;          // has a drive letter / mount point
     bool containsWindows = false;  // the running Windows lives here
     bool pageFile = false;
+    bool bootManager = false;      // holds the boot manager Windows started from (ESP or "System Reserved")
+    BitLockerState bitLocker = BitLockerState::NotReported;
     std::uint64_t usedBytes = 0;   // 0 = unknown
 };
 

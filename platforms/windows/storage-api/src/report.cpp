@@ -88,6 +88,9 @@ std::string diskToJson(const PhysicalDisk& d) {
             w.key("freeBytes").value(v.freeBytes);
         }
         w.key("containsWindows").value(v.containsWindows);
+        w.key("pageFile").value(v.isPageFileVolume);
+        w.key("bootManager").value(v.isSystemPartition);
+        w.key("bitLocker").value(bitLockerStateName(v.bitLocker));
         w.endObject();
     }
     w.endArray();

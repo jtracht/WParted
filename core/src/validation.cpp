@@ -9,6 +9,17 @@
 
 namespace wparted {
 
+const char* bitLockerStateName(BitLockerState s) noexcept {
+    switch (s) {
+        case BitLockerState::NotEncrypted: return "not encrypted";
+        case BitLockerState::ProtectionOff: return "protection suspended";
+        case BitLockerState::ProtectionOn: return "protection on";
+        case BitLockerState::Locked: return "locked";
+        case BitLockerState::Converting: return "encryption or decryption in progress";
+        default: return "not reported";
+    }
+}
+
 bool ValidationResult::ok() const noexcept {
     for (const auto& d : diagnostics)
         if (d.severity == Severity::Error) return false;
@@ -47,6 +58,9 @@ public:
     Checker(const OperationQueue& q, const ValidationContext& c) : q_(q), c_(c) {}
 
     ValidationResult run() {
+        for (const auto& s : c_.state)
+            if (s.second.bitLocker == BitLockerState::ProtectionOn || s.second.bitLocker == BitLockerState::Converting)
+                anyBitLockerOn_ = true;
         global();
         perOperation();
         finalLayout();
@@ -177,6 +191,51 @@ private:
         if (p.fs.type == FsType::BitLocker && op.type == OpType::Format)
             add(Severity::Warning, "op.encrypted_format", at + "formatting destroys the encrypted data of " + what + ".",
                 index, {num});
+        // op.bitlocker_active args: {number, state}. Windows reports active
+        // BitLocker on this volume; even deleting or formatting it is refused
+        // (suspending or decrypting is the user's decision, outside WParted).
+        const BitLockerState bl = st.bitLocker;
+        if ((bl == BitLockerState::ProtectionOn || bl == BitLockerState::Locked || bl == BitLockerState::Converting) &&
+            op.type != OpType::SetFlags)
+            add(Severity::Error, "op.bitlocker_active",
+                at + what + " is protected by BitLocker (" + bitLockerStateName(bl) +
+                    "); WParted never changes it and never suspends or decrypts BitLocker.",
+                index, {num, bitLockerStateName(bl)});
+        // op.bitlocker_unknown args: {number}. On a physical disk, an NTFS or
+        // BitLocker volume whose BitLocker state Windows did not report.
+        if (c_.mode == ValidationMode::Execution && bl == BitLockerState::NotReported && st.mounted &&
+            (p.fs.type == FsType::Ntfs || p.fs.type == FsType::BitLocker))
+            add(Severity::Warning, "op.bitlocker_unknown",
+                at + "the BitLocker state of " + what + " is unknown (Windows reports it to administrators only).", index,
+                {num});
+        // op.bitlocker_recovery args: {number}. Boot-relevant partitions on a
+        // disk with active BitLocker: the next start may ask for the recovery key.
+        if (anyBitLockerOn_ && !warnedRecovery_ &&
+            (st.bootManager || st.containsWindows || isSystemCriticalType(layout, p))) {
+            warnedRecovery_ = true;
+            add(Severity::Warning, "op.bitlocker_recovery",
+                at + "changing " + what +
+                    " touches the boot path of a BitLocker-protected Windows; the next start may ask for the "
+                    "recovery key. WParted does not suspend BitLocker.",
+                index, {num});
+        }
+        // op.bcd_offset args: {number}. msdos disks: the Windows boot
+        // configuration (BCD) finds its partitions by disk signature and start
+        // offset, so moving the start of the boot-manager or Windows partition
+        // makes Windows unbootable until BCD is repaired (bcdboot).
+        if (op.type == OpType::ResizeMove && layout.type == TableType::Mbr && op.firstLba != p.firstLba) {
+            if (st.bootManager || st.containsWindows)
+                add(Severity::Error, "op.bcd_offset",
+                    at + "moving the start of " + what +
+                        " breaks the Windows boot configuration, which refers to its offset on msdos disks.",
+                    index, {num});
+            else if (c_.mode == ValidationMode::ImageExecution && p.fs.type == FsType::Ntfs)
+                add(Severity::Warning, "op.bcd_offset",
+                    at + "if Windows boots from " + what +
+                        ", its boot configuration refers to the partition offset and must be repaired after the move "
+                        "(bcdboot).",
+                    index, {num});
+        }
     }
 
     // op.capability args: {action, file system, support level}; action is one of
@@ -308,6 +367,8 @@ private:
     const ValidationContext& c_;
     ValidationResult r_;
     std::set<std::uint32_t> touched_;
+    bool anyBitLockerOn_ = false;  // some partition of this disk has active BitLocker
+    bool warnedRecovery_ = false;
 };
 
 }  // namespace

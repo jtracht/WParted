@@ -556,6 +556,83 @@ TEST("validation: identity mismatch, used space, write protection, source errors
     CHECK(hasCode(validatePlan(bq, ValidationContext{}), "plan.source_errors", Severity::Error));
 }
 
+TEST("validation: BitLocker states reported by Windows and boot configuration offsets") {
+    std::string err;
+    // GPT disk: ESP #1, Windows #2 (NTFS, BitLocker state from Windows), data #3.
+    Image im(256 * MiB, 512);
+    const char* data = "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7";
+    im.gpt({{kEsp, 2048, 206847, "EFI", 0}, {data, 206848, 309247, "win", 0}, {data, 309248, 411647, "data", 0}});
+    OperationQueue q = queueFor(im);
+    Operation del = onTarget(OpType::DeletePartition, 3);
+    REQUIRE(q.add(del, err));
+    ValidationContext ctx;
+    ctx.state[3].bitLocker = BitLockerState::ProtectionOn;
+    CHECK(hasCode(validatePlan(q, ctx), "op.bitlocker_active", Severity::Error));
+    for (BitLockerState s : {BitLockerState::Locked, BitLockerState::Converting}) {
+        ctx.state[3].bitLocker = s;
+        CHECK(hasCode(validatePlan(q, ctx), "op.bitlocker_active", Severity::Error));
+    }
+    for (BitLockerState s : {BitLockerState::NotEncrypted, BitLockerState::ProtectionOff, BitLockerState::NotReported}) {
+        ctx.state[3].bitLocker = s;
+        CHECK(!hasCode(validatePlan(q, ctx), "op.bitlocker_active", Severity::Error));
+    }
+    // Changing the ESP while the Windows volume has BitLocker on: recovery-key warning, once.
+    OperationQueue eq = queueFor(im);
+    Operation flags = onTarget(OpType::SetFlags, 1);
+    flags.flagsOff = {"esp"};
+    REQUIRE(eq.add(flags, err));
+    Operation del1 = onTarget(OpType::DeletePartition, 1);
+    REQUIRE(eq.add(del1, err));
+    ValidationContext bl;
+    bl.mode = ValidationMode::ImageExecution;
+    bl.state[2].bitLocker = BitLockerState::ProtectionOn;
+    const ValidationResult r = validatePlan(eq, bl);
+    int recovery = 0;
+    for (const auto& d : r.diagnostics)
+        if (d.code == "op.bitlocker_recovery") ++recovery;
+    CHECK_EQ(recovery, 1);
+    bl.state[2].bitLocker = BitLockerState::ProtectionOff;
+    CHECK(!hasCode(validatePlan(eq, bl), "op.bitlocker_recovery", Severity::Warning));
+
+    // msdos disk: moving the start of the boot-manager partition breaks BCD;
+    // on an image an NTFS start move is a warning.
+    Image mbr(128 * MiB, 512);
+    mbr.mbrEntry(0, 0, 0x07, 2048, 20480, true);
+    wptest::writeNtfs(mbr, 2048ull * 512);
+    OperationQueue mq = queueFor(mbr);
+    Operation mv = onTarget(OpType::ResizeMove, 1);
+    mv.firstLba = 4096;
+    mv.sectorCount = 20480;
+    REQUIRE(mq.add(mv, err));
+    ValidationContext boot;
+    boot.state[1].bootManager = true;
+    CHECK(hasCode(validatePlan(mq, boot), "op.bcd_offset", Severity::Error));
+    ValidationContext image;
+    image.mode = ValidationMode::ImageExecution;
+    CHECK(hasCode(validatePlan(mq, image), "op.bcd_offset", Severity::Warning));
+    OperationQueue grow = queueFor(mbr);  // same start: no BCD problem
+    Operation g = onTarget(OpType::ResizeMove, 1);
+    g.firstLba = 2048;
+    g.sectorCount = 40960;
+    REQUIRE(grow.add(g, err));
+    CHECK(!hasCode(validatePlan(grow, boot), "op.bcd_offset", Severity::Error));
+    CHECK(std::string(bitLockerStateName(BitLockerState::ProtectionOn)) == "protection on");
+
+    // Unknown BitLocker state of a mounted NTFS volume on a physical disk: a warning.
+    OperationQueue fq = queueFor(mbr);
+    Operation fmt = onTarget(OpType::Format, 1);
+    fmt.fs = FsType::Fat32;
+    REQUIRE(fq.add(fmt, err));
+    ValidationContext exec;
+    exec.mode = ValidationMode::Execution;
+    exec.haveCurrentIdentity = true;
+    exec.currentIdentity = fq.identity();
+    exec.state[1].mounted = true;
+    CHECK(hasCode(validatePlan(fq, exec), "op.bitlocker_unknown", Severity::Warning));
+    exec.state[1].bitLocker = BitLockerState::NotEncrypted;
+    CHECK(!hasCode(validatePlan(fq, exec), "op.bitlocker_unknown", Severity::Warning));
+}
+
 TEST("validation: random plans never validate with overlapping partitions") {
     std::mt19937 rng(2026);
     for (int iter = 0; iter < 200; ++iter) {

@@ -35,6 +35,10 @@ file system. System partitions are warnings, because an image is not the running
 | `op.busy` | Warning / Error / Error | number | The partition is mounted. |
 | `op.encrypted` | Error | number | Resize, move, copy or new UUID on a BitLocker volume. |
 | `op.encrypted_format` | Warning | number | Formatting destroys BitLocker-encrypted data. |
+| `op.bitlocker_active` | Error | number, state | Windows reports BitLocker protection on, locked, or encryption/decryption in progress; nothing but flags may change. WParted never suspends or decrypts BitLocker. |
+| `op.bitlocker_unknown` | – / Warning / – | number | A mounted NTFS/BitLocker volume on a physical disk whose BitLocker state Windows did not report (administrators only). |
+| `op.bitlocker_recovery` | Warning (once per plan) | number | A boot-relevant partition (boot manager, Windows, ESP, MSR, recovery) changes on a disk with active BitLocker: the next start may ask for the recovery key. |
+| `op.bcd_offset` | Error, or Warning on images | number | msdos disks: BCD refers to partitions by disk signature and start offset; moving the start of the boot-manager or Windows partition breaks booting (error). On images, moving an NTFS start is a warning (repair with bcdboot). |
 | `op.capability` | Warning / Error / Error | action, file system, support level | A file-system action this build cannot do (`create`, `grow`, `shrink`, `move`, `copy`, `check`, `label`, `uuid`). |
 | `op.shrink_below_used` | Error | used size | The new size is smaller than the space in use. |
 | `op.too_small` | Error | number, file system, minimum | A partition is smaller than its file system allows. |

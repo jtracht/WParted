@@ -182,7 +182,8 @@ std::wstring diagText(const Diagnostic& d) {
         {"layout.physical_unaligned", S::DiagPhysUnaligned, 1}, {"layout.too_many_primary", S::DiagTooManyPrimary, 0},
         {"layout.multiple_extended", S::DiagMultipleExtended, 0}, {"layout.logical_without_extended", S::DiagLogicalNoExt, 0},
         {"mbr.multiple_bootable", S::DiagMultipleBootable, 0}, {"layout.logical_outside_extended", S::DiagLogicalOutside, 1},
-        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1},
+        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1}, {"op.bitlocker_unknown", S::DiagBitLockerUnknown, 1},
+        {"op.bitlocker_recovery", S::DiagBitLockerRecovery, 1},
         // partition-table parser
         {"gpt.no_valid_header", S::PdNoValidHeader, 2},
         {"gpt.primary_invalid", S::PdPrimaryInvalid, 1},
@@ -222,6 +223,16 @@ std::wstring diagText(const Diagnostic& d) {
     for (const auto& e : plain)
         if (d.code == e.code && d.args.size() == e.args) body = fmt(e.text);
     if (d.code == "op.system_critical" && a.size() == 2 && a[0] == L"windows") body = formatText(S::DiagSystemWindows, {a[1]});
+    if (d.code == "op.bcd_offset" && a.size() == 1)
+        body = formatText(d.severity == Severity::Error ? S::DiagBcdOffset : S::DiagBcdOffsetImage, {a[0]});
+    if (d.code == "op.bitlocker_active" && a.size() == 2) {
+        static const std::pair<const char*, S> states[] = {{"protection on", S::BlOn}, {"locked", S::BlLocked},
+            {"encryption or decryption in progress", S::BlConverting}};
+        std::wstring state = a[1];
+        for (const auto& x : states)
+            if (d.args[1] == x.first) state = tr(x.second);
+        body = formatText(S::DiagBitLockerActive, {a[0], state});
+    }
     if (d.code == "op.system_critical" && a.size() == 3 && a[0] == L"type") body = formatText(S::DiagSystemType, {a[1], a[2]});
     if (d.code == "layout.overlap" && a.size() == 3)
         body = formatText(a[0] == L"logical" ? S::DiagOverlapLogical : S::DiagOverlapPrimary, {a[1], a[2]});
@@ -371,6 +382,8 @@ ValidationContext MainWindow::validationContext(ValidationMode mode) const {
             st.mounted = !vol->mountPoints.empty();
             st.containsWindows = vol->containsWindows;
             st.pageFile = vol->isPageFileVolume;
+            st.bootManager = vol->isSystemPartition;
+            st.bitLocker = vol->bitLocker;
             if (vol->hasUsage) st.usedBytes = vol->totalBytes - vol->freeBytes;
         }
         ctx.state[p.planId] = st;

@@ -733,7 +733,12 @@ void MainWindow::fillPartitionList() {
                 if (vol && vol->containsWindows) addStatus(tr(S::StatusWindows));
                 else if (vol && !vol->mountPoints.empty()) addStatus(tr(S::StatusMounted));
                 if (isSystemCriticalType(l, p)) addStatus(tr(S::StatusSystemCritical));
-                if (p.fs.type == FsType::BitLocker) addStatus(tr(S::StatusEncrypted));
+                if (vol && vol->isSystemPartition) addStatus(tr(S::StatusBootManager));
+                if (vol && vol->isPageFileVolume) addStatus(tr(S::StatusPageFile));
+                if (vol && (vol->bitLocker == BitLockerState::ProtectionOn || vol->bitLocker == BitLockerState::Locked ||
+                            vol->bitLocker == BitLockerState::Converting))
+                    addStatus(tr(S::StatusBitLockerOn));
+                else if (p.fs.type == FsType::BitLocker) addStatus(tr(S::StatusEncrypted));
                 if (!view_.disk->layoutAvailable) addStatus(tr(S::StatusNotReadable));
                 cells[ColStatus] = status;
             }
@@ -837,6 +842,16 @@ void MainWindow::showPartitionInfo() {
             line(tr(S::InfoUnused), sizeText(vol->freeBytes));
         }
         if (vol->containsWindows) line(tr(S::InfoContainsWindows), tr(S::ValYes));
+        if (vol->isSystemPartition) line(tr(S::InfoBootManager), tr(S::ValYes));
+        if (vol->isPageFileVolume) line(tr(S::InfoPageFile), tr(S::ValYes));
+        if (!vol->guidPath.empty()) {
+            static const std::pair<BitLockerState, S> states[] = {
+                {BitLockerState::NotEncrypted, S::BlNotEncrypted}, {BitLockerState::ProtectionOff, S::BlSuspended},
+                {BitLockerState::ProtectionOn, S::BlOn},           {BitLockerState::Locked, S::BlLocked},
+                {BitLockerState::Converting, S::BlConverting},     {BitLockerState::NotReported, S::BlNotReported}};
+            for (const auto& x : states)
+                if (vol->bitLocker == x.first) line(tr(S::InfoBitLocker), tr(x.second));
+        }
     }
     std::wstring head = L"#" + std::to_wstring(p.number) + L"  " + w(fsTypeName(p.fs.type)) + L"  " + sizeText(p.sectorCount * ss);
     TASKDIALOGCONFIG cfg{sizeof cfg};
