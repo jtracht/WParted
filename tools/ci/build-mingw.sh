@@ -65,7 +65,7 @@ for exe in "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparte
   echo "$(basename "$exe") imports: $imports"
   for dll in $imports; do
     case "$dll" in
-      kernel32.dll|user32.dll|gdi32.dll|advapi32.dll|shell32.dll|ole32.dll|comctl32.dll|comdlg32.dll|msvcrt.dll|uxtheme.dll|dwmapi.dll|shlwapi.dll|oleaut32.dll|api-ms-win-*) ;;
+      kernel32.dll|user32.dll|gdi32.dll|advapi32.dll|shell32.dll|ole32.dll|comctl32.dll|comdlg32.dll|msvcrt.dll|uxtheme.dll|dwmapi.dll|shlwapi.dll|oleaut32.dll|oleacc.dll|api-ms-win-*) ;;
       *) echo "unexpected runtime dependency: $dll" >&2; exit 1 ;;
     esac
   done
