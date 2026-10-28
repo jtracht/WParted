@@ -428,7 +428,7 @@ bool ntfsSetLabel(BlockDevice& d, const std::string& label, std::string& err) {
                 return false;
             }
             std::memmove(&rec[a + newLen], &rec[a + len], inUse - (a + len));  // shift following attributes
-            if (delta < 0) std::memset(&rec[inUse + delta], 0, static_cast<std::size_t>(-delta));
+            if (delta < 0) std::memset(&rec[static_cast<std::size_t>(inUse + delta)], 0, static_cast<std::size_t>(-delta));
             std::memset(&rec[a + voff], 0, newLen - voff);
             std::memcpy(&rec[a + voff], u16.data(), 2 * units);
             put32(&rec[a + 4], static_cast<std::uint32_t>(newLen));

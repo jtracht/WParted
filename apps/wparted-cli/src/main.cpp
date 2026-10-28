@@ -250,12 +250,21 @@ int cmdFsSupport(bool json) {
         std::printf("%s\n", w.str().c_str());
         return 0;
     }
-    std::printf("%-14s %-14s %-28s %s\n", "File system", "Detect", "Usage", "Modifying actions");
+    std::printf("%-14s %-14s %-28s %s\n", "File system", "Detect", "Usage", "Changes on image files");
     for (FsType t : allFsTypes()) {
         const auto& c = capabilitiesFor(t);
+        std::string actions;
+        const std::pair<Support, const char*> list[] = {{c.create, "create"}, {c.grow, "grow"},   {c.shrink, "shrink"},
+                                                        {c.move, "move"},     {c.copy, "copy"},   {c.check, "check"},
+                                                        {c.label, "label"},   {c.uuid, "uuid"}};
+        for (const auto& a : list)
+            if (a.first == Support::Supported || a.first == Support::Limited)
+                actions += (actions.empty() ? "" : ", ") + std::string(a.second) + (a.first == Support::Limited ? "*" : "");
         std::printf("%-14s %-14s %-28s %s\n", fsTypeName(t), supportName(c.detect), supportName(c.readUsage),
-                    "not available in this version");
+                    actions.empty() ? "-" : actions.c_str());
     }
+    std::printf("\n* with limitations (moves and copies are raw and keep the size; see the user guide).\n"
+                "Physical disks are never written by this version.\n");
     return 0;
 }
 

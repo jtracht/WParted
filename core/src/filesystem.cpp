@@ -389,7 +389,7 @@ const FsCapabilities& capabilitiesFor(FsType t) {
         {FsType::Fat32, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
         {FsType::ExFat, S::Supported, S::Limited, S::Supported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::ReFs, S::Supported, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::BitLocker, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
+        {FsType::BitLocker, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
         {FsType::Ext2, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::Ext3, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Limited},
         {FsType::Ext4, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Limited},

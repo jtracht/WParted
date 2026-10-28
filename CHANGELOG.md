@@ -41,6 +41,7 @@ Physical disks are still never written.
 - Used space of FAT and NTFS partitions on images (list columns; validation refuses shrinking below the
   data). Validation checks labels per file system and maximum FAT sizes.
 - Accessibility: the disk map exposes its segments through MSAA.
+- `wparted-cli fs-support` and *View → File System Support* list what can be changed on image files.
 - Disks managed by Windows (dynamic disks, Storage Spaces) are marked and never planned on.
 - Labels of NTFS, exFAT and F2FS (and the F2FS UUID) are read; detection is checked in CI against
   images made by the real mkfs tools, with blkid as reference.

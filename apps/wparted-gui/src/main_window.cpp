@@ -901,11 +901,19 @@ void MainWindow::showFsSupport() {
     std::wstring t;
     for (FsType f : allFsTypes()) {
         const auto& c = capabilitiesFor(f);
+        std::wstring actions;
+        const std::pair<Support, S> list[] = {{c.create, S::CapCreate}, {c.grow, S::CapGrow},   {c.shrink, S::CapShrink},
+                                              {c.move, S::CapMove},     {c.copy, S::CapCopy},   {c.check, S::CapCheck},
+                                              {c.label, S::CapLabel},   {c.uuid, S::CapUuid}};
+        for (const auto& a : list)
+            if (a.first == Support::Supported || a.first == Support::Limited)
+                actions += (actions.empty() ? L"" : L", ") + std::wstring(tr(a.second));
         t += w(fsTypeName(f)) + L":  " + tr(S::ColFsDetect) + L" " + supportText(c.detect) + L";  " + tr(S::ColFsUsage) +
-             L" " + supportText(c.readUsage) + L"\n";
+             L" " + supportText(c.readUsage) +
+             (actions.empty() ? std::wstring() : L";  " + std::wstring(tr(S::CapImages)) + L": " + actions) + L"\n";
     }
     t += L"\n";
-    t += tr(S::PlannedFeature);
+    t += tr(S::FsSupportNote);
     TASKDIALOGCONFIG cfg{sizeof cfg};
     cfg.hwndParent = hwnd_;
     cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;

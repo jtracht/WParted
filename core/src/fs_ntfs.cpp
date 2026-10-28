@@ -189,7 +189,7 @@ bool rewriteAttr(std::vector<std::uint8_t>& rec, std::size_t a, const std::vecto
         return false;
     }
     std::memmove(&rec[a + newLen], &rec[a + len], inUse - (a + len));
-    if (delta < 0) std::memset(&rec[inUse + delta], 0, static_cast<std::size_t>(-delta));
+    if (delta < 0) std::memset(&rec[static_cast<std::size_t>(inUse + delta)], 0, static_cast<std::size_t>(-delta));
     std::memset(&rec[a + mp], 0, newLen - mp);
     std::memcpy(&rec[a + mp], enc.data(), enc.size());
     std::uint64_t vcns = 0;
