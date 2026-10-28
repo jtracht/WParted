@@ -11,9 +11,9 @@ Milestones are planning hypotheses and are tracked on Gitea
 | 2 | 0.2.0-alpha | Operation Planning | Operation queue, validation engine, layout preview, undo, safety dialogs; ahead of plan: execution on disk image files | Released 2026-10-28 (pre-release) |
 | 3 | 0.3.0-alpha | Basic Partition Operations | Privileged helper, create/delete partitions and tables, names, flags — VHD tests first | On image files done (v0.2); helper (ADR-0002) and physical disks open |
 | 4 | 0.4.0-alpha | Windows Filesystems | NTFS/FAT/exFAT format, check, label; NTFS shrink/grow | On image files: FAT complete, exFAT create/label, NTFS grow/shrink/label; NTFS format/check open |
-| 5 | 0.5.0-alpha | Advanced Partition Management | Move, copy, block copier, progress, logs, resume concept | Raw move/copy with progress and logs on image files done; resume concept open |
-| 6 | 0.6.0-alpha | Linux Filesystem Support | ext*, btrfs, xfs … via offline mode, capability checks | Labels/UUIDs on image files done; create/resize/check open |
-| 7 | 0.7.0-alpha | Recovery & Advanced Storage | Recovery medium, BitLocker/EFI/BCD safety, dynamic disks, Storage Spaces | Planned |
+| 5 | 0.5.0-alpha | Advanced Partition Management | Move, copy, block copier, progress, logs, resume concept | On image files: raw move/copy, extended partition moves, journal with resume after crashes (fault-injection tested) done; physical disks open |
+| 6 | 0.6.0-alpha | Linux Filesystem Support | ext*, btrfs, xfs … via offline mode, capability checks | On image files: ext2/3/4 create, grow, shrink (free tail), read-only check, labels/UUIDs done; ext data relocation, XFS/btrfs resize open |
+| 7 | 0.7.0-alpha | Recovery & Advanced Storage | Recovery medium, BitLocker/EFI/BCD safety, dynamic disks, Storage Spaces | Managed disks refused; BitLocker state, boot manager and BCD offset rules in development builds; recovery medium open |
 | 8 | 0.8.0-beta.1 | Public Beta | UX/accessibility review, compatibility, benchmarks, security review, installer | Planned |
 | 9 | 0.9.0-beta | Feature Completion | Remaining parity, legacy tests, end-to-end tests, docs | Planned |
 | 10 | 1.0.0-rc | Release Candidate | Release blockers, SBOM, signing, final checks | Planned |
