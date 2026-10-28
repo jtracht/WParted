@@ -181,6 +181,45 @@ FsType fsByName(const char* n) {
     return FsType::Unknown;
 }
 
+// "create:<fs>": a new 64 MiB partition with that file system behind the last one.
+bool createFs(OperationQueue& q, FsType fs) {
+    if (fs == FsType::Unknown) return false;
+    const std::uint64_t spm = kMiB / q.original().sectorSize;
+    std::uint64_t end = 0;
+    for (const auto& p : q.current().partitions) end = std::max(end, p.firstLba + p.sectorCount);
+    Operation c;
+    c.type = OpType::CreatePartition;
+    c.table = q.current().type;
+    c.firstLba = (end + spm - 1) / spm * spm;
+    c.sectorCount = 64 * spm;
+    c.fs = fs;
+    c.label = "WP" + std::string(fsTypeName(fs)).substr(0, 6);
+    return add(q, c);
+}
+
+
+// "grow-last": the last partition (and its file system) grows by 16 MiB, then
+// a read-only check; "delete-last": the last partition is deleted (its data stays).
+bool lastPartition(OperationQueue& q, bool grow) {
+    const PartitionEntry* last = nullptr;
+    for (const auto& p : q.original().partitions)
+        if (!last || p.firstLba > last->firstLba) last = &p;
+    if (!last) return false;
+    Operation o;
+    o.target = last->planId;
+    if (!grow) {
+        o.type = OpType::DeletePartition;
+        return add(q, o);
+    }
+    o.type = OpType::ResizeMove;
+    o.firstLba = last->firstLba;
+    o.sectorCount = last->sectorCount + 16 * (kMiB / q.original().sectorSize);
+    Operation ck;
+    ck.type = OpType::Check;
+    ck.target = last->planId;
+    return add(q, o) && (!fstools::canCheck(last->fs.type) || add(q, ck));
+}
+
 // image_tool fs <file> create <fs> [label] | label <fs> <label> | uuid <fs> | resize <fs> <bytes> | check <fs>
 // The whole file is the partition.
 int fsCommand(int argc, char** argv) {
@@ -231,6 +270,9 @@ int main(int argc, char** argv) {
                         : scenario == "fat-create" ? fatCreate(q)
                         : scenario == "fat-grow"   ? fatGrow(q)
                         : scenario == "ext-move"   ? extMove(q)
+                        : scenario.rfind("create:", 0) == 0 ? createFs(q, fsByName(scenario.c_str() + 7))
+                        : scenario == "grow-last"  ? lastPartition(q, true)
+                        : scenario == "delete-last" ? lastPartition(q, false)
                                                    : false;
         if (!ok) return 1;
         std::ofstream out(argv[4], std::ios::binary);

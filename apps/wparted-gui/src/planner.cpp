@@ -143,6 +143,8 @@ std::wstring describeOp(const Operation& op, const DiskLayout& before) {
             const S kind = op.kind == PartitionKind::Logical    ? S::KindLogicalAdj
                            : op.kind == PartitionKind::Extended ? S::KindExtendedAdj
                                                                 : S::KindPrimaryAdj;
+            if (op.keepContents)
+                return formatText(S::OpRecreate, {tr(kind), fsChoiceName(op.fs), size(op.sectorCount), std::to_wstring(op.firstLba)});
             return formatText(S::OpCreate, {tr(kind), op.kind == PartitionKind::Extended ? tr(S::KindExtendedAdj)
                                                                                            : fsChoiceName(op.fs),
                                             size(op.sectorCount), std::to_wstring(op.firstLba)});
