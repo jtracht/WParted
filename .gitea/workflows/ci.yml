@@ -84,3 +84,16 @@ jobs:
         with:
           name: wparted-${{ matrix.arch }}-portable
           path: dist/*.zip
+
+  windows-arm64:
+    name: Windows ARM64 (llvm-mingw cross build, not run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build with warnings as errors, check machine type and imports
+        run: bash tools/ci/build-arm64.sh --package
+      - name: Upload build (untested on ARM64 Windows)
+        uses: actions/upload-artifact@v3
+        with:
+          name: wparted-arm64-untested
+          path: dist/*.zip
