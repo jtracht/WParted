@@ -14,12 +14,15 @@ NAME=llvm-mingw-$VER-ucrt-ubuntu-22.04-x86_64
 SHA=bb7bb7654b33d5aa8712acb837c963b2e0c56352560c76105270a3268c665c21
 
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq --no-install-recommends cmake ninja-build python3 zip curl xz-utils ca-certificates >/dev/null
+SUDO=""
+[ "$(id -u)" -ne 0 ] && SUDO="sudo"
+$SUDO apt-get update -qq
+$SUDO apt-get install -y -qq --no-install-recommends cmake ninja-build python3 zip curl xz-utils ca-certificates >/dev/null
 curl -fsSL -o "/tmp/$NAME.tar.xz" "https://github.com/mstorsjo/llvm-mingw/releases/download/$VER/$NAME.tar.xz"
 echo "$SHA  /tmp/$NAME.tar.xz" | sha256sum -c -
-tar -xJf "/tmp/$NAME.tar.xz" -C /opt
-export PATH="/opt/$NAME/bin:$PATH"
+TOOLS="${RUNNER_TEMP:-/opt}"
+tar -xJf "/tmp/$NAME.tar.xz" -C "$TOOLS"
+export PATH="$TOOLS/$NAME/bin:$PATH"
 aarch64-w64-mingw32-clang++ --version | head -1
 
 BUILD=build/arm64

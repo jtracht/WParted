@@ -6,7 +6,7 @@ Binding scope definition for WParted. Every GParted function verified in
 stated environment), `Implemented` (code + automated tests, platform verification pending),
 `In progress`, `Planned`, `Offline only` (planned for the recovery environment), `Won't do` (with reason).
 
-Issue keys (`WP-nnn`) appear in the title of the matching Gitea issue at
+Issue keys (`WP-nnn`) appear in the title of the matching Gitea issue (project management) at
 https://git.tracht-digital.de/jtracht/WParted/issues. Risk: L/M/H/C = Low/Medium/High/Critical.
 Priority: P0 (blocking) … P3 (nice to have). Windows compatibility lists the *target*; verified
 versions are tracked in `docs/compatibility/windows-support-matrix.md`.

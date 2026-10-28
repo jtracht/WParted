@@ -10,7 +10,7 @@ GParted-ähnlichen Ansicht an und **verändert nichts** auf Ihren Datenträgern.
 ## Installation und erster Start
 
 1. Laden Sie `WParted-v0.1.0-alpha-win7plus-x64-portable.zip` (bzw. `-x86` für 32-Bit-Windows) von der
-   Gitea-Release-Seite herunter und prüfen Sie die SHA-256-Prüfsumme aus `…-checksums.sha256`.
+   GitHub-Release-Seite herunter und prüfen Sie die SHA-256-Prüfsumme aus `…-checksums.sha256`.
 2. Entpacken Sie das ZIP in einen beliebigen Ordner. Keine Installation und keine Laufzeitumgebung nötig.
 3. Starten Sie `wparted.exe`.
 

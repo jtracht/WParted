@@ -27,6 +27,12 @@ written.
   view, boot manager / Windows / page file marked, BitLocker "not encrypted" matching
   `manage-bde -status`, rescue scan on both disks, Windows' view unchanged afterwards.
 
+### Changed
+- **WParted is developed on GitHub** (https://github.com/jtracht/WParted): code, pull requests, CI
+  (GitHub Actions, same jobs as before) and releases. Project management - issues, milestones and
+  the board - stays on Gitea in `jtracht/WParted-PM`; the Gitea repository `jtracht/WParted` becomes
+  a read-only pull mirror, as for every public repository in the TDS-Ops sync.
+
 ### Removed
 - The project website (sources and generator) moved out of this repository; it will be maintained
   separately.

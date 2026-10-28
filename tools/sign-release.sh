@@ -11,7 +11,7 @@ if [ -z "${PFX_B64:-}" ]; then
   echo "warning: no signing certificate configured - release is unsigned" >&2
   exit 0
 fi
-command -v osslsigncode >/dev/null || { apt-get install -y -qq osslsigncode >/dev/null; }
+command -v osslsigncode >/dev/null || { $( [ "$(id -u)" -ne 0 ] && echo sudo ) apt-get install -y -qq osslsigncode >/dev/null; }
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 echo "$PFX_B64" | base64 -d > "$WORK/cert.pfx"

@@ -5,7 +5,7 @@
 #
 #   tools/ci/build-mingw.sh <x64|x86> [--package] [--no-deps]
 #
-# Used by .gitea/workflows/*.yml on the Linux Docker runner and locally via
+# Used by .github/workflows/*.yml on GitHub-hosted Ubuntu runners and locally via
 #   docker run --rm -v "$PWD:/src" -w /src docker.gitea.com/runner-images:ubuntu-latest \
 #       tools/ci/build-mingw.sh x64 --package
 set -euo pipefail

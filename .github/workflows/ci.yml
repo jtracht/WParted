@@ -1,14 +1,17 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Pull request / push validation on the instance's only runner
-# (label ubuntu-latest, image docker.gitea.com/runner-images:ubuntu-latest).
-# Windows binaries are cross-compiled with MinGW-w64 and tested under Wine;
-# real-Windows verification is a manual release gate (docs/developer/release-process.md).
+# Pull request / push validation on GitHub-hosted Ubuntu runners (the same jobs
+# as before on the Gitea runner). Windows binaries are cross-compiled with
+# MinGW-w64 and tested under Wine; real-Windows verification is a manual
+# release gate (docs/developer/release-process.md).
 name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   checks:
@@ -34,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends cmake ninja-build g++ >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends cmake ninja-build g++ >/dev/null
       - name: Configure
         run: cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DWPARTED_WARNINGS_AS_ERRORS=ON
       - name: Build
@@ -43,16 +46,16 @@ jobs:
         run: ctest --test-dir build/linux --output-on-failure
       - name: Detection against real mkfs images (ext2/3/4, FAT16/32, exFAT, NTFS, btrfs, XFS, F2FS, swap)
         run: |
-          apt-get install -y -qq --no-install-recommends \
+          sudo apt-get install -y -qq --no-install-recommends \
             e2fsprogs dosfstools exfatprogs ntfs-3g btrfs-progs xfsprogs f2fs-tools util-linux >/dev/null
           bash tools/ci/mkfs-fixtures.sh build/linux/tests/wparted_detect_fs
       - name: Plan execution on image files, checked with sgdisk, sfdisk, e2fsck and debugfs
         run: |
-          apt-get install -y -qq --no-install-recommends gdisk fdisk mtools >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends gdisk fdisk mtools >/dev/null
           bash tools/ci/image-apply-check.sh build/linux/tests/wparted_image_tool
       - name: File-system operations checked with dosfstools, mtools, exfatprogs, ntfs-3g, e2fsprogs
         run: |
-          apt-get install -y -qq --no-install-recommends mtools >/dev/null
+          sudo apt-get install -y -qq --no-install-recommends mtools >/dev/null
           bash tools/ci/fs-tools-check.sh build/linux/tests/wparted_image_tool build/linux/tests/wparted_detect_fs
 
   windows-cross:
@@ -69,7 +72,7 @@ jobs:
       - name: GUI start-up smoke test (Wine + Xvfb)
         run: bash tools/ci/gui-smoke-wine.sh build/mingw-${{ matrix.arch }}/apps/wparted-gui/wparted.exe
       - name: Upload portable package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wparted-${{ matrix.arch }}-portable
           path: dist/*.zip
@@ -82,7 +85,7 @@ jobs:
       - name: Build with warnings as errors, check machine type and imports
         run: bash tools/ci/build-arm64.sh --package
       - name: Upload build (untested on ARM64 Windows)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wparted-arm64-untested
           path: dist/*.zip

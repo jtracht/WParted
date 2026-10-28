@@ -1,9 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Contributing to WParted
 
-Thank you for helping. Development happens on **Gitea**:
-https://git.tracht-digital.de/jtracht/WParted. GitHub (if present) is a mirror; pull requests there are
-not merged.
+Thank you for helping. Code and pull requests are on **GitHub**: https://github.com/jtracht/WParted.
+Project management - issues (`WP-nnn`), milestones and the board - is on **Gitea**: https://git.tracht-digital.de/jtracht/WParted-PM.
 
 ## Ground rules
 
@@ -21,7 +20,7 @@ not merged.
 2. Branch from `main`: `feature/WP-nnn-short-name` or `fix/WP-nnn-short-name`.
 3. Build and test locally: `.\tools\build.ps1 -Arch x64` and `-Arch x86`; run
    `python tools/ci/check_readonly.py` and `python tools/ci/check_spdx.py`.
-4. Open a pull request on Gitea referencing the issue. CI must pass. Changes to write paths need a
+4. Open a pull request on GitHub referencing the issue (`WP-nnn`). CI (GitHub Actions) must pass. Changes to write paths need a
    second human reviewer.
 5. Update `CHANGELOG.md`, the parity matrix and docs in the same PR.
 

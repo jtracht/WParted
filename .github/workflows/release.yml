@@ -1,17 +1,18 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Builds a release for a version tag (v0.1.0-alpha, v1.0.0, ...) on the
-# Linux runner and creates a *draft* Gitea release. A maintainer publishes it
-# after the manual real-Windows smoke test (Wine is not Windows).
+# Builds a release for a version tag (v0.1.0-alpha, v1.0.0, ...) on a
+# GitHub-hosted Ubuntu runner and creates a *draft* GitHub release. A
+# maintainer publishes it after the release checks (docs/developer/release-process.md).
 # Fails without creating a release if any step or artefact is missing.
-# Token: secret RELEASE_TOKEN if visible to this repository, otherwise the
-# automatic job token (sufficient to create releases in this repository).
-# Note: organisation secrets are not visible to this user-owned repository.
+# Token: the automatic GITHUB_TOKEN (contents: write).
 # Optional secrets: SIGNING_CERT_PFX_BASE64, SIGNING_CERT_PASSWORD (Authenticode via osslsigncode).
 name: release
 
 on:
   push:
     tags: ['v*']
+
+permissions:
+  contents: write
 
 jobs:
   release:
@@ -56,28 +57,19 @@ jobs:
             [ -s "dist/$f" ] || { echo "missing artefact $f"; exit 1; }
           done
 
-      # Same files as an Actions artefact (v4 protocol): downloadable through the
-      # authenticated API for the manual real-Windows gate (the instance requires
-      # sign-in for release downloads, also for drafts).
       - name: Upload release files as workflow artefact
         uses: actions/upload-artifact@v4
         with:
           name: release-files
           path: dist/*
 
-      - name: Create draft Gitea release and upload artefacts
+      - name: Create draft GitHub release with the artefacts
         env:
-          TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           v="$VERSION"
-          api="${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
-          prerelease=false; case "$v" in *-*) prerelease=true ;; esac
           python3 tools/release_notes.py "$v" > notes.md
-          body="$(python3 -c 'import json,sys;print(json.dumps({"tag_name":"v"+sys.argv[1],"name":"WParted v"+sys.argv[1],"body":open("notes.md").read(),"draft":True,"prerelease":sys.argv[2]=="true"}))' "$v" "$prerelease")"
-          id="$(curl --fail -sS -H "Authorization: token $TOKEN" -H 'Content-Type: application/json' -d "$body" "$api/releases" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')"
-          for f in dist/*; do
-            [ -f "$f" ] || continue
-            curl --fail -sS -H "Authorization: token $TOKEN" -F "attachment=@$f" "$api/releases/$id/assets?name=$(basename "$f")" >/dev/null \
-              || { echo "upload failed: $f (release stays a draft)"; exit 1; }
-          done
-          echo "Draft release $id created. Publish it after the manual Windows smoke test."
+          flags="--draft"
+          case "$v" in *-*) flags="$flags --prerelease" ;; esac
+          gh release create "v$v" dist/* $flags --verify-tag --title "WParted v$v" --notes-file notes.md
+          echo "Draft release v$v created. Publish it after the release checks."

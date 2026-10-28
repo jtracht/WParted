@@ -13,9 +13,9 @@ technically safe on Windows, with a familiar layout, a modern Windows UI and str
 
 WParted is an independent project. It is not affiliated with or endorsed by the GParted or GNOME projects.
 
-> **Source of truth:** development, issues and releases live on Gitea:
-> https://git.tracht-digital.de/jtracht/WParted. A GitHub repository, if present, is a read-only mirror —
-> please report issues on Gitea.
+> **Where things live:** code, pull requests, CI and releases are on GitHub:
+> https://github.com/jtracht/WParted (open source, GPL-2.0-or-later). Project management - issues, milestones and the
+> board - is on Gitea: https://git.tracht-digital.de/jtracht/WParted-PM. The Gitea repository `jtracht/WParted` is a read-only mirror of GitHub.
 
 ## Features in this build
 
@@ -42,7 +42,7 @@ Windows 11 x64 has been run so far; Windows 7–10 are build targets awaiting VM
 ## Installation
 
 No installer yet. Download the portable ZIP from the
-[Gitea releases](https://git.tracht-digital.de/jtracht/WParted/releases),
+[GitHub releases](https://github.com/jtracht/WParted/releases),
 extract it and run `wparted.exe`. To read partition tables, choose **WParted → Restart as Administrator**.
 
 ## Building
@@ -68,14 +68,14 @@ Details: [docs/developer/building.md](docs/developer/building.md).
 - Architecture: [technology decision](docs/architecture/technology-decision.md), [security](docs/architecture/security-architecture.md)
 - Research: [GParted architecture](docs/research/gparted-architecture.md), [feature inventory](docs/research/gparted-feature-inventory.md), [UI analysis](docs/research/gparted-ui-analysis.md), [Windows portability](docs/research/windows-portability-analysis.md)
 - Design: [design system](docs/design/wparted-design-system.md)
-- Process: [contributing](CONTRIBUTING.md), [testing](docs/developer/testing.md), [release process](docs/developer/release-process.md), [Gitea/CI setup](docs/developer/infrastructure-setup.md)
+- Process: [contributing](CONTRIBUTING.md), [testing](docs/developer/testing.md), [release process](docs/developer/release-process.md), [CI/infrastructure setup](docs/developer/infrastructure-setup.md)
 
 ## Kurzfassung (Deutsch)
 
 WParted ist ein freier, nativer Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Die
 aktuelle Alpha ist **ausschließlich lesend**: Sie zeigt Datenträger, Partitionstabellen (GPT/MBR),
 Dateisysteme und Volumes an, verändert aber nichts. Fehler und Wünsche bitte auf
-[Gitea](https://git.tracht-digital.de/jtracht/WParted/issues) melden.
+[Gitea](https://git.tracht-digital.de/jtracht/WParted-PM/issues) melden (Projektverwaltung); Code und Releases liegen auf [GitHub](https://github.com/jtracht/WParted).
 
 ## License
 

@@ -10,7 +10,7 @@ It **does not change anything** on your disks.
 ## Installation and first start
 
 1. Download `WParted-v0.1.0-alpha-win7plus-x64-portable.zip` (or `-x86` for 32-bit Windows) from the
-   Gitea releases page and verify the SHA-256 checksum from `…-checksums.sha256`.
+   GitHub releases page and verify the SHA-256 checksum from `…-checksums.sha256`.
 2. Extract the ZIP to any folder. No installation or runtime is required.
 3. Run `wparted.exe`.
 

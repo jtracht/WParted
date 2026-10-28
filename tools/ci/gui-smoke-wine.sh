@@ -8,7 +8,9 @@
 set -euo pipefail
 EXE="$(realpath "${1:?usage: gui-smoke-wine.sh <wparted.exe>}")"
 # Wine's X11 driver needs these (they are only "Recommends" of the wine packages).
-apt-get install -y -qq --no-install-recommends xvfb xauth libx11-6 libxext6 libxrender1 libxrandr2 \
+SUDO=""
+[ "$(id -u)" -ne 0 ] && SUDO="sudo"
+$SUDO apt-get install -y -qq --no-install-recommends xvfb xauth libx11-6 libxext6 libxrender1 libxrandr2 \
   libxi6 libxcursor1 libxcomposite1 libxinerama1 libxfixes3 libfreetype6 libfontconfig1 fonts-dejavu-core >/dev/null
 export WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml="
 export WINEPREFIX="$HOME/.wine-wparted-gui"
