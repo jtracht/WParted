@@ -117,6 +117,20 @@ for fs in ext2 ext4; do
 done
 dumpe2fs -h "$W/ext4.img" 2>/dev/null | grep -q metadata_csum_seed && pass "ext4: metadata_csum_seed keeps checksums valid" || bad "ext4: csum seed"
 
+# --- XFS / btrfs ----------------------------------------------------------------
+img=$W/xfs.img
+truncate -s 320M "$img"
+mkfs.xfs -q -f -L old "$img"
+"$TOOL" fs "$img" label xfs xfs-data && same "xfs label: blkid" "$(blk "$img" LABEL)" "xfs-data" || bad "xfs: label"
+uuid=$("$TOOL" fs "$img" uuid xfs) && same "xfs uuid: blkid" "$(blk "$img" UUID)" "$uuid" || bad "xfs: uuid"
+if xfs_repair -n "$img" >"$W/xr.txt" 2>&1; then pass "xfs: xfs_repair -n clean (all AG superblocks, CRC, meta_uuid)"; else bad "xfs: xfs_repair"; cat "$W/xr.txt"; fi
+img=$W/btrfs.img
+truncate -s 256M "$img"
+mkfs.btrfs -q -f -L old "$img"
+"$TOOL" fs "$img" label btrfs btrfs-data && same "btrfs label: blkid" "$(blk "$img" LABEL)" "btrfs-data" || bad "btrfs: label"
+uuid=$("$TOOL" fs "$img" uuid btrfs) && same "btrfs uuid: blkid" "$(blk "$img" UUID)" "$uuid" || bad "btrfs: uuid"
+if btrfs check --readonly "$img" >"$W/br.txt" 2>&1; then pass "btrfs: btrfs check --readonly clean (metadata_uuid)"; else bad "btrfs: btrfs check"; cat "$W/br.txt"; fi
+
 # --- Linux swap ----------------------------------------------------------------
 img=$W/swap.img
 truncate -s 16M "$img"

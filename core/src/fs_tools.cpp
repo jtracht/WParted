@@ -554,6 +554,116 @@ bool extSetUuid(BlockDevice& d, const Guid& rnd, std::string& err) {
     }, err);
 }
 
+// --- XFS (big-endian superblocks, one per allocation group) ---------------------------
+
+std::uint32_t be32v(const std::uint8_t* p) { return std::uint32_t{p[0]} << 24 | std::uint32_t{p[1]} << 16 | std::uint32_t{p[2]} << 8 | p[3]; }
+void putBe32(std::uint8_t* p, std::uint32_t v) {
+    for (int i = 0; i < 4; ++i) p[i] = static_cast<std::uint8_t>(v >> (24 - 8 * i));
+}
+constexpr std::uint32_t kXfsMetaUuid = 1u << 2;  // sb_features_incompat: XFS_SB_FEAT_INCOMPAT_META_UUID
+
+template <class F>
+bool xfsUpdate(BlockDevice& d, F change, std::string& err) {
+    std::uint8_t sb0[512];
+    if (!d.read(0, sb0, sizeof sb0) || std::memcmp(sb0, "XFSB", 4) != 0) {
+        err = "no XFS superblock";
+        return false;
+    }
+    const std::uint32_t bs = be32v(sb0 + 4), agblocks = be32v(sb0 + 84), agcount = be32v(sb0 + 88);
+    const std::uint32_t sectsize = std::uint32_t{sb0[102]} << 8 | sb0[103];
+    const bool v5 = ((std::uint32_t{sb0[100]} << 8 | sb0[101]) & 0x000F) == 5;
+    if (bs < 512 || bs > 65536 || agblocks == 0 || agcount == 0 || sectsize < 512 || sectsize > 4096) {
+        err = "invalid XFS superblock";
+        return false;
+    }
+    for (std::uint32_t ag = 0; ag < agcount; ++ag) {
+        const std::uint64_t off = std::uint64_t{ag} * agblocks * bs;
+        if (off + sectsize > d.size()) break;
+        std::vector<std::uint8_t> sb(sectsize);
+        if (!d.read(off, sb.data(), sb.size()) || std::memcmp(sb.data(), "XFSB", 4) != 0) continue;
+        change(sb, v5);
+        if (v5) {  // sb_crc (little endian) = ~crc32c over the sector with the field zeroed
+            put32(&sb[224], 0);
+            put32(&sb[224], ~crc32c(0xFFFFFFFFu, sb.data(), sb.size()));
+        }
+        if (!d.write(off, sb.data(), sb.size())) {
+            err = "writing an XFS superblock failed";
+            return false;
+        }
+    }
+    return d.flush() || (err = "flush failed", false);
+}
+
+bool xfsSetLabel(BlockDevice& d, const std::string& label, std::string& err) {
+    return xfsUpdate(d, [&](std::vector<std::uint8_t>& sb, bool) {
+        std::memset(&sb[108], 0, 12);
+        std::memcpy(&sb[108], label.data(), std::min<std::size_t>(label.size(), 12));
+    }, err);
+}
+
+bool xfsSetUuid(BlockDevice& d, const Guid& rfc, std::string& err) {
+    return xfsUpdate(d, [&](std::vector<std::uint8_t>& sb, bool v5) {
+        // v5 metadata embeds the UUID; keep it valid through sb_meta_uuid.
+        if (v5 && !(be32v(&sb[216]) & kXfsMetaUuid)) {
+            std::memcpy(&sb[248], &sb[32], 16);
+            putBe32(&sb[216], be32v(&sb[216]) | kXfsMetaUuid);
+        }
+        std::memcpy(&sb[32], rfc.bytes.data(), 16);
+    }, err);
+}
+
+// --- btrfs (superblock at 64 KiB, mirrors at 64 MiB and 256 GiB) ---------------------
+
+constexpr std::uint64_t kBtrfsMetadataUuid = 1ull << 10;  // incompat METADATA_UUID
+
+template <class F>
+bool btrfsUpdate(BlockDevice& d, F change, std::string& err) {
+    bool any = false;
+    for (std::uint64_t off : {0x10000ull, 0x4000000ull, 0x4000000000ull}) {
+        if (off + 4096 > d.size()) break;
+        std::vector<std::uint8_t> sb(4096);
+        if (!d.read(off, sb.data(), sb.size()) || std::memcmp(&sb[0x40], "_BHRfS_M", 8) != 0 || le64(&sb[0x30]) != off) continue;
+        if (le16(&sb[0xC4]) != 0) {
+            err = "only crc32c checksums are supported for btrfs";
+            return false;
+        }
+        change(sb);
+        std::memset(sb.data(), 0, 32);
+        put32(sb.data(), ~crc32c(0xFFFFFFFFu, &sb[0x20], sb.size() - 0x20));
+        if (!d.write(off, sb.data(), sb.size())) {
+            err = "writing a btrfs superblock failed";
+            return false;
+        }
+        any = true;
+    }
+    if (!any) {
+        err = "no btrfs superblock";
+        return false;
+    }
+    return d.flush() || (err = "flush failed", false);
+}
+
+bool btrfsSetLabel(BlockDevice& d, const std::string& label, std::string& err) {
+    return btrfsUpdate(d, [&](std::vector<std::uint8_t>& sb) {
+        std::memset(&sb[0x12B], 0, 256);
+        std::memcpy(&sb[0x12B], label.data(), std::min<std::size_t>(label.size(), 255));
+    }, err);
+}
+
+bool btrfsSetUuid(BlockDevice& d, const Guid& rfc, std::string& err) {
+    return btrfsUpdate(d, [&](std::vector<std::uint8_t>& sb) {
+        // Tree blocks carry the old fsid; with METADATA_UUID they keep it
+        // (what btrfstune -m does). dev_item.fsid stays the metadata UUID.
+        std::uint64_t incompat = le64(&sb[0xBC]);
+        if (!(incompat & kBtrfsMetadataUuid)) {
+            std::memcpy(&sb[0x23B], &sb[0x20], 16);
+            incompat |= kBtrfsMetadataUuid;
+            for (int i = 0; i < 8; ++i) sb[0xBC + i] = static_cast<std::uint8_t>(incompat >> (8 * i));
+        }
+        std::memcpy(&sb[0x20], rfc.bytes.data(), 16);
+    }, err);
+}
+
 // --- Linux swap ------------------------------------------------------------------
 
 bool swapCheck(BlockReader& r, std::string& err) {
@@ -596,7 +706,8 @@ std::uint32_t crc32c(std::uint32_t crc, const std::uint8_t* data, std::size_t le
 bool canCreate(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat; }
 bool canLabel(FsType t) noexcept {
     return t == FsType::Fat12 || t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || t == FsType::Ntfs ||
-           t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4 || t == FsType::LinuxSwap;
+           t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4 || t == FsType::LinuxSwap || t == FsType::Xfs ||
+           t == FsType::Btrfs;
 }
 bool canSetUuid(FsType t) noexcept { return canLabel(t); }
 bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32; }
@@ -618,6 +729,8 @@ std::string labelProblem(FsType t, const std::string& label) {
         case FsType::Ext3:
         case FsType::Ext4:
         case FsType::LinuxSwap: return label.size() > 16 ? "this label has at most 16 bytes" : std::string();
+        case FsType::Xfs: return label.size() > 12 ? "XFS labels have at most 12 bytes" : std::string();
+        case FsType::Btrfs: return label.size() > 255 ? "btrfs labels have at most 255 bytes" : std::string();
         default: return "labels cannot be changed for this file system yet";
     }
 }
@@ -653,6 +766,8 @@ bool setLabel(BlockDevice& part, FsType t, const std::string& label, std::string
             std::memcpy(b, label.data(), std::min<std::size_t>(label.size(), 16));
             return swapWrite(part, 1024 + 28, b, 16, error);
         }
+        case FsType::Xfs: return xfsSetLabel(part, label, error);
+        case FsType::Btrfs: return btrfsSetLabel(part, label, error);
         default: error = "labels cannot be changed for this file system yet"; return false;
     }
 }
@@ -677,8 +792,10 @@ bool setNewUuid(BlockDevice& part, FsType t, std::string& uuid, std::string& err
         case FsType::Ext2:
         case FsType::Ext3:
         case FsType::Ext4:
-        case FsType::LinuxSwap: {
-            // ext and swap store UUIDs in RFC 4122 byte order (randomGuid() is in
+        case FsType::LinuxSwap:
+        case FsType::Xfs:
+        case FsType::Btrfs: {
+            // ext, swap, XFS and btrfs store UUIDs in RFC 4122 byte order (randomGuid() is in
             // GPT's mixed-endian order): version 4 in byte 6, variant in byte 8.
             Guid rfc = g;
             rfc.bytes[6] = static_cast<std::uint8_t>((rfc.bytes[6] & 0x0F) | 0x40);
@@ -688,6 +805,8 @@ bool setNewUuid(BlockDevice& part, FsType t, std::string& uuid, std::string& err
                           b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
             uuid = buf;
             if (t == FsType::LinuxSwap) return swapWrite(part, 1024 + 12, b, 16, error);
+            if (t == FsType::Xfs) return xfsSetUuid(part, rfc, error);
+            if (t == FsType::Btrfs) return btrfsSetUuid(part, rfc, error);
             return extSetUuid(part, rfc, error);
         }
         default: error = "a new UUID cannot be set for this file system yet"; return false;

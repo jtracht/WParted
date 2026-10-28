@@ -15,6 +15,7 @@
 //   NTFS          label, serial, grow, shrink (if the space behind the new end is free)
 //   ext2/3/4      label, UUID
 //   Linux swap    label, UUID
+//   XFS, btrfs    label, UUID (v5 XFS via meta_uuid, btrfs via metadata_uuid)
 #pragma once
 
 #include <cstdint>

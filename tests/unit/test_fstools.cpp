@@ -301,6 +301,50 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
         CHECK_EQ(detect(im).label, std::string("swap1"));
         CHECK_EQ(detect(im).uuid, uuid);
     }
+    {  // XFS v5: label in every AG superblock, sb_crc = ~crc32c, meta_uuid keeps the old UUID
+        Image im(16 * MiB, 512);
+        for (std::uint64_t ag : {0ull, 1ull}) {
+            const std::uint64_t o = ag * 1024 * 4096;
+            im.putStr(o, "XFSB", 4);
+            const std::uint8_t bs[4] = {0, 0, 0x10, 0};  // 4096 big endian
+            std::memcpy(&im.data[o + 4], bs, 4);
+            const std::uint8_t agb[4] = {0, 0, 0x04, 0};  // 1024 blocks per AG
+            std::memcpy(&im.data[o + 84], agb, 4);
+            im.b(o + 91) = 2;   // agcount 2
+            im.b(o + 101) = 5;  // version 5
+            im.b(o + 102) = 2;  // sector size 512 (big endian 0x0200)
+            for (int i = 0; i < 16; ++i) im.b(o + 32 + i) = static_cast<std::uint8_t>(0x30 + i);
+        }
+        MemoryBlockDevice dev(im.data, 512);
+        REQUIRE(fstools::setLabel(dev, FsType::Xfs, "xfsdata", err));
+        REQUIRE(fstools::setNewUuid(dev, FsType::Xfs, uuid, err));
+        CHECK_EQ(detect(im).label, std::string("xfsdata"));
+        CHECK_EQ(detect(im).uuid, uuid);
+        for (std::uint64_t o : {0ull, 1024ull * 4096}) {
+            std::vector<std::uint8_t> sb(im.data.begin() + static_cast<std::ptrdiff_t>(o),
+                                         im.data.begin() + static_cast<std::ptrdiff_t>(o + 512));
+            const std::uint32_t stored = le32(&sb[224]);
+            sb[224] = sb[225] = sb[226] = sb[227] = 0;
+            CHECK_EQ(stored, ~fstools::crc32c(0xFFFFFFFFu, sb.data(), 512));
+            CHECK_EQ(im.b(o + 248), 0x30);  // sb_meta_uuid = old UUID
+            CHECK((im.b(o + 219) & 0x04) != 0);
+        }
+    }
+    {  // btrfs: csum over [0x20, 4096), metadata_uuid keeps the old fsid
+        Image im(8 * MiB, 512);
+        const std::uint64_t o = 0x10000;
+        im.putStr(o + 0x40, "_BHRfS_M", 8);
+        im.put64(o + 0x30, o);
+        for (int i = 0; i < 16; ++i) im.b(o + 0x20 + i) = static_cast<std::uint8_t>(0x50 + i);
+        MemoryBlockDevice dev(im.data, 512);
+        REQUIRE(fstools::setLabel(dev, FsType::Btrfs, "pool", err));
+        REQUIRE(fstools::setNewUuid(dev, FsType::Btrfs, uuid, err));
+        CHECK_EQ(detect(im).label, std::string("pool"));
+        CHECK_EQ(detect(im).uuid, uuid);
+        CHECK_EQ(le32(&im.data[o]), ~fstools::crc32c(0xFFFFFFFFu, &im.data[o + 0x20], 4096 - 0x20));
+        CHECK_EQ(im.b(o + 0x23B), 0x50);
+        CHECK((le64(&im.data[o + 0xBC]) & (1ull << 10)) != 0);
+    }
     const std::uint8_t text[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
     CHECK_EQ(fstools::crc32c(0xFFFFFFFFu, text, 9) ^ 0xFFFFFFFFu, 0xE3069283u);  // standard CRC32C check value
 }

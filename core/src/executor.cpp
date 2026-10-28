@@ -387,6 +387,20 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
                         step.messages.push_back("Growing the copied file system to the partition size");
                         ok = fstools::resize(part, fs, b->sectorCount * ss, err);
                     }
+                    // Linux refuses or confuses two file systems with the same UUID.
+                    if (ok && fstools::canSetUuid(fs) &&
+                        (fs == FsType::Ext2 || fs == FsType::Ext3 || fs == FsType::Ext4 || fs == FsType::Xfs ||
+                         fs == FsType::Btrfs || fs == FsType::LinuxSwap)) {
+                        std::string uuidErr;
+                        if (fstools::setNewUuid(part, fs, newUuid, uuidErr)) {
+                            step.messages.push_back("New UUID for the copy: " + newUuid);
+                        } else {  // the copy itself is fine; tell the user
+                            step.messages.push_back("Warning: the copy keeps the UUID of the original (" + uuidErr +
+                                                    "); give it a new UUID before using both at the same time");
+                            warn = true;
+                            newUuid.clear();
+                        }
+                    }
                     break;
                 case OpType::SetLabel:
                     step.messages.push_back("Setting the label to \"" + op.label + "\"");
