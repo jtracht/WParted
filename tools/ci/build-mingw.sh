@@ -60,7 +60,7 @@ ctest --test-dir "$BUILD" --output-on-failure
 
 # Prove the binaries only import Windows system DLLs (no MinGW runtime DLLs).
 OBJDUMP="$( [ "$ARCH" = x64 ] && echo x86_64 || echo i686 )-w64-mingw32-objdump"
-for exe in "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparted-cli.exe"; do
+for exe in "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparted-cli.exe" "$BUILD/apps/wparted-cli/wparted-helper.exe"; do
   imports="$($OBJDUMP -p "$exe" | awk '/DLL Name:/ {print tolower($3)}' | sort -u | tr '\n' ' ')"
   echo "$(basename "$exe") imports: $imports"
   for dll in $imports; do

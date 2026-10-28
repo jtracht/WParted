@@ -18,7 +18,9 @@
 #include "wparted/core/json.hpp"
 #include "wparted/core/partition_table.hpp"
 #include "wparted/core/rescue.hpp"
+#include "wparted/core/helper_protocol.hpp"
 #include "wparted/win/disk_discovery.hpp"
+#include "wparted/win/pipe.hpp"
 #include "wparted/win/report.hpp"
 #include "wparted_version.h"
 
@@ -37,7 +39,7 @@ void usage() {
         "  wparted-cli rescue-scan-image <file> [--sector-size N] [--json] [--plan out.json]\n"
         "  wparted-cli rescue-scan <disk number>         Read-only rescue scan of a physical disk (administrator)\n"
         "                                                 Search unallocated space for lost file systems\n"
-        "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute] [--log file.html]\n"
+        "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute [--helper]] [--log file.html]\n"
         "                                                 Check a saved plan against a disk image file;\n"
         "                                                 with --execute, apply it to that image file\n"
         "  wparted-cli resume <image> [--execute | --discard] [--log file.html]\n"
@@ -200,8 +202,109 @@ ExecuteOptions executeOptions(const std::string& journal) {
     return opt;
 }
 
+// Executes through wparted-helper.exe (ADR-0002): the helper validates the
+// plan itself and only executes after a confirmation with the plan's hash.
+int applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t ss) {
+    const std::wstring helperPath = win::ownDirectory() + L"wparted-helper.exe";
+    const std::wstring pipeName = win::randomPipeName();
+    win::Pipe pipe;
+    std::string err;
+    if (!pipe.create(pipeName, err)) {
+        std::fprintf(stderr, "error: %s\n", err.c_str());
+        return 2;
+    }
+    std::wstring cmd = L"\"" + helperPath + L"\" --pipe " + pipeName;
+    STARTUPINFOW si{sizeof si};
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(helperPath.c_str(), &cmd[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+        std::fprintf(stderr, "error: wparted-helper.exe cannot be started (%lu)\n", GetLastError());
+        return 2;
+    }
+    CloseHandle(pi.hThread);
+    auto done = [&](int code) {
+        WaitForSingleObject(pi.hProcess, 10000);
+        CloseHandle(pi.hProcess);
+        return code;
+    };
+    auto send = [&](const helper::Message& m) { return pipe.send(helper::encode(m), err); };
+    auto receive = [&](helper::Message& m, unsigned long timeout) {
+        std::string text;
+        return pipe.receive(text, timeout, err) && helper::decode(text, m, err);
+    };
+    if (!pipe.accept(pi.dwProcessId, 10000, err)) {
+        std::fprintf(stderr, "error: %s\n", err.c_str());
+        return done(2);
+    }
+    helper::Message hello;
+    hello.type = helper::Type::Hello;
+    hello.protocol = helper::kProtocol;
+    hello.version = WPARTED_VERSION_STRING;
+    helper::Message m;
+    if (!send(hello) || !receive(m, 10000) || m.type != helper::Type::Hello || m.protocol != helper::kProtocol) {
+        std::fprintf(stderr, "error: helper handshake failed %s\n", err.c_str());
+        return done(2);
+    }
+    std::printf("Helper %s connected (protocol %d).\n", m.version.c_str(), m.protocol);
+    helper::Message plan;
+    plan.type = helper::Type::Plan;
+    plan.plan = planText;
+    plan.image = image;
+    plan.sectorSize = ss;
+    if (!send(plan) || !receive(m, 60000)) {
+        std::fprintf(stderr, "error: %s\n", err.c_str());
+        return done(2);
+    }
+    if (m.type == helper::Type::Done) {
+        std::fprintf(stderr, "error: helper: %s\n", m.error.c_str());
+        return done(1);
+    }
+    if (m.type != helper::Type::Validation) return done(2);
+    for (const auto& d : m.diagnostics)
+        if (d.severity != Severity::Info)
+            std::printf("%s [%s] %s (helper)\n", d.severity == Severity::Error ? "ERROR" : "WARNING", d.code.c_str(), d.message.c_str());
+    const std::string expected = helper::sha256Hex(planText);
+    if (m.planHash != expected) {  // the helper validated something else
+        std::fprintf(stderr, "error: the helper validated a different plan; nothing was confirmed\n");
+        helper::Message c;
+        c.type = helper::Type::Cancel;
+        send(c);
+        return done(2);
+    }
+    std::printf("Helper validation: %s (plan SHA-256 %s)\n", m.ok ? "passed" : "failed", expected.substr(0, 16).c_str());
+    if (!m.ok) {
+        receive(m, 10000);
+        return done(3);
+    }
+    helper::Message confirm;
+    confirm.type = helper::Type::Confirm;
+    confirm.planHash = expected;
+    if (!send(confirm)) return done(2);
+    int code = 2;
+    while (receive(m, 10 * 60 * 1000)) {
+        if (m.type == helper::Type::Progress) {
+            std::fprintf(stderr, "\r  operation %llu: %3u %%", static_cast<unsigned long long>(m.step + 1),
+                         static_cast<unsigned>(m.total ? m.done * 100 / m.total : 100));
+            if (m.done == m.total) std::fprintf(stderr, "\n");
+        } else if (m.type == helper::Type::Log) {
+            JsonValue log;
+            std::string e;
+            if (parseJson(m.log, log, e) && log.isObject())
+                if (const JsonValue* steps = log.find("children"))
+                    for (std::size_t i = 0; i < steps->array.size(); ++i)
+                        std::printf("%zu. %-8s %s\n", i + 1, steps->array[i].getString("status").c_str(),
+                                    steps->array[i].getString("title").c_str());
+        } else if (m.type == helper::Type::Done) {
+            if (m.result == "success") std::printf("Done: applied to %s by the helper and verified.\n", image.c_str());
+            else std::fprintf(stderr, "error: %s (%s)\n", m.error.c_str(), m.result.c_str());
+            code = m.result == "success" ? 0 : 1;
+            break;
+        }
+    }
+    return done(code);
+}
+
 int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uint32_t ss, bool execute,
-                 const std::string& logPath) {
+                 const std::string& logPath, bool viaHelper) {
     if (isDevicePath(image)) {
         std::fprintf(stderr, "error: apply-plan works on disk image files only; '%s' is a device\n", image.c_str());
         return 2;
@@ -258,6 +361,7 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
                     image.c_str());
         return vr.ok() ? 0 : 3;
     }
+    if (viaHelper) return applyViaHelper(image, json, ss);
     ImageFileDevice dev;
     if (!dev.open(image, ss, err)) {
         std::fprintf(stderr, "error: %s\n", err.c_str());
@@ -424,7 +528,7 @@ int wmain(int argc, wchar_t** argv) {
             if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
             if (args[i] == "--log") logPath = args[i + 1];
         }
-        return cmdApplyPlan(args[1], args[2], ss, has("--execute"), logPath);
+        return cmdApplyPlan(args[1], args[2], ss, has("--execute"), logPath, has("--helper"));
     }
     if (args[0] == "resume") {
         if (args.size() < 2) {

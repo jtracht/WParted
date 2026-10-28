@@ -1,4 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-add_library(wparted_win_storage STATIC src/disk_discovery.cpp src/report.cpp src/system_volumes.cpp)
+add_library(wparted_win_storage STATIC src/disk_discovery.cpp src/report.cpp src/system_volumes.cpp src/pipe.cpp)
 target_include_directories(wparted_win_storage PUBLIC include)
 target_link_libraries(wparted_win_storage PUBLIC wparted_core ole32 oleaut32)

@@ -30,7 +30,7 @@ cmake -S . -B "$BUILD" -G Ninja \
 cmake --build "$BUILD"
 
 # ARM64 PE files that only import Windows system DLLs (UCRT is part of Windows 10+).
-for exe in "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparted-cli.exe"; do
+for exe in "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparted-cli.exe" "$BUILD/apps/wparted-cli/wparted-helper.exe"; do
   llvm-objdump -f "$exe" | grep -qi "coff-arm64" || { echo "$exe is not an ARM64 binary" >&2; exit 1; }
   imports="$(llvm-objdump -p "$exe" | awk '/DLL Name:/ {print tolower($3)}' | sort -u | tr '\n' ' ')"
   echo "$(basename "$exe") (ARM64) imports: $imports"
@@ -47,6 +47,6 @@ if [ "${1:-}" = "--package" ]; then
   mkdir -p dist
   out="dist/WParted-arm64-untested.zip"
   rm -f "$out"
-  zip -j -q "$out" "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparted-cli.exe" LICENSE README.md
+  zip -j -q "$out" "$BUILD/apps/wparted-gui/wparted.exe" "$BUILD/apps/wparted-cli/wparted-cli.exe" "$BUILD/apps/wparted-cli/wparted-helper.exe" LICENSE README.md
   echo "packaged $out (not run on ARM64 Windows)"
 fi

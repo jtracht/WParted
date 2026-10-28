@@ -6,6 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Privileged-helper prototype** (ADR-0002): `wparted-helper.exe` talks to WParted over a named pipe
+  (one instance, no remote clients, DACL for the user, SYSTEM and Administrators), accepts only the
+  process that started it when that is `wparted.exe`/`wparted-cli.exe` next to it, validates the
+  plan itself and executes only after a confirmation carrying the SHA-256 of the plan it validated.
+  `wparted-cli apply-plan --execute --helper`. Image files only; it is not elevated yet.
+- `wparted-cli rescue-scan <disk>`: read-only rescue scan of a physical disk (administrator).
+- `tools/verify/elevated-readonly.ps1`: manual read-only verification on real hardware.
+
 ### Removed
 - The project website (sources and generator) moved out of this repository; it will be maintained
   separately.

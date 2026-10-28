@@ -20,5 +20,6 @@ add_library(wparted_core STATIC
     src/fs_tools.cpp
     src/fs_ntfs.cpp
     src/fs_ext.cpp
-    src/fs_ntfs_make.cpp)
+    src/fs_ntfs_make.cpp
+    src/helper_protocol.cpp)
 target_include_directories(wparted_core PUBLIC include)

@@ -1,9 +1,14 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # ADR-0002: Privileged helper and IPC protocol
 
-- Status: Accepted (design). Implementation is the subject of WP-023 follow-ups; no code exists yet.
-  Before the helper gets its first write step, this design needs a human security review
-  (see [security architecture](security-architecture.md), rule 2).
+- Status: Accepted. **Prototype implemented** (WP-023, `apps/wparted-helper`,
+  `platforms/windows/storage-api/src/pipe.cpp`, `core/src/helper_protocol.cpp`): channel, DACL,
+  process checks and the full message flow as described below, used by
+  `wparted-cli apply-plan --execute --helper`. Deviations of the prototype, on purpose:
+  it executes on **disk image files only** (the `plan` message carries the image path; physical disks
+  are refused), its manifest is `asInvoker` and it is started with `CreateProcess`, not with UAC.
+  Before the helper gets its first physical-disk write step, this design and the code need a human
+  security review (see [security architecture](security-architecture.md), rule 2).
 - Date: 2026-10-27
 - Context packages: WP-023, WP-021 (validation), WP-031 (image write harness)
 

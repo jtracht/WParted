@@ -34,7 +34,8 @@ def main() -> int:
     header = (args.build_dir / "apps/wparted-gui/wparted_version.h").read_text(encoding="utf-8")
     version = re.search(r'WPARTED_VERSION_STRING "([^"]+)"', header).group(1)
     exes = {"wparted.exe": args.build_dir / "apps/wparted-gui/wparted.exe",
-            "wparted-cli.exe": args.build_dir / "apps/wparted-cli/wparted-cli.exe"}
+            "wparted-cli.exe": args.build_dir / "apps/wparted-cli/wparted-cli.exe",
+            "wparted-helper.exe": args.build_dir / "apps/wparted-cli/wparted-helper.exe"}
     for name, path in exes.items():
         if not path.is_file():
             print(f"missing build output: {path}", file=sys.stderr)
