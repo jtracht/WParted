@@ -954,10 +954,10 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
         for (std::size_t i = 0; i < plan.operations().size(); ++i) {
             Operation op = plan.operations()[i];
             const PartitionEntry* t = findPlanned(sim, op.target);
-            if (op.type == OpType::ResizeMove && t && !changed.count(op.target) && op.sectorCount < t->sectorCount &&
-                fstools::canResize(t->fs.type)) {
+            if (op.type == OpType::ResizeMove && t && !changed.count(op.target) && op.sectorCount != t->sectorCount &&
+                t->kind != PartitionKind::Extended && fstools::canResize(t->fs.type)) {
                 SubRangeReader part(dev, t->firstLba * sim.sectorSize, t->sectorCount * sim.sectorSize);
-                const std::string problem = fstools::shrinkProblem(part, t->fs.type, op.sectorCount * sim.sectorSize);
+                const std::string problem = fstools::resizeProblem(part, t->fs.type, op.sectorCount * sim.sectorSize);
                 if (!problem.empty())
                     return failed(r, "Operation " + std::to_string(i + 1) + " cannot be executed: " + problem +
                                          ". Nothing was written.");

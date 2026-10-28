@@ -126,6 +126,48 @@ TEST("fstools: FAT16 and FAT32 are created, detected and pass the check") {
     CHECK(fstools::labelProblem(FsType::Ntfs, "Daten \xC3\xA4").empty());
 }
 
+TEST("fstools: ext2/3/4 are created, grown and shrunk, and pass the check after each step") {
+    for (FsType t : {FsType::Ext2, FsType::Ext3, FsType::Ext4}) {
+        Image im(320 * MiB, 512);
+        MemoryBlockDevice all(im.data, 512);
+        RegionDevice part(all, 0, 64 * MiB);
+        std::string err;
+        REQUIRE(fstools::create(part, t, "wp-ext", 0, err));
+        auto checked = [&](BlockReader& r) {
+            fstools::CheckReport rep;
+            std::string e;
+            const bool ok = fstools::check(r, t, rep, e);
+            for (const auto& x : rep.errors) std::printf("    %s: %s\n", fsTypeName(t), x.c_str());
+            for (const auto& x : rep.warnings) std::printf("    %s (warning): %s\n", fsTypeName(t), x.c_str());
+            return ok && rep.ok && rep.warnings.empty();
+        };
+        const FsDetection d = detectFilesystem(part);
+        CHECK(d.type == t);
+        CHECK_EQ(d.label, std::string("wp-ext"));
+        CHECK(checked(part));
+        const std::uint64_t used = fstools::usedBytes(part, t);
+        CHECK(used > 0 && used < 64 * MiB);
+
+        RegionDevice big(all, 0, 300 * MiB);  // 1 group -> 3 groups (group 1 holds a backup)
+        REQUIRE(fstools::resize(big, t, 300 * MiB, err));
+        CHECK(checked(big));
+        CHECK(fstools::usedBytes(big, t) >= used);
+        CHECK(detectFilesystem(big).type == t);
+        CHECK(fstools::shrinkProblem(big, t, 130 * MiB).empty());
+        REQUIRE(fstools::resize(big, t, 130 * MiB, err));
+        RegionDevice mid(all, 0, 130 * MiB);
+        CHECK(checked(mid));
+        // ext3/4: the journal lies behind 4 MiB, so that shrink is refused before
+        // anything is written; ext2 has only its root directories there.
+        CHECK(fstools::shrinkProblem(mid, t, 4 * MiB).empty() == (t == FsType::Ext2));
+    }
+    Image tiny(4 * MiB, 512);
+    MemoryBlockDevice dev(tiny.data, 512);
+    std::string err;
+    CHECK(!fstools::create(dev, FsType::Ext4, "", 0, err));  // no room for a journal
+    CHECK(fstools::create(dev, FsType::Ext2, "", 0, err));   // ext2 needs none
+}
+
 TEST("fstools: exFAT is created with a valid boot region checksum") {
     Image im(64 * MiB, 512);
     MemoryBlockDevice dev(im.data, 512);

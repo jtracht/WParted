@@ -5,7 +5,9 @@
 # Checks WParted's native file-system operations (core/src/fs_*.cpp) with the
 # reference tools: dosfstools + mtools (FAT create/label/serial/check/grow/
 # shrink with relocated files and directories), exfatprogs, ntfs-3g,
-# e2fsprogs and util-linux (labels, UUIDs). Sparse files only.
+# e2fsprogs (ext2/3/4 created by WParted, and file systems made by mke2fs with
+# its default features grown and shrunk by WParted) and util-linux (labels,
+# UUIDs). Sparse files only.
 #
 # Usage: tools/ci/fs-tools-check.sh <wparted_image_tool> <wparted_detect_fs>
 set -euo pipefail
@@ -116,6 +118,71 @@ for fs in ext2 ext4; do
   same "$fs: WParted detection label" "$("$DETECT" "$img" | cut -f2)" "home-data"
 done
 dumpe2fs -h "$W/ext4.img" 2>/dev/null | grep -q metadata_csum_seed && pass "ext4: metadata_csum_seed keeps checksums valid" || bad "ext4: csum seed"
+
+# --- ext2/3/4: created by WParted -------------------------------------------------
+e2clean() {  # image, context
+  if e2fsck -fn "$1" >"$W/e.txt" 2>&1; then pass "$2: e2fsck -fn clean"; else bad "$2: e2fsck -fn"; cat "$W/e.txt"; fi
+}
+e2payload() {  # image, context
+  rm -f "$W/out.bin"
+  debugfs -R "dump /payload.bin $W/out.bin" "$1" >/dev/null 2>&1 || true
+  [[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "$2: payload intact" || bad "$2: payload missing or changed"
+}
+for fs in ext2 ext3 ext4; do
+  img=$W/wp-$fs.img
+  truncate -s 96M "$img"
+  if "$TOOL" fs "$img" create "$fs" "wp-$fs"; then pass "$fs: created by WParted"; else bad "$fs: create"; continue; fi
+  e2clean "$img" "$fs created by WParted"
+  same "$fs created: blkid type" "$(blk "$img" TYPE)" "$fs"
+  same "$fs created: blkid label" "$(blk "$img" LABEL)" "wp-$fs"
+  ours "$img" "$fs" "$fs created"
+  # Linux can write to it: debugfs stores a file, e2fsck stays clean.
+  debugfs -w -R "write $W/payload.bin payload.bin" "$img" >/dev/null 2>&1
+  e2clean "$img" "$fs after debugfs wrote a file"
+  e2payload "$img" "$fs created"
+  # WParted grows it to 300 MiB (new groups with backup superblocks) and shrinks it to 160 MiB.
+  truncate -s 300M "$img"
+  if "$TOOL" fs "$img" resize "$fs" $((300 * 1048576)); then pass "$fs: grown to 300 MiB"; else bad "$fs: grow"; fi
+  e2clean "$img" "$fs after grow"
+  e2payload "$img" "$fs after grow"
+  if "$TOOL" fs "$img" resize "$fs" $((160 * 1048576)); then pass "$fs: shrunk to 160 MiB"; else bad "$fs: shrink"; fi
+  truncate -s 160M "$img"
+  e2clean "$img" "$fs after shrink"
+  e2payload "$img" "$fs after shrink"
+done
+
+# --- ext3/ext4 made by mke2fs (default features: 1 KiB blocks for small file systems,
+# flex_bg, metadata_csum, 64bit, resize_inode), grown and shrunk by WParted ---------
+mkdir -p "$W/e2root"
+cp "$W/payload.bin" "$W/e2root/payload.bin"
+for fs in ext3 ext4; do
+  img=$W/mk-$fs.img
+  truncate -s 64M "$img"
+  mkfs."$fs" -q -F -L "mk-$fs" -d "$W/e2root" "$img"
+  features=$(dumpe2fs -h "$img" 2>/dev/null | sed -n 's/^Filesystem features: *//p')
+  echo "mke2fs $fs features: $features"
+  truncate -s 512M "$img"
+  if "$TOOL" fs "$img" resize "$fs" $((512 * 1048576)); then pass "mke2fs $fs: grown 64 -> 512 MiB by WParted"; else bad "mke2fs $fs: grow"; fi
+  e2clean "$img" "mke2fs $fs after grow"
+  e2payload "$img" "mke2fs $fs after grow"
+  bytes=$(( $(dumpe2fs -h "$img" 2>/dev/null | sed -n 's/^Block count: *//p') * $(dumpe2fs -h "$img" 2>/dev/null | sed -n 's/^Block size: *//p') ))
+  [[ $bytes -gt $((400 * 1048576)) ]] && pass "mke2fs $fs: size is now $((bytes / 1048576)) MiB" || bad "mke2fs $fs: size after grow is $bytes bytes"
+  debugfs -w -R "write $W/payload.bin second.bin" "$img" >/dev/null 2>&1
+  e2clean "$img" "mke2fs $fs after writing into the grown file system"
+  if "$TOOL" fs "$img" resize "$fs" $((200 * 1048576)); then pass "mke2fs $fs: shrunk 512 -> 200 MiB by WParted"; else bad "mke2fs $fs: shrink"; fi
+  truncate -s 200M "$img"
+  e2clean "$img" "mke2fs $fs after shrink"
+  e2payload "$img" "mke2fs $fs after shrink"
+  # Data in the middle (journal, files): shrinking below it is refused, nothing changes.
+  before=$(sha256sum "$img" | cut -d' ' -f1)
+  set +e
+  "$TOOL" fs "$img" resize "$fs" $((8 * 1048576)) >"$W/r.txt" 2>&1
+  rc=$?
+  set -e
+  if [[ $rc == 1 ]]; then pass "mke2fs $fs: shrink below the data refused ($(tail -1 "$W/r.txt"))"
+  else bad "mke2fs $fs: shrink to 8 MiB not refused as expected (exit $rc)"; cat "$W/r.txt"; fi
+  [[ "$(sha256sum "$img" | cut -d' ' -f1)" == "$before" ]] && pass "mke2fs $fs: refused shrink wrote nothing" || bad "mke2fs $fs: refused shrink changed the image"
+done
 
 # --- XFS / btrfs ----------------------------------------------------------------
 img=$W/xfs.img

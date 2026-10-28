@@ -390,9 +390,11 @@ const FsCapabilities& capabilitiesFor(FsType t) {
         {FsType::ExFat, S::Supported, S::Limited, S::Supported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::ReFs, S::Supported, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported, S::Limited, S::Limited, S::Unsupported, S::Unsupported, S::Unsupported},
         {FsType::BitLocker, S::Supported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Planned, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Ext2, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
-        {FsType::Ext3, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Limited},
-        {FsType::Ext4, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Limited},
+        // ext: create without metadata checksums/flex_bg; grow within the descriptor blocks;
+        // shrink only when the tail is free; check is read-only (fs_ext.cpp).
+        {FsType::Ext2, S::Supported, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
+        {FsType::Ext3, S::Supported, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Supported, S::Limited},
+        {FsType::Ext4, S::Supported, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Supported, S::Limited},
         {FsType::Btrfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::Xfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::F2fs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Unsupported, S::Unsupported},

@@ -703,15 +703,16 @@ std::uint32_t crc32c(std::uint32_t crc, const std::uint8_t* data, std::size_t le
     return crc;
 }
 
-bool canCreate(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat; }
+static bool isExt(FsType t) noexcept { return t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4; }
+bool canCreate(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || isExt(t); }
 bool canLabel(FsType t) noexcept {
     return t == FsType::Fat12 || t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || t == FsType::Ntfs ||
            t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4 || t == FsType::LinuxSwap || t == FsType::Xfs ||
            t == FsType::Btrfs;
 }
 bool canSetUuid(FsType t) noexcept { return canLabel(t); }
-bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32; }
-bool canResize(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs; }
+bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || isExt(t); }
+bool canResize(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || isExt(t); }
 
 std::string labelProblem(FsType t, const std::string& label) {
     if (hasControl(label)) return "the label contains control characters";
@@ -744,6 +745,7 @@ bool create(BlockDevice& part, FsType t, const std::string& label, std::uint64_t
         error = p;
         return false;
     }
+    if (isExt(t)) return ext::create(part, t, label, error);
     return t == FsType::ExFat ? exfatCreate(part, label, hidden, error) : fat::create(part, t, label, hidden, error);
 }
 
@@ -818,11 +820,19 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
         error = std::string("resizing ") + fsTypeName(t) + " is not supported";
         return false;
     }
+    if (isExt(t)) return ext::resize(part, newBytes, error);
     return t == FsType::Ntfs ? ntfs::resize(part, newBytes, error) : fat::resize(part, newBytes, error);
+}
+
+std::string resizeProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
+    if (!canResize(t)) return std::string("resizing ") + fsTypeName(t) + " is not supported";
+    if (newBytes < part.size()) return shrinkProblem(part, t, newBytes);
+    return isExt(t) ? ext::growProblem(part, newBytes) : std::string();
 }
 
 std::string shrinkProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
     if (t == FsType::Ntfs) return ntfs::shrinkProblem(part, newBytes);
+    if (isExt(t)) return ext::shrinkProblem(part, newBytes);
     if (t == FsType::Fat16 || t == FsType::Fat32) {
         CheckReport rep;
         std::string err;
@@ -839,12 +849,13 @@ bool check(BlockReader& part, FsType t, CheckReport& report, std::string& error)
         error = std::string("checking ") + fsTypeName(t) + " is not supported";
         return false;
     }
-    return fat::check(part, report, error);
+    return isExt(t) ? ext::check(part, report, error) : fat::check(part, report, error);
 }
 
 std::uint64_t usedBytes(BlockReader& part, FsType t) {
     if (t == FsType::Fat16 || t == FsType::Fat32) return fat::usedBytes(part);
     if (t == FsType::Ntfs) return ntfs::usedBytes(part);
+    if (isExt(t)) return ext::usedBytes(part);
     return 0;
 }
 

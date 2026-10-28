@@ -28,3 +28,14 @@ std::uint64_t usedBytes(BlockReader& r);
 std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes);
 
 }  // namespace wparted::fstools::ntfs
+
+namespace wparted::fstools::ext {
+
+bool create(BlockDevice& d, FsType t, const std::string& label, std::string& err);
+bool resize(BlockDevice& d, std::uint64_t newBytes, std::string& err);
+bool check(BlockReader& r, CheckReport& rep, std::string& err);
+std::uint64_t usedBytes(BlockReader& r);
+std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes);
+std::string growProblem(BlockReader& r, std::uint64_t newBytes);
+
+}  // namespace wparted::fstools::ext

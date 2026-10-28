@@ -502,7 +502,7 @@ TEST("validation: protection of system, mounted and encrypted partitions") {
 TEST("validation: capability gaps are warnings when planning and errors for execution") {
     Image im(64 * MiB, 512);
     im.gpt({{kLinux, 2048, 40959, "data", 0}});
-    wptest::writeExt4(im, 2048ull * 512, "data");  // shrinking ext4 is not implemented
+    wptest::writeSwap(im, 2048ull * 512);  // shrinking linux-swap is not implemented
     std::string err;
     OperationQueue q = queueFor(im);
     Operation rs = onTarget(OpType::ResizeMove, 1);

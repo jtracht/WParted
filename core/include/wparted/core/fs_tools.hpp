@@ -59,6 +59,10 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
 // why not (checked before a plan writes anything).
 std::string shrinkProblem(BlockReader& part, FsType t, std::uint64_t newBytes);
 
+// Why resizing the file system on `part` (its current partition) to newBytes
+// will fail; empty if it can be attempted. Checked before anything is written.
+std::string resizeProblem(BlockReader& part, FsType t, std::uint64_t newBytes);
+
 struct CheckReport {
     bool ok = true;                     // no errors (warnings allowed)
     std::vector<std::string> errors;
