@@ -6,6 +6,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+- The project website (sources and generator) moved out of this repository; it will be maintained
+  separately.
+
 ## [0.3.0-alpha] – 2026-10-28
 
 Third pre-release: file systems, data rescue and resumable executions on **disk image files**.

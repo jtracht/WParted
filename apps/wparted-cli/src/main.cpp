@@ -35,6 +35,7 @@ void usage() {
         "                                                 Analyse a raw disk image file\n"
         "  wparted-cli fs-support [--json]                Show file system capabilities of this build\n"
         "  wparted-cli rescue-scan-image <file> [--sector-size N] [--json] [--plan out.json]\n"
+        "  wparted-cli rescue-scan <disk number>         Read-only rescue scan of a physical disk (administrator)\n"
         "                                                 Search unallocated space for lost file systems\n"
         "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute] [--log file.html]\n"
         "                                                 Check a saved plan against a disk image file;\n"
@@ -78,6 +79,27 @@ void printLayoutText(const DiskLayout& l, const win::PhysicalDisk* disk) {
     for (const auto& d : l.diagnostics)
         std::printf("  %s [%s] %s\n", d.severity == Severity::Error ? "ERROR" : d.severity == Severity::Warning ? "WARNING" : "INFO",
                     d.code.c_str(), d.message.c_str());
+}
+
+// Read-only rescue scan of a physical disk (needs administrator rights).
+int cmdRescueDisk(std::uint32_t number) {
+    const win::DiscoveryResult r = win::discoverDisks();
+    for (const auto& d : r.disks) {
+        if (d.number != number) continue;
+        std::vector<RescueCandidate> found;
+        std::string err;
+        if (!win::rescueScanDisk(d, RescueOptions{}, found, err)) {
+            std::fprintf(stderr, "error: %s\n", err.c_str());
+            return 2;
+        }
+        std::printf("%zu candidate(s) in unallocated space of %s (read-only scan)\n", found.size(), d.displayName().c_str());
+        for (const auto& c : found)
+            std::printf("  sector %-12llu %-12s %-14s %s\n", static_cast<unsigned long long>(c.firstLba), fsTypeName(c.fs.type),
+                        c.sectorCount ? formatSize(c.sectorCount * d.logicalSectorSize).c_str() : "size unknown", c.fs.label.c_str());
+        return 0;
+    }
+    std::fprintf(stderr, "error: disk %u not found\n", number);
+    return 2;
 }
 
 int cmdList(bool json) {
@@ -375,6 +397,8 @@ int wmain(int argc, wchar_t** argv) {
         return 0;
     }
     if (args[0] == "list") return cmdList(json);
+    if (args[0] == "rescue-scan" && args.size() >= 2)
+        return cmdRescueDisk(static_cast<std::uint32_t>(std::strtoul(args[1].c_str(), nullptr, 10)));
     if (args[0] == "fs-support") return cmdFsSupport(json);
     if (args[0] == "rescue-scan-image") {
         if (args.size() < 2) {

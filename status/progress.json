@@ -1,5 +1,5 @@
 {
-  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue.",
+  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue. WP-090 (website) was moved out of this repository on 2026-10-28 (maintainer decision) and is no longer counted.",
   "updated": "2026-10-28",
   "milestone": "v0.4.0-alpha",
   "packages": [
@@ -46,7 +46,6 @@
     {"key": "WP-018", "area": "Testing", "weight": 2, "state": "released", "title": "Performance baseline"},
     {"key": "WP-031", "area": "Testing", "weight": 4, "state": "implemented", "title": "Image write harness (CI) + manual VHDX gate"},
 
-    {"key": "WP-090", "area": "Documentation", "weight": 4, "state": "tested", "title": "Website (SEO/GEO/AEO)"},
     {"key": "WP-091", "area": "Documentation", "weight": 3, "state": "released", "title": "User and developer documentation"}
   ]
 }
