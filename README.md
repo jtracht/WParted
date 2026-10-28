@@ -5,9 +5,9 @@
 to Windows 11). Its long-term goal is functional parity with [GParted](https://gparted.org) where this is
 technically safe on Windows, with a familiar layout, a modern Windows UI and strict data-safety rules.
 
-> **Status: v0.1.0-alpha in development – read-only.** The current build displays disks, partition
-> tables, file systems and volumes. **It cannot modify disks.** Partition operations are planned
-> (see [Roadmap](ROADMAP.md)).
+> **Status: v0.2.0-alpha (pre-release).** WParted shows disks, partition tables, file systems and
+> volumes, plans changes GParted-style for every disk and **executes plans on disk image files only**.
+> **Physical disks are never written** by this version (see [Roadmap](ROADMAP.md)).
 
 WParted is an independent project. It is not affiliated with or endorsed by the GParted or GNOME projects.
 
@@ -23,9 +23,12 @@ WParted is an independent project. It is not affiliated with or endorsed by the 
 | Partition tables | GPT (header + entry CRC, backup header fallback, sector-size mismatch detection) and MBR including extended/logical partitions; whole-device file systems |
 | File systems | Signature detection for 31 types incl. NTFS, FAT12/16/32, exFAT, ReFS, BitLocker, ext2/3/4, btrfs, XFS, F2FS, LUKS, LVM, Linux RAID, swap, HFS+, APFS, ZFS, UDF |
 | Windows integration | Drive letters / mount points, used/free space, volume containing Windows, cross-check with Windows' own partition view |
-| Safety | Strictly read-only (CI-enforced), unelevated by default, unknown regions are never shown as free space |
+| Planning | New, delete, resize/move, copy/paste, format, label, name, flags, new table; future layout, undo, validation with safety rules, plan export/import |
+| Image files | Apply plans to `.img` files: tables, partitions, raw move/copy, FAT16/32 create/grow/shrink/check, exFAT create, NTFS grow/shrink, labels and UUIDs for FAT, exFAT, NTFS, ext2/3/4, XFS, btrfs, swap; every step read back and verified |
+| Safety | Physical disks are only read (CI-enforced); writes go to user-chosen image files after two confirmations; unknown regions are never shown as free space |
 | UI | GParted-style disk map and partition list, light/dark/system theme, per-monitor DPI, English/German |
-| CLI | `wparted-cli list [--json]`, `inspect-image <file>`, `fs-support` |
+| CLI | `wparted-cli list [--json]`, `inspect-image`, `rescue-scan-image`, `apply-plan` (dry run unless `--execute`), `fs-support` |
+| Accessibility | Keyboard operation, MSAA for the disk map, high-contrast colours, screen-reader names in EN/DE |
 
 Full capability status per file system and action: [docs/research/gparted-parity-matrix.md](docs/research/gparted-parity-matrix.md).
 
@@ -37,7 +40,7 @@ Windows 11 x64 has been run so far; Windows 7–10 are build targets awaiting VM
 ## Installation
 
 No installer yet. Download the portable ZIP from the
-[Gitea releases](https://git.tracht-digital.de/jtracht/WParted/releases) once v0.1.0-alpha is published,
+[Gitea releases](https://git.tracht-digital.de/jtracht/WParted/releases),
 extract it and run `wparted.exe`. To read partition tables, choose **WParted → Restart as Administrator**.
 
 ## Building

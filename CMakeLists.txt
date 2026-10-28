@@ -7,7 +7,7 @@ project(WParted
     HOMEPAGE_URL "https://git.tracht-digital.de/jtracht/WParted"
     LANGUAGES CXX)
 
-set(WPARTED_VERSION_SUFFIX "alpha.dev" CACHE STRING "Pre-release suffix (alpha, beta.1, rc.1 or empty)")
+set(WPARTED_VERSION_SUFFIX "alpha" CACHE STRING "Pre-release suffix (alpha, beta.1, rc.1 or empty)")
 if(WPARTED_VERSION_SUFFIX)
     set(WPARTED_VERSION_STRING "${PROJECT_VERSION}-${WPARTED_VERSION_SUFFIX}")
 else()

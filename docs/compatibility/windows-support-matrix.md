@@ -3,6 +3,19 @@
 
 Only results that were actually observed are marked as verified. Everything else is an open check.
 
+## v0.2.0-alpha (planning; execution on image files only)
+
+| Windows | Arch | Builds | Tests | GUI | Writes | Evidence / open check |
+|---|---|---|---|---|---|---|
+| Windows 11 Pro (26300) | x64 | ✔ MSVC + MinGW | ✔ 81/81 unit + CLI E2E incl. `apply-plan` | ✔ planning, apply to image file, rescue, information dialogs, managed-disk marker, MSAA (checked with an MSAA client), DE locale | image files only ✔ | Local MSVC runs 2026-10-27/28, unelevated |
+| Wine 9 (Ubuntu 24.04, CI) | x64 / x86 | ✔ MinGW | ✔ unit + CLI E2E | ✔ start-up smoke | image files only ✔ | Every CI run; Wine is not Windows |
+| Linux CI (reference tools) | – | ✔ GCC (core) | ✔ results of WParted checked with sgdisk, sfdisk, fsck.fat, mtools, fsck.exfat, ntfs-3g, e2fsck, xfs_repair, btrfs check, blkid | – | image files | Every CI run |
+| Windows 10 / 8.x / 7 SP1 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |
+| Windows 11 | ARM64 | ✘ | – | – | – | WP-015 |
+
+Physical disks are never written by this version (CI-enforced read-only guard). The release binaries
+are tested under Wine only before publication (maintainer decision for alphas).
+
 ## v0.1.0-alpha (read-only)
 
 | Windows | Arch | Builds | Unit tests | GUI starts | Elevated disk read | Evidence / open check |

@@ -6,7 +6,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0-alpha] – 2026-10-28
+
+Second pre-release: GParted-style planning for every disk, and **execution on disk image files**.
+Physical disks are still never written.
+
 ### Added
+- GParted-style planning GUI: new, delete, resize/move, copy/paste, format, label, name, flags, new
+  partition table; future-layout preview, pending operations, undo, Apply summary with safety checks,
+  plan export/import with disk identity checks. Fluent-inspired redesign with one workflow from
+  selection to apply; English and German throughout.
 - Data rescue scan (read-only): searches unallocated space at MiB steps and legacy cylinder boundaries
   for lost file systems and reports start sector, type, size and label. `wparted-cli rescue-scan-image`
   and GUI *Device → Attempt Data Rescue…* (background thread). Recovery itself is not automated; the
@@ -25,14 +34,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 - **File-system operations on image files**, implemented natively from the on-disk specifications:
   FAT16/32 create, grow, shrink (with data relocation), read-only check, label and serial; NTFS grow,
   shrink (when the space behind the new end is free), label and serial; exFAT create, label and serial;
-  ext2/3/4 and Linux swap label and UUID (ext4 keeps metadata checksums valid via csum_seed). Every operation is checked in CI
-  with dosfstools, mtools, ntfs-3g (ntfsresize --check), exfatprogs, e2fsprogs and util-linux.
+  ext2/3/4, XFS, btrfs and Linux swap label and UUID (metadata checksums stay valid via csum_seed,
+  meta_uuid and metadata_uuid); copies of Linux file systems get a new UUID. Every operation is checked
+  in CI with dosfstools, mtools, ntfs-3g (ntfsresize --check), exfatprogs, e2fsprogs, xfsprogs,
+  btrfs-progs and util-linux.
 - Used space of FAT and NTFS partitions on images (list columns; validation refuses shrinking below the
   data). Validation checks labels per file system and maximum FAT sizes.
 - Accessibility: the disk map exposes its segments through MSAA.
 - Disks managed by Windows (dynamic disks, Storage Spaces) are marked and never planned on.
 - Labels of NTFS, exFAT and F2FS (and the F2FS UUID) are read; detection is checked in CI against
   images made by the real mkfs tools, with blkid as reference.
+
+### Security
+- Physical disks are never written: the read-only guard in CI rejects any device write API and any file
+  opened for writing outside 7 reviewed exemptions (report/plan/log files chosen by the user and the
+  image-file executor, which refuses device paths and opens images exclusively).
+
+### Known limitations
+- **Only disk image files can be changed.** On physical disks WParted plans and validates, but does not
+  execute (the privileged helper of ADR-0002 and a human security review come first).
+- The binaries attached to the release were **not run on a real Windows machine before publication**
+  (maintainer decision for alpha releases). They passed all tests and a GUI start-up smoke test under
+  Wine in the release pipeline; an equivalent MSVC build was tested on Windows 11 x64 (unelevated),
+  including planning and applying plans to image files in the GUI.
+- Administrator mode is not verified on real hardware; Windows 7 to 10 and ARM64 are not verified;
+  the binaries are unsigned.
+- Not yet possible: creating or checking NTFS; resizing ext2/3/4, XFS or btrfs; moving an extended
+  partition; repairing file systems (the FAT check is read-only). Such plans are refused before
+  anything is written. There is no automatic rollback if writing to an image fails half-way.
+- High-contrast mode maps to the system colours but has not been checked visually.
 
 ## [0.1.0-alpha] – 2026-10-27
 
