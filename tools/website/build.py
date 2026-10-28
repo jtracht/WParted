@@ -216,8 +216,8 @@ def main():
     link = lambda lang, page: (base + url_path(lang, page)) if base else url_path(lang, page) or "./"
     llms = [f"# WParted", "", "> Free, open-source (GPL-2.0-or-later) partition manager for Windows 7 SP1 to 11 "
             "that follows the GParted workflow. Native Win32 program, portable, no telemetry.", "",
-            f"- Latest release: {ctx['version']} (pre-release): read-only disk explorer; it cannot modify disks.",
-            "- Development builds (v0.2) plan and validate partition operations but do not execute them.",
+            f"- Latest release: {ctx['version']} (pre-release): plans partition operations for every disk and applies them to disk image files only.",
+            "- Physical disks are never written by this version; image files are written after two confirmations, every step is read back.",
             "- Verified on Windows 11 x64; Windows 7 to 10 are build targets, not yet verified.",
             f"- Progress towards 1.0: {overall:.0f} % (weighted, from status/progress.json).",
             f"- Source, issues and releases: {REPO_URL}", "", "## Pages", ""]

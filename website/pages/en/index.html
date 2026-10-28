@@ -1,7 +1,7 @@
 <!--
 SPDX-License-Identifier: GPL-2.0-or-later
 title: WParted – free partition manager for Windows, inspired by GParted
-description: WParted is a free, open-source partition manager for Windows 7 to 11 that follows the GParted workflow. Current alpha: read-only disk explorer.
+description: WParted is a free, open-source partition manager for Windows 7 to 11 that follows the GParted workflow. Current alpha plans changes and applies them to disk image files.
 schema: SoftwareApplication
 -->
 <section class="hero">
@@ -9,9 +9,9 @@ schema: SoftwareApplication
   <p class="lead">WParted is a free and open-source partition manager for Windows. It shows disks,
   partition tables, file systems and volumes the way GParted does, as a small native program
   without installation.</p>
-  <p class="status-note"><strong>Current state:</strong> version {{version}} is a <strong>read-only
-  disk explorer</strong>. It cannot change disks yet. Development builds can plan operations and
-  validate them, but they do not execute them.</p>
+  <p class="status-note"><strong>Current state:</strong> version {{version}} plans changes for every
+  disk and <strong>applies them to disk image files only</strong>. Physical disks are never written
+  by this version.</p>
   <p class="actions"><a class="button primary" href="@/download/">Download {{version}}</a>
   <a class="button" href="@/features/">What works today</a></p>
 </section>
@@ -41,7 +41,7 @@ schema: SoftwareApplication
 <section>
   <h2>Safety first</h2>
   <ul>
-    <li>Discovery is strictly read-only; CI rejects any write API in the read-only builds.</li>
+    <li>Physical disks are only read; CI rejects any device write API. Changes go to image files after two confirmations.</li>
     <li>Plans identify disks by serial number, size and partition table ID, not only by disk number.</li>
     <li>System partitions, the running Windows volume, BitLocker and dynamic disks are refused.</li>
     <li>Agents and automated tests never write to physical disks.</li>

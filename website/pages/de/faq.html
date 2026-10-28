@@ -8,12 +8,13 @@ schema: FAQPage
 <details open><summary>Ist WParted kostenlos?</summary>
 <p>Ja. WParted ist freie Software unter der Lizenz GPL-2.0-or-later. Eine kostenpflichtige Ausgabe gibt es nicht.</p></details>
 <details open><summary>Kann WParted Partitionen verkleinern, verschieben oder löschen?</summary>
-<p>Noch nicht. Entwicklungs-Builds können diese Operationen planen und prüfen, aber nicht ausführen.
-Die Ausführung wird erst freigeschaltet, wenn sie Tests auf Abbildern und virtuellen Datenträgern
-bestanden hat.</p></details>
+<p>Auf Image-Dateien ja: Version 0.2 erstellt, löscht, verschiebt, kopiert und ändert dort die Größe von
+Partitionen (FAT- und NTFS-Dateisysteme werden mit angepasst). Auf physischen Datenträgern plant und
+prüft sie, führt aber noch nicht aus.</p></details>
 <details open><summary>Verändert WParted meine Datenträger?</summary>
-<p>Nein. Die aktuelle Version liest nur. Die Continuous Integration lehnt in diesen Builds jeden Code ab,
-der auf einen Datenträger schreiben würde.</p></details>
+<p>Nein. Die aktuelle Version liest physische Datenträger nur; die Continuous Integration lehnt jeden Code
+ab, der auf ein Gerät schreiben würde. Geschrieben wird nur in Image-Dateien, die Sie öffnen und zweimal
+bestätigen.</p></details>
 <details open><summary>Läuft WParted unter Windows 7?</summary>
 <p>Windows 7 SP1 ist Build-Ziel, wurde aber noch nicht auf einem echten Windows-7-System geprüft. Bisher
 ist WParted unter Windows 11 x64 geprüft.</p></details>
@@ -24,7 +25,7 @@ GParted-Code.</p></details>
 <p>Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM und weitere Dateisysteme und zeigt ihre Bezeichnungen.
 Änderungen erfordern den geplanten Offline-Modus.</p></details>
 <details open><summary>Kann WParted eine gelöschte Partition wiederherstellen?</summary>
-<p>Entwicklungs-Builds enthalten einen nur lesenden Rettungs-Scan, der Dateisysteme im nicht zugeordneten
+<p>Version 0.2 enthält einen nur lesenden Rettungs-Scan, der Dateisysteme im nicht zugeordneten
 Bereich findet. Die Wiederherstellung selbst ist noch nicht automatisiert.</p></details>
 <details open><summary>Sammelt WParted Daten oder braucht es eine Internetverbindung?</summary>
 <p>Nein. WParted hat keine Telemetrie, verbindet sich nicht mit dem Netzwerk und braucht kein Konto.</p></details>

@@ -1,7 +1,7 @@
 <!--
 SPDX-License-Identifier: GPL-2.0-or-later
 title: WParted – freier Partitionsmanager für Windows nach GParted
-description: WParted ist ein freier Open-Source-Partitionsmanager für Windows 7 bis 11 mit dem Bedienkonzept von GParted. Aktuelle Alpha: rein lesender Datenträger-Explorer.
+description: WParted ist ein freier Partitionsmanager für Windows 7 bis 11 nach dem Vorbild von GParted. Die Alpha plant Änderungen und wendet sie auf Image-Dateien an.
 schema: SoftwareApplication
 -->
 <section class="hero">
@@ -9,9 +9,9 @@ schema: SoftwareApplication
   <p class="lead">WParted ist ein freier, quelloffener Partitionsmanager für Windows. Er zeigt
   Datenträger, Partitionstabellen, Dateisysteme und Volumes wie GParted an, als kleines natives
   Programm ohne Installation.</p>
-  <p class="status-note"><strong>Aktueller Stand:</strong> Version {{version}} ist ein <strong>rein
-  lesender Datenträger-Explorer</strong> und kann Datenträger noch nicht verändern.
-  Entwicklungs-Builds können Operationen planen und prüfen, führen sie aber nicht aus.</p>
+  <p class="status-note"><strong>Aktueller Stand:</strong> Version {{version}} plant Änderungen für jeden
+  Datenträger und <strong>wendet sie nur auf Image-Dateien an</strong>. Physische Datenträger beschreibt
+  diese Version nie.</p>
   <p class="actions"><a class="button primary" href="@/download/">{{version}} herunterladen</a>
   <a class="button" href="@/features/">Was heute funktioniert</a></p>
 </section>
@@ -41,7 +41,7 @@ schema: SoftwareApplication
 <section>
   <h2>Sicherheit zuerst</h2>
   <ul>
-    <li>Die Erkennung ist strikt lesend; die CI lehnt jede Schreib-API in den lesenden Builds ab.</li>
+    <li>Physische Datenträger werden nur gelesen; die CI lehnt jede Schreib-API für Geräte ab. Änderungen gehen nach zwei Bestätigungen in Image-Dateien.</li>
     <li>Pläne erkennen Datenträger an Seriennummer, Größe und Tabellen-ID, nicht nur an der Nummer.</li>
     <li>Systempartitionen, das laufende Windows-Volume, BitLocker und dynamische Datenträger werden abgelehnt.</li>
     <li>Agenten und automatische Tests schreiben nie auf physische Datenträger.</li>

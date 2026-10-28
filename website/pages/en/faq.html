@@ -8,11 +8,12 @@ schema: FAQPage
 <details open><summary>Is WParted free?</summary>
 <p>Yes. WParted is free software under the GPL-2.0-or-later licence. There is no paid edition.</p></details>
 <details open><summary>Can WParted resize, move or delete partitions?</summary>
-<p>Not yet. Development builds can plan and validate these operations, but cannot execute them.
-Execution will be enabled only after it passes tests on disk images and virtual disks.</p></details>
+<p>On disk image files, yes: version 0.2 creates, deletes, moves, copies and resizes partitions there
+(FAT and NTFS file systems are resized too). On physical disks it plans and validates, but does not
+execute yet.</p></details>
 <details open><summary>Does WParted change my disks?</summary>
-<p>No. The current version only reads. Continuous integration rejects any code that would write to a
-disk in these builds.</p></details>
+<p>No. The current version only reads physical disks; continuous integration rejects any code that
+would write to a device. It writes only to disk image files you open and confirm twice.</p></details>
 <details open><summary>Does WParted run on Windows 7?</summary>
 <p>Windows 7 SP1 is a build target, but it has not yet been verified on a real Windows 7 system. So far
 WParted has been verified on Windows 11 x64.</p></details>
@@ -23,7 +24,7 @@ no GParted code.</p></details>
 <p>It detects ext2/3/4, btrfs, XFS, swap, LUKS, LVM and other file systems and shows their labels.
 Changing them will require the planned offline mode.</p></details>
 <details open><summary>Can WParted recover a deleted partition?</summary>
-<p>Development builds contain a read-only rescue scan that finds file systems in unallocated space.
+<p>Version 0.2 contains a read-only rescue scan that finds file systems in unallocated space.
 Recovery itself is not automated yet.</p></details>
 <details open><summary>Does WParted collect data or need an internet connection?</summary>
 <p>No. WParted has no telemetry, does not connect to the network and needs no account.</p></details>
