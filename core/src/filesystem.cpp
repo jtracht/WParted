@@ -383,7 +383,7 @@ const FsCapabilities& capabilitiesFor(FsType t) {
     using S = Support;
     static const FsCapabilities table[] = {
         {FsType::Unknown, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported, S::Unsupported},
-        {FsType::Ntfs, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::Ntfs, S::Supported, S::Supported, S::Planned, S::Supported, S::Limited, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::Fat12, S::Supported, S::Limited, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::Fat16, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},
         {FsType::Fat32, S::Supported, S::Supported, S::Supported, S::Limited, S::Supported, S::Limited, S::Limited, S::Limited, S::Supported, S::Supported},

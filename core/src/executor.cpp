@@ -10,6 +10,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstring>
+#include <set>
 #include <sys/stat.h>
 
 #include "wparted/core/fs_tools.hpp"
@@ -225,7 +226,7 @@ private:
 
 void addImageUsage(BlockReader& image, const DiskLayout& layout, ValidationContext& ctx) {
     for (const auto& p : layout.partitions) {
-        if (!fstools::canCheck(p.fs.type)) continue;
+        if (p.kind == PartitionKind::Extended || p.fs.type == FsType::Unknown) continue;
         SubRangeReader part(image, p.firstLba * layout.sectorSize, p.sectorCount * layout.sectorSize);
         if (const std::uint64_t used = fstools::usedBytes(part, p.fs.type)) ctx.state[p.planId].usedBytes = used;
     }
@@ -271,6 +272,31 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
         for (const auto& d : r.validation.diagnostics)
             if (d.severity == Severity::Error && first.empty()) first = d.message;
         return finish(false, "The plan did not pass validation; nothing was written. " + first);
+    }
+
+    // 2b. File systems that cannot be shrunk as planned (e.g. NTFS data behind
+    // the new end) are refused now, before the first write.
+    {
+        DiskLayout sim = plan.original();
+        std::uint32_t simNext = static_cast<std::uint32_t>(sim.partitions.size()) + 1;
+        std::set<std::uint32_t> changed;  // partitions whose content an earlier step changed
+        std::string simErr;
+        for (std::size_t i = 0; i < plan.operations().size(); ++i) {
+            Operation op = plan.operations()[i];
+            const PartitionEntry* t = findPlanned(sim, op.target);
+            if (op.type == OpType::ResizeMove && t && !changed.count(op.target) && op.sectorCount < t->sectorCount &&
+                fstools::canResize(t->fs.type)) {
+                SubRangeReader part(dev, t->firstLba * sim.sectorSize, t->sectorCount * sim.sectorSize);
+                const std::string problem = fstools::shrinkProblem(part, t->fs.type, op.sectorCount * sim.sectorSize);
+                if (!problem.empty()) {
+                    for (auto& c : r.log.children) c.status = LogStep::Status::Skipped;
+                    return finish(false, "Operation " + std::to_string(i + 1) + " cannot be executed: " + problem +
+                                             ". Nothing was written.");
+                }
+            }
+            if (op.target) changed.insert(op.target);
+            if (!simulate(op, sim, simNext, simErr)) break;
+        }
     }
 
     // 3. Execute step by step on a copy of the planned original.

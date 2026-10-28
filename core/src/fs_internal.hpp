@@ -20,3 +20,11 @@ bool check(BlockReader& r, CheckReport& rep, std::string& err);
 std::uint64_t usedBytes(BlockReader& r);
 
 }  // namespace wparted::fstools::fat
+
+namespace wparted::fstools::ntfs {
+
+bool resize(BlockDevice& d, std::uint64_t newBytes, std::string& err);
+std::uint64_t usedBytes(BlockReader& r);
+std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes);
+
+}  // namespace wparted::fstools::ntfs

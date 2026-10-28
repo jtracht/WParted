@@ -463,7 +463,7 @@ bool canLabel(FsType t) noexcept {
 }
 bool canSetUuid(FsType t) noexcept { return canLabel(t); }
 bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32; }
-bool canResize(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32; }
+bool canResize(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs; }
 
 std::string labelProblem(FsType t, const std::string& label) {
     if (hasControl(label)) return "the label contains control characters";
@@ -562,7 +562,20 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
         error = std::string("resizing ") + fsTypeName(t) + " is not supported";
         return false;
     }
-    return fat::resize(part, newBytes, error);
+    return t == FsType::Ntfs ? ntfs::resize(part, newBytes, error) : fat::resize(part, newBytes, error);
+}
+
+std::string shrinkProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
+    if (t == FsType::Ntfs) return ntfs::shrinkProblem(part, newBytes);
+    if (t == FsType::Fat16 || t == FsType::Fat32) {
+        CheckReport rep;
+        std::string err;
+        if (!fat::check(part, rep, err)) return err;
+        if (!rep.ok) return "the file system has errors: " + rep.errors.front();
+        if (rep.usedBytes + (newBytes / 16) > newBytes) return "the data does not fit into the new size";
+        return {};
+    }
+    return std::string("shrinking ") + fsTypeName(t) + " is not supported";
 }
 
 bool check(BlockReader& part, FsType t, CheckReport& report, std::string& error) {
@@ -574,7 +587,9 @@ bool check(BlockReader& part, FsType t, CheckReport& report, std::string& error)
 }
 
 std::uint64_t usedBytes(BlockReader& part, FsType t) {
-    return (t == FsType::Fat16 || t == FsType::Fat32) ? fat::usedBytes(part) : 0;
+    if (t == FsType::Fat16 || t == FsType::Fat32) return fat::usedBytes(part);
+    if (t == FsType::Ntfs) return ntfs::usedBytes(part);
+    return 0;
 }
 
 }  // namespace wparted::fstools

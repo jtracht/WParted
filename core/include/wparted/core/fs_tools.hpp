@@ -12,7 +12,7 @@
 //
 //   FAT16/FAT32   create, label, serial, check (read-only), grow, shrink
 //   exFAT         label, serial
-//   NTFS          label, serial
+//   NTFS          label, serial, grow, shrink (if the space behind the new end is free)
 //   ext2/3/4      label, UUID
 //   Linux swap    label, UUID
 #pragma once
@@ -53,6 +53,10 @@ bool setNewUuid(BlockDevice& part, FsType t, std::string& uuid, std::string& err
 // cover both the old and the new size (shrink: the old partition; grow: the
 // new partition).
 bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& error);
+
+// Empty if the file system on `part` can be shrunk to `newBytes`, otherwise
+// why not (checked before a plan writes anything).
+std::string shrinkProblem(BlockReader& part, FsType t, std::uint64_t newBytes);
 
 struct CheckReport {
     bool ok = true;                     // no errors (warnings allowed)

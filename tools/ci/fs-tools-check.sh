@@ -80,6 +80,22 @@ same "ntfs label: ntfslabel" "$(ntfslabel "$img" 2>/dev/null || true)" "Neue Dat
 same "ntfs label: blkid" "$(blk "$img" LABEL)" "Neue Daten"
 uuid=$("$TOOL" fs "$img" uuid ntfs) && same "ntfs serial: blkid" "$(blk "$img" UUID)" "$uuid" || bad "ntfs: serial"
 if ntfsinfo -m "$img" >"$W/n.txt" 2>&1; then pass "ntfs: ntfs-3g opens the volume (\$MFTMirr matches)"; else bad "ntfs: ntfsinfo"; cat "$W/n.txt"; fi
+# NTFS grow (with a larger $Bitmap) and shrink, data copied in with ntfscp
+ntfscp -f "$img" "$W/payload.bin" payload.bin >/dev/null 2>&1 || bad "ntfs: ntfscp"
+ntfs_ok() {  # context
+  if ntfsresize --check --force --no-progress-bar "$img" >"$W/r.txt" 2>&1; then pass "$1: ntfsresize --check consistent"
+  else bad "$1: ntfsresize --check"; cat "$W/r.txt"; fi
+  ntfsinfo -m "$img" >/dev/null 2>&1 && pass "$1: ntfs-3g opens the volume" || bad "$1: ntfsinfo"
+  [[ "$(ntfscat "$img" payload.bin 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$sha" ]] && pass "$1: payload intact" || bad "$1: payload"
+}
+ntfs_ok "ntfs before resize"
+truncate -s 512M "$img"
+"$TOOL" fs "$img" resize ntfs $((512 * 1024 * 1024)) && pass "ntfs: grow 64 -> 512 MiB (\$Bitmap needs new clusters)" || bad "ntfs: grow"
+ntfs_ok "ntfs after grow"
+"$TOOL" fs "$img" resize ntfs $((200 * 1024 * 1024)) && pass "ntfs: shrink 512 -> 200 MiB" || bad "ntfs: shrink"
+truncate -s 200M "$img"
+ntfs_ok "ntfs after shrink"
+ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs after shrink: writable" || bad "ntfs: write after shrink"
 
 # --- ext2 / ext4 ---------------------------------------------------------------
 for fs in ext2 ext4; do

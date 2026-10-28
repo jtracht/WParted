@@ -78,11 +78,17 @@ bool isImageDisk(const win::PhysicalDisk* d) { return d && d->busType == "Image 
 void addImageVolumes(win::PhysicalDisk& d, BlockReader& r) {
     d.volumes.clear();
     for (const auto& p : d.layout.partitions) {
-        if (!fstools::canCheck(p.fs.type)) continue;
+        if (p.kind == PartitionKind::Extended || p.fs.type == FsType::Unknown) continue;
         SubRangeReader part(r, p.firstLba * d.layout.sectorSize, p.sectorCount * d.layout.sectorSize);
         fstools::CheckReport rep;
         std::string err;
-        if (!fstools::check(part, p.fs.type, rep, err) || !rep.totalBytes) continue;
+        if (fstools::canCheck(p.fs.type)) {
+            if (!fstools::check(part, p.fs.type, rep, err) || !rep.totalBytes) continue;
+        } else {  // e.g. NTFS: used clusters from $Bitmap, size of the partition
+            rep.usedBytes = fstools::usedBytes(part, p.fs.type);
+            if (!rep.usedBytes) continue;
+            rep.totalBytes = p.sectorCount * d.layout.sectorSize;
+        }
         win::VolumeInfo v;
         v.diskNumber = d.number;
         v.startingOffset = p.firstLba * d.layout.sectorSize;
