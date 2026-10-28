@@ -14,7 +14,15 @@ Only results that were actually observed are marked as verified. Everything else
 | Windows 11 | ARM64 | ✔ llvm-mingw cross build (warnings as errors, machine type and imports checked) | ☐ not run | ☐ | ☐ | No ARM64 Windows or emulator — WP-015 |
 | Windows 10 / 8.x / 7 SP1 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |
 
-BitLocker states (administrators only) have not been observed on a machine with BitLocker. NTFS
+**Elevated, real hardware (2026-10-28, Windows 11 Pro x64, administrator, read-only, run by the
+maintainer with `tools/verify/elevated-readonly.ps1`):** NVMe SSD with GPT (ESP, MSR, Windows, WinRE)
+and USB SSD with msdos/exFAT. Partition tables read by WParted with no diagnostics; every partition
+offset equal to Windows' own view; ESP marked as boot manager, `C:` as Windows with page file;
+BitLocker state "not encrypted" for `C:` and `E:`, matching `manage-bde -status`; read-only rescue
+scan on both disks (one leftover 1 MiB FAT12 file system found at the end of the USB SSD); Windows'
+view of disks, partitions and volumes identical before and after; discovery 83 ms.
+
+BitLocker states other than "not encrypted" have not been observed on real hardware. NTFS
 volumes created by WParted have not been checked by Windows' chkdsk (attaching an image needs
 administrator rights).
 

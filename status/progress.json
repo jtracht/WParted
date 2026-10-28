@@ -26,8 +26,8 @@
     {"key": "WP-050", "area": "Partition Engine", "weight": 2, "state": "released", "title": "Other table types"},
     {"key": "WP-051", "area": "Partition Engine", "weight": 3, "state": "released", "title": "Data rescue scan"},
 
-    {"key": "WP-012", "area": "Windows Core", "weight": 4, "state": "implemented", "title": "Read-only disk discovery"},
-    {"key": "WP-014", "area": "Windows Core", "weight": 2, "state": "planned", "title": "Elevated verification on real hardware"},
+    {"key": "WP-012", "area": "Windows Core", "weight": 4, "state": "tested", "title": "Read-only disk discovery"},
+    {"key": "WP-014", "area": "Windows Core", "weight": 2, "state": "tested", "title": "Elevated verification on real hardware"},
     {"key": "WP-015", "area": "Windows Core", "weight": 3, "state": "in_progress", "title": "Windows 7-10 / ARM64 verification"},
     {"key": "WP-044", "area": "Windows Core", "weight": 2, "state": "planned", "title": "Mount/unmount"},
     {"key": "WP-071", "area": "Windows Core", "weight": 4, "state": "implemented", "title": "BitLocker/EFI/BCD safety"},
