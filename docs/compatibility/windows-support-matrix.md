@@ -12,7 +12,7 @@ Only results that were actually observed are marked as verified. Everything else
 | Wine 9 (Ubuntu 24.04, CI) | x64 / x86 | ✔ MinGW | ✔ unit + CLI E2E | ✔ start-up smoke | image files only ✔ | Every CI run; Wine is not Windows |
 | Linux CI (reference tools) | – | ✔ GCC (core) | ✔ results of WParted checked with sgdisk, sfdisk, fsck.fat, mtools, fsck.exfat, ntfs-3g, e2fsck, xfs_repair, btrfs check, blkid | – | image files | Every CI run |
 | Windows 10 / 8.x / 7 SP1 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |
-| Windows 11 | ARM64 | ✘ | – | – | – | WP-015 |
+| Windows 11 | ARM64 | ✔ llvm-mingw cross build in CI (development builds after 0.2; warnings as errors, machine type and imports checked) | ☐ not run | ☐ | ☐ | No ARM64 Windows or emulator available — WP-015 |
 
 Physical disks are never written by this version (CI-enforced read-only guard). The release binaries
 are tested under Wine only before publication (maintainer decision for alphas).

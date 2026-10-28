@@ -6,6 +6,33 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Interrupted executions can be resumed.** A journal next to the image records the plan and the
+  progress; after a crash, power loss or cancel during a block move or between operations, WParted
+  continues exactly there (GUI: *Resume* when the image is opened; CLI: `wparted-cli resume`).
+  Steps that change data in place are reported, not resumed. Tested in CI by killing the process in
+  the middle of an overlapping move and resuming (e2fsck, sgdisk and payload hashes).
+- **ext2/ext3/ext4 on image files**: create, grow, shrink (when the space behind the new end is free)
+  and a read-only check, implemented natively. Grow and shrink also handle file systems made by
+  mke2fs with its default features (flex_bg, 64bit, metadata_csum, resize_inode). Verified in CI with
+  e2fsck, dumpe2fs, blkid and debugfs.
+- Extended partitions can be moved (their boundaries; the EBR chain is rewritten).
+- BitLocker state as reported by Windows (administrators only), the boot-manager volume and the page
+  file are shown; new validation rules `op.bitlocker_active`, `op.bitlocker_unknown`,
+  `op.bitlocker_recovery` and `op.bcd_offset` (moving the start of the Windows or boot-manager
+  partition on msdos disks breaks booting).
+- CI builds Windows on ARM64 binaries with llvm-mingw (not run: no ARM64 Windows in CI).
+
+### Changed
+- Image files are flushed to disk (`_commit`/`fsync`), not only to the C library buffer.
+
+### Known limitations
+- ext: no data relocation when shrinking; growing beyond the existing group descriptor blocks, and
+  meta_bg, bigalloc, sparse_super2, MMP and external journals are refused. File systems created by
+  WParted have no metadata checksums.
+- The BitLocker state is only available to administrators; it has not been checked on a machine with
+  BitLocker. ARM64 binaries have not been run.
+
 ## [0.2.0-alpha] – 2026-10-28
 
 Second pre-release: GParted-style planning for every disk, and **execution on disk image files**.

@@ -216,9 +216,9 @@ void bitmapCsums(Fs& f, std::uint32_t g, const std::vector<std::uint8_t>* blockB
     }
 }
 
-void setBit(std::vector<std::uint8_t>& bm, std::uint64_t i) { bm[i / 8] |= static_cast<std::uint8_t>(1u << (i % 8)); }
-void clearBit(std::vector<std::uint8_t>& bm, std::uint64_t i) { bm[i / 8] &= static_cast<std::uint8_t>(~(1u << (i % 8))); }
-bool testBit(const std::vector<std::uint8_t>& bm, std::uint64_t i) { return (bm[i / 8] >> (i % 8)) & 1; }
+void setBit(std::vector<std::uint8_t>& bm, std::uint64_t i) { bm[static_cast<std::size_t>(i / 8)] |= static_cast<std::uint8_t>(1u << (i % 8)); }
+void clearBit(std::vector<std::uint8_t>& bm, std::uint64_t i) { bm[static_cast<std::size_t>(i / 8)] &= static_cast<std::uint8_t>(~(1u << (i % 8))); }
+bool testBit(const std::vector<std::uint8_t>& bm, std::uint64_t i) { return (bm[static_cast<std::size_t>(i / 8)] >> (i % 8)) & 1; }
 
 // Metadata ranges (first block, count) of group g, wherever they are (flex_bg).
 std::vector<std::pair<std::uint64_t, std::uint64_t>> metadata(const Fs& f, std::uint32_t g) {
@@ -580,7 +580,7 @@ std::uint64_t blockMap(std::uint8_t* iblock, std::uint64_t data, std::uint64_t n
     if (i < n) {  // single indirect
         std::vector<std::uint8_t> ind(bs, 0);
         const std::uint64_t at = meta + used++;
-        for (std::uint64_t k = 0; k < per && i < n; ++k, ++i) put32(&ind[4 * k], static_cast<std::uint32_t>(data + i));
+        for (std::uint64_t k = 0; k < per && i < n; ++k, ++i) put32(&ind[static_cast<std::size_t>(4 * k)], static_cast<std::uint32_t>(data + i));
         put32(iblock + 48, static_cast<std::uint32_t>(at));
         writes.push_back({at, ind});
     }
@@ -590,8 +590,8 @@ std::uint64_t blockMap(std::uint8_t* iblock, std::uint64_t data, std::uint64_t n
         for (std::uint64_t k = 0; k < per && i < n; ++k) {
             std::vector<std::uint8_t> ind(bs, 0);
             const std::uint64_t at = meta + used++;
-            for (std::uint64_t j = 0; j < per && i < n; ++j, ++i) put32(&ind[4 * j], static_cast<std::uint32_t>(data + i));
-            put32(&dind[4 * k], static_cast<std::uint32_t>(at));
+            for (std::uint64_t j = 0; j < per && i < n; ++j, ++i) put32(&ind[static_cast<std::size_t>(4 * j)], static_cast<std::uint32_t>(data + i));
+            put32(&dind[static_cast<std::size_t>(4 * k)], static_cast<std::uint32_t>(at));
             writes.push_back({at, ind});
         }
         put32(iblock + 52, static_cast<std::uint32_t>(dat));

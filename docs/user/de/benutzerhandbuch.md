@@ -73,7 +73,7 @@ Auf Images möglich:
 | FAT16 / FAT32 | ✓ | ✓ | ✓ (Daten werden umgelagert) | ✓ | ✓ nur lesend | ✓ | ✓ |
 | NTFS | – | ✓ | ✓ wenn der Bereich hinter dem neuen Ende frei ist | ✓ | – | ✓ | ✓ |
 | exFAT | ✓ | – | – | ✓ | – | ✓ | ✓ |
-| ext2 / ext3 / ext4 | – | – | – | ✓ | – | ✓ | ✓ |
+| ext2 / ext3 / ext4 | ✓ (Entwicklungs-Builds) | ✓ innerhalb der Deskriptorblöcke (Entwicklungs-Builds) | ✓ wenn der Bereich hinter dem neuen Ende frei ist (Entwicklungs-Builds) | ✓ | ✓ nur lesend (Entwicklungs-Builds) | ✓ | ✓ |
 | Linux-Swap | – | – | – | ✓ | – | ✓ | ✓ |
 | andere | – | – | – | verschieben ✓, kopieren wo sicher | – | – | – |
 
@@ -82,6 +82,27 @@ Kopieren arbeiten blockweise bei gleicher Größe; eine Kopie in eine größere 
 vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, bevor etwas geschrieben
 wird – ebenso das Verkleinern von NTFS mit Daten hinter dem neuen Ende und Dateisysteme mit Fehlern.
 Physische Datenträger beschreibt diese Version nie.
+
+Entwicklungs-Builds nach 0.2 verschieben auch erweiterte Partitionen (ihre Grenzen; die logischen
+Partitionen bleiben, wo sie sind).
+
+### Unterbrochene Ausführungen (Entwicklungs-Builds nach 0.2)
+
+Während WParted einen Plan anwendet, führt es ein Journal neben dem Image (`<Image>.wparted-journal`).
+Fallen Programm, Rechner oder Strom aus oder brechen Sie während eines Verschiebens ab, zeigt das
+Journal, wo die Ausführung stehen geblieben ist:
+
+- **zwischen zwei Operationen** oder **beim blockweisen Verschieben oder Kopieren**: WParted kann genau
+  dort weitermachen. Die GUI bietet beim nächsten Öffnen des Images *Fortsetzen* an; auf der
+  Kommandozeile zeigt `wparted-cli resume <Image>` den Stand, `--execute` setzt fort. Bis dahin liegen
+  die Daten einer unterbrochenen Verschiebung teils an der alten, teils an der neuen Position –
+  verwenden Sie das Image nicht.
+- **während eines Schritts, der Daten an Ort und Stelle ändert** (Dateisystem vergrößern, verkleinern
+  oder erstellen, Tabelle schreiben): das lässt sich nicht fortsetzen; WParted sagt das, und das Image
+  kann inkonsistent sein. Stellen Sie es aus Ihrer Kopie wieder her.
+
+*Journal verwerfen* (bzw. `--discard`) löscht nur das Journal, nie das Image. Einzelheiten:
+[Fehlerfälle](../../architecture/failure-modes.md) (englisch).
 
 ## Datenrettung (nur lesend)
 

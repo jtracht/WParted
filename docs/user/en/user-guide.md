@@ -71,7 +71,7 @@ Possible on images:
 | FAT16 / FAT32 | ✓ | ✓ | ✓ (data is relocated) | ✓ | ✓ read-only | ✓ | ✓ |
 | NTFS | – | ✓ | ✓ if the space behind the new end is free | ✓ | – | ✓ | ✓ |
 | exFAT | ✓ | – | – | ✓ | – | ✓ | ✓ |
-| ext2 / ext3 / ext4 | – | – | – | ✓ | – | ✓ | ✓ |
+| ext2 / ext3 / ext4 | ✓ (development builds) | ✓ within the descriptor blocks (development builds) | ✓ if the space behind the new end is free (development builds) | ✓ | ✓ read-only (development builds) | ✓ | ✓ |
 | Linux swap | – | – | – | ✓ | – | ✓ | ✓ |
 | any other | – | – | – | move ✓, copy where safe | – | – | – |
 
@@ -80,6 +80,25 @@ operations of the same size; a copy into a larger FAT partition grows the copied
 with steps WParted cannot do are refused before anything is written, as are shrinks of NTFS volumes
 with data behind the new end and file systems with errors. Physical disks are never written by this
 version.
+
+Development builds after 0.2 also move extended partitions (their boundaries; the logical partitions
+stay where they are).
+
+### Interrupted executions (development builds after 0.2)
+
+WParted keeps a journal next to the image (`<image>.wparted-journal`) while it applies a plan. If the
+program, the computer or the power fails, or you cancel during a move, the journal shows where it
+stopped:
+
+- **between operations** or **during a block move or copy**: WParted can continue exactly there.
+  The GUI offers *Resume* when you open the image again; on the command line run
+  `wparted-cli resume <image>` to see the state and `--execute` to continue. Until then, the data of
+  an interrupted move is split between the old and the new position – do not use the image.
+- **during a step that changes data in place** (file-system resize or creation, writing the table):
+  this cannot be resumed; WParted says so and the image may be inconsistent. Restore it from your copy.
+
+*Discard the journal* (or `--discard`) deletes only the journal, never the image. Details:
+[failure modes](../../architecture/failure-modes.md).
 
 ## Data rescue (read-only)
 

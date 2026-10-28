@@ -51,8 +51,14 @@
 - the GUI asks twice (Apply summary, then a confirmation naming the file), never with writing as the
   default button; the CLI only writes with `--execute`.
 
+- an execution journal (`<image>.wparted-journal`, the only other file WParted writes during
+  execution) records the plan, the sectors the layout detection read and a 512-byte progress header
+  that is rewritten in place only after the image data it describes was flushed to disk
+  (`_commit`/`fsync`). Overlapping moves use chunks no larger than the shift distance, so repeating
+  the chunk in flight at a crash is safe; see [failure modes](failure-modes.md).
+
 The results are verified independently in CI (`tools/ci/image-apply-check.sh`: `sgdisk -v`, `sfdisk`,
-`e2fsck`, `debugfs`, `blkid`). This path does not reach physical disks; that needs the helper of
+`e2fsck`, `debugfs`, `blkid`, including a process killed in the middle of a move and resumed). This path does not reach physical disks; that needs the helper of
 ADR-0002 and a human security review.
 
 ## Rules for future write paths
