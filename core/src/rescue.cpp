@@ -131,4 +131,30 @@ std::vector<RescueCandidate> rescueScan(BlockReader& r, const DiskLayout& layout
     return out;
 }
 
+std::size_t planRecreate(OperationQueue& queue, const std::vector<RescueCandidate>& found, std::string& error) {
+    std::vector<RescueCandidate> sorted = found;
+    std::sort(sorted.begin(), sorted.end(), [](const RescueCandidate& a, const RescueCandidate& b) { return a.firstLba < b.firstLba; });
+    std::size_t added = 0;
+    std::uint64_t end = 0;
+    for (const auto& c : sorted) {
+        if (!c.sectorCount || c.fs.type == FsType::Unknown || c.firstLba < end) continue;
+        Operation op;
+        op.type = OpType::CreatePartition;
+        op.table = queue.current().type;
+        op.kind = PartitionKind::Primary;
+        op.firstLba = c.firstLba;
+        op.sectorCount = c.sectorCount;
+        op.fs = c.fs.type;
+        op.keepContents = true;
+        std::string err;
+        if (!queue.add(op, err)) {
+            if (error.empty()) error = "sector " + std::to_string(c.firstLba) + ": " + err;
+            continue;
+        }
+        end = c.firstLba + c.sectorCount;
+        ++added;
+    }
+    return added;
+}
+
 }  // namespace wparted

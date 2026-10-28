@@ -73,6 +73,9 @@ struct Operation {
     std::string label;                                // CreatePartition, Format, SetLabel
     std::string name;                                 // CreatePartition (GPT), SetName
     std::vector<std::string> flagsOn, flagsOff;       // SetFlags
+    // CreatePartition: recreate a lost partition around an existing file system
+    // of type `fs` (data rescue). Nothing inside the partition is written.
+    bool keepContents = false;
     bool hasOriginal = false;                         // target existed before the plan
     OriginalRef original;
 };

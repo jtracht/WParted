@@ -20,6 +20,7 @@
 
 #include "wparted/core/executor.hpp"
 #include "wparted/core/fs_tools.hpp"
+#include "wparted/core/rescue.hpp"
 
 using namespace wparted;
 
@@ -268,6 +269,22 @@ int main(int argc, char** argv) {
             std::_Exit(75);  // like a crash: buffered image data and handles are dropped
         }
         return printLog(res);
+    }
+    if (argc == 4 && std::strcmp(argv[1], "rescue") == 0) {  // plan that recreates lost partitions
+        FileBlockReader r;
+        if (!r.open(argv[2], 512)) return 2;
+        const DiskLayout l = parseDiskLayout(r, true);
+        const auto found = rescueScan(r, l);
+        OperationQueue q(l, identityOf(l, "", "image"));
+        std::string err;
+        const std::size_t n = planRecreate(q, found, err);
+        for (const auto& c : found)
+            std::printf("found %s at sector %llu\n", fsTypeName(c.fs.type), static_cast<unsigned long long>(c.firstLba));
+        if (!err.empty()) std::fprintf(stderr, "rescue: %s\n", err.c_str());
+        std::ofstream out(argv[3], std::ios::binary);
+        out << q.toJson();
+        std::printf("%zu partition(s) to recreate\n", n);
+        return out && n ? 0 : 1;
     }
     if (argc == 3 && std::strcmp(argv[1], "resume") == 0) {
         ImageFileDevice dev;

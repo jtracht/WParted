@@ -1048,7 +1048,25 @@ void MainWindow::onRescueDone(LPARAM lp) {
     cfg.pszContent = text.c_str();
     cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     cfg.pszMainIcon = TD_INFORMATION_ICON;
-    TaskDialogIndirect(&cfg, nullptr, nullptr, nullptr);
+    bool sized = false;
+    for (const auto& c : r->found) sized = sized || c.sectorCount > 0;
+    TASKDIALOG_BUTTON recreate[] = {{300, tr(S::BtnRecreate)}};
+    if (r->ok && sized && currentQueue()) {
+        cfg.dwFlags |= TDF_USE_COMMAND_LINKS;
+        cfg.pButtons = recreate;
+        cfg.cButtons = 1;
+    }
+    int pressed = 0;
+    TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr);
+    if (pressed == 300 && currentQueue()) {
+        std::string err;
+        const std::size_t n = planRecreate(*currentQueue(), r->found, err);
+        log::info("Rescue: " + std::to_string(n) + " partition(s) to recreate planned" + (err.empty() ? "" : " (" + err + ")"));
+        refreshView();
+        std::wstring msg = formatText(S::RecreatePlanned, {std::to_wstring(n)});
+        if (!err.empty()) msg += L"\n\n" + w(err);
+        MessageBoxW(hwnd_, msg.c_str(), tr(S::RescueTitle), n ? MB_ICONINFORMATION : MB_ICONWARNING);
+    }
 }
 
 // ---------------------------------------------------------------------------

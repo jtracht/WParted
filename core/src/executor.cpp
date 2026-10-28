@@ -754,6 +754,10 @@ ExecuteResult runPlan(BlockDevice& dev, const OperationQueue& plan, const std::s
                 case OpType::CreatePartition:
                 case OpType::Format:
                     if (b->kind == PartitionKind::Extended) break;
+                    if (op.keepContents) {  // recreated around an existing file system: nothing is written inside
+                        step.messages.push_back("Keeping the existing " + std::string(fsTypeName(op.fs)) + " file system");
+                        break;
+                    }
                     step.messages.push_back(op.type == OpType::Format ? "Clearing file system signatures in the first MiB"
                                                                       : "Clearing old signatures in the first MiB of the new partition");
                     ok = run.wipeStart(b->firstLba, b->sectorCount, err);

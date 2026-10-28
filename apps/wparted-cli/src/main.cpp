@@ -34,7 +34,7 @@ void usage() {
         "  wparted-cli inspect-image <file> [--sector-size N] [--json]\n"
         "                                                 Analyse a raw disk image file\n"
         "  wparted-cli fs-support [--json]                Show file system capabilities of this build\n"
-        "  wparted-cli rescue-scan-image <file> [--sector-size N] [--json]\n"
+        "  wparted-cli rescue-scan-image <file> [--sector-size N] [--json] [--plan out.json]\n"
         "                                                 Search unallocated space for lost file systems\n"
         "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute] [--log file.html]\n"
         "                                                 Check a saved plan against a disk image file;\n"
@@ -123,7 +123,7 @@ int cmdInspectImage(const std::string& path, std::uint32_t sectorSize, bool json
     return l.hasErrors() ? 1 : 0;
 }
 
-int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json) {
+int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json, const std::string& planPath) {
     FileBlockReader reader;
     if (!reader.open(path, sectorSize)) {
         std::fprintf(stderr, "error: cannot open image '%s' for reading\n", path.c_str());
@@ -131,6 +131,19 @@ int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json)
     }
     const DiskLayout l = parseDiskLayout(reader, true);
     const auto found = rescueScan(reader, l);
+    if (!planPath.empty()) {  // a plan that recreates the found partitions (applied with apply-plan)
+        OperationQueue q(l, identityOf(l, "", "image"));
+        std::string err;
+        const std::size_t n = planRecreate(q, found, err);
+        if (!err.empty()) std::fprintf(stderr, "warning: %s\n", err.c_str());
+        std::ofstream out(planPath, std::ios::binary);  // readonly-guard: allow (user-chosen plan file)
+        out << q.toJson();
+        if (!out) {
+            std::fprintf(stderr, "error: cannot write plan '%s'\n", planPath.c_str());
+            return 2;
+        }
+        std::printf("Plan with %zu partition(s) to recreate written to %s; check it with apply-plan.\n", n, planPath.c_str());
+    }
     if (json) {
         JsonWriter w;
         w.beginArray();
@@ -369,9 +382,12 @@ int wmain(int argc, wchar_t** argv) {
             return 2;
         }
         std::uint32_t ss = 512;
-        for (std::size_t i = 2; i + 1 < args.size(); ++i)
+        std::string planPath;
+        for (std::size_t i = 2; i + 1 < args.size(); ++i) {
             if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
-        return cmdRescueImage(args[1], ss, json);
+            if (args[i] == "--plan") planPath = args[i + 1];
+        }
+        return cmdRescueImage(args[1], ss, json, planPath);
     }
     if (args[0] == "apply-plan") {
         if (args.size() < 3) {

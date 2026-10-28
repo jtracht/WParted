@@ -11,6 +11,7 @@
 #include <functional>
 #include <vector>
 
+#include "wparted/core/operations.hpp"
 #include "wparted/core/partition_table.hpp"
 
 namespace wparted {
@@ -33,5 +34,11 @@ std::vector<RescueCandidate> rescueScan(BlockReader& reader, const DiskLayout& l
 
 // File system size in bytes read from its own header (0 if unknown).
 std::uint64_t filesystemSizeBytes(BlockReader& fsStart, FsType type);
+
+// Adds one "recreate lost partition" operation (CreatePartition with
+// keepContents) per candidate whose size is known, in disk order, skipping
+// candidates that overlap an earlier one. Returns the number added; `error`
+// names the first candidate that could not be planned.
+std::size_t planRecreate(OperationQueue& queue, const std::vector<RescueCandidate>& found, std::string& error);
 
 }  // namespace wparted

@@ -483,6 +483,9 @@ std::string describe(const Operation& op, const DiskLayout& before) {
             return std::string("Create ") + tableTypeName(op.table) +
                    " partition table (all existing partitions on this disk will be lost)";
         case OpType::CreatePartition:
+            if (op.keepContents)
+                return std::string("Recreate lost ") + partitionKindName(op.kind) + " partition (" + fsTypeName(op.fs) + ", " +
+                       formatSize(op.sectorCount * ss) + ") at sector " + std::to_string(op.firstLba);
             return std::string("Create ") + partitionKindName(op.kind) + " partition (" +
                    (op.kind == PartitionKind::Extended ? "extended" : fsTypeName(op.fs)) + ", " +
                    formatSize(op.sectorCount * ss) + ") at sector " + std::to_string(op.firstLba);
@@ -636,6 +639,7 @@ std::string OperationQueue::toJson() const {
         w.key("fs").value(fsTypeName(op.fs));
         w.key("label").value(op.label);
         w.key("name").value(op.name);
+        if (op.keepContents) w.key("keepContents").value(true);
         w.key("flagsOn").beginArray();
         for (const auto& f : op.flagsOn) w.value(f);
         w.endArray();
@@ -702,6 +706,7 @@ bool OperationQueue::fromJson(const std::string& json, const DiskLayout& origina
         op.sectorCount = ov.getUint("sectorCount", 0, &ok);
         if (!fsFromName(ov.getString("fs", "unknown"), op.fs)) { error = where + "bad file system"; return false; }
         op.label = ov.getString("label", "", &ok);
+        op.keepContents = ov.getBool("keepContents", false, &ok);
         op.name = ov.getString("name", "", &ok);
         for (const char* key : {"flagsOn", "flagsOff"}) {
             if (const JsonValue* fv = ov.find(key)) {

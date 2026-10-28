@@ -163,5 +163,42 @@ then pass "mbr: extended partition at 33-123 MiB, logical partitions unchanged";
 [[ "$(dd if="$mbr" bs=1 skip=$((34 * 1048576 + 510)) count=2 status=none | od -An -tx1 | tr -d ' ')" == "0000" ]] &&
   pass "mbr: old first EBR cleared" || bad "mbr: old first EBR still present"
 
+# --- data rescue: partitions whose table entries were deleted are found and recreated ---
+img=$W/rescue.img
+truncate -s 256M "$img"
+sgdisk -n1:2048:+40M -t1:8300 -n2:0:+48M -t2:0700 -n3:0:+40M -t3:0700 "$img" >/dev/null
+starts=()
+for i in 1 2 3; do starts+=("$(sector_of "$img" "$i" "First sector")"); done
+part() { rm -f "$W/rp.img"; truncate -s "$2M" "$W/rp.img"; }  # fresh partition image (type, MiB)
+part ext4 40; mkfs.ext4 -q -F -L lost-ext -d "$W/root" "$W/rp.img"
+dd if="$W/rp.img" of="$img" bs=512 seek="${starts[0]}" conv=notrunc status=none
+part ntfs 48; mkfs.ntfs -q -Q -F -L lost-ntfs "$W/rp.img" >/dev/null 2>&1
+ntfscp -f "$W/rp.img" "$W/root/payload.bin" payload.bin >/dev/null 2>&1
+dd if="$W/rp.img" of="$img" bs=512 seek="${starts[1]}" conv=notrunc status=none
+part fat 40; mkfs.vfat -F 32 -n LOSTFAT "$W/rp.img" >/dev/null
+mcopy -i "$W/rp.img" "$W/root/payload.bin" ::/payload.bin
+dd if="$W/rp.img" of="$img" bs=512 seek="${starts[2]}" conv=notrunc status=none
+sgdisk -d1 -d2 -d3 "$img" >/dev/null
+[[ "$(sgdisk -p "$img" | grep -c '^ *[0-9]')" == 0 ]] && pass "rescue: all three table entries deleted" || bad "rescue: entries still there"
+if "$TOOL" rescue "$img" "$W/rescue.json" >"$W/rescue.txt"; then pass "rescue: $(tail -1 "$W/rescue.txt")"; else bad "rescue: scan"; cat "$W/rescue.txt"; fi
+if "$TOOL" apply "$img" "$W/rescue.json"; then pass "rescue: recreate plan applied"; else bad "rescue: apply"; fi
+sgdisk -v "$img" >"$W/verify.txt" 2>&1 || true
+grep -q "No problems found" "$W/verify.txt" && pass "rescue: sgdisk -v reports no problems" || { bad "rescue: sgdisk -v"; cat "$W/verify.txt"; }
+for i in 1 2 3; do
+  got=$(sector_of "$img" "$i" "First sector")
+  [[ "$got" == "${starts[$((i - 1))]}" ]] && pass "rescue: partition $i recreated at sector $got" || bad "rescue: partition $i at '$got', expected ${starts[$((i - 1))]}"
+done
+dd if="$img" of="$W/r1.img" bs=512 skip="${starts[0]}" count=$((40 * 2048)) status=none
+e2fsck -fn "$W/r1.img" >/dev/null 2>&1 && pass "rescue: recovered ext4 e2fsck clean" || bad "rescue: ext4 e2fsck"
+rm -f "$W/out.bin"; debugfs -R "dump /payload.bin $W/out.bin" "$W/r1.img" >/dev/null 2>&1 || true
+[[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "rescue: ext4 payload intact" || bad "rescue: ext4 payload"
+dd if="$img" of="$W/r2.img" bs=512 skip="${starts[1]}" count=$((48 * 2048)) status=none
+ntfsresize --check --force --no-progress-bar "$W/r2.img" >/dev/null 2>&1 && pass "rescue: recovered NTFS consistent (ntfsresize --check)" || bad "rescue: NTFS check"
+[[ "$(ntfscat "$W/r2.img" payload.bin 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$sha" ]] && pass "rescue: NTFS payload intact" || bad "rescue: NTFS payload"
+dd if="$img" of="$W/r3.img" bs=512 skip="${starts[2]}" count=$((40 * 2048)) status=none
+fsck.fat -n "$W/r3.img" >/dev/null 2>&1 && pass "rescue: recovered FAT32 fsck.fat clean" || bad "rescue: fsck.fat"
+rm -f "$W/out.bin"; mcopy -i "$W/r3.img" ::/payload.bin "$W/out.bin" 2>/dev/null || true
+[[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "rescue: FAT32 payload intact" || bad "rescue: FAT32 payload"
+
 echo "image apply check: $([[ $fail == 0 ]] && echo passed || echo FAILED)"
 exit "$fail"

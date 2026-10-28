@@ -133,7 +133,7 @@ private:
                             index, {formatSize(used)});
                 }
             }
-            if (op.type == OpType::CreatePartition && op.fs != FsType::Unknown) {
+            if (op.type == OpType::CreatePartition && op.fs != FsType::Unknown && !op.keepContents) {
                 const auto& cap = capabilitiesFor(op.fs);
                 if (cap.create != Support::Supported && cap.create != Support::Limited)
                     add(gapSeverity(), "op.capability",

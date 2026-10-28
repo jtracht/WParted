@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 The WParted contributors
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 
 #include "image_builder.hpp"
 #include "test_framework.hpp"
+#include "wparted/core/executor.hpp"
+#include "wparted/core/fs_tools.hpp"
 #include "wparted/core/operation_log.hpp"
 #include "wparted/core/rescue.hpp"
 #include "wparted/core/validation.hpp"
@@ -29,6 +32,47 @@ DiskLayout parse(const Image& im) {
 }
 
 }  // namespace
+
+TEST("rescue: lost partitions are recreated around their file systems without writing inside") {
+    Image im(128 * MiB, 512);
+    im.gpt({{kLinux, 2048, 4095, "kept", 0}});
+    std::string err;
+    {
+        MemoryBlockDevice all(im.data, 512);
+        RegionDevice lost(all, 8192ull * 512, 40 * MiB);  // a FAT32 whose table entry is gone
+        REQUIRE(fstools::create(lost, FsType::Fat32, "LOST", 8192, err));
+        RegionDevice lost2(all, 106496ull * 512, 16 * MiB);  // and an ext4 behind it
+        REQUIRE(fstools::create(lost2, FsType::Ext4, "lost-ext", 0, err));
+    }
+    const std::vector<std::uint8_t> fatBytes(im.data.begin() + 8192 * 512, im.data.begin() + (8192 + 81920) * 512);
+    const DiskLayout l = parse(im);
+    MemoryBlockReader r(im.data, 512);
+    const auto found = rescueScan(r, l);
+    REQUIRE(found.size() == 2);
+    OperationQueue q(l, identityOf(l, "", "image"));
+    CHECK_EQ(planRecreate(q, found, err), std::size_t{2});
+    CHECK(err.empty());
+    CHECK(q.operations()[0].keepContents);
+    CHECK(describe(q.operations()[0], q.original()).find("Recreate lost") == 0);
+    // The plan survives the plan file round trip with the flag.
+    OperationQueue back;
+    REQUIRE(OperationQueue::fromJson(q.toJson(), l, back, err));
+    CHECK(back.operations()[1].keepContents);
+    MemoryBlockDevice dev(im.data, 512);
+    const ExecuteResult res = executePlanOnImage(dev, back, "image");
+    if (!res.ok) std::printf("    %s\n", res.error.c_str());
+    REQUIRE(res.ok);
+    const DiskLayout after = parse(im);
+    REQUIRE(after.partitions.size() == 3);
+    bool fat = false, ext = false;
+    for (const auto& p : after.partitions) {
+        if (p.firstLba == 8192 && p.fs.type == FsType::Fat32 && p.fs.label == "LOST") fat = true;
+        if (p.firstLba == 106496 && p.fs.type == FsType::Ext4) ext = true;
+    }
+    CHECK(fat);
+    CHECK(ext);
+    CHECK(std::equal(fatBytes.begin(), fatBytes.end(), im.data.begin() + 8192 * 512));  // nothing written inside
+}
 
 TEST("rescue: finds an NTFS file system whose GPT entry was deleted") {
     Image im(64 * MiB, 512);

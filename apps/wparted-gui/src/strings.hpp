@@ -54,7 +54,7 @@ enum class S {
     ApplyImageReady, ApplyImageBlocked, BtnApplyImage, ConfirmImageTitle, ConfirmImageText, BtnApplyNow,
     ApplyRunning, ApplyDoneOk, ApplyDoneFailed, ApplyResultTitle, ApplyBusy, JournalTitle, JournalFound,
     JournalCopy, JournalWork, JournalResumable, JournalNotResumable, BtnResume, BtnDiscardJournal, BtnLater,
-    JournalDiscarded, Count_
+    JournalDiscarded, BtnRecreate, RecreatePlanned, Count_
 };
 
 void initLanguage();             // Selects the language from the Windows UI language.

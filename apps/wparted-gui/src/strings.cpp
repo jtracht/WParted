@@ -388,6 +388,10 @@ const Entry kStrings[] = {
     {S::BtnDiscardJournal, L"Discard the journal\nThe image file is not changed", L"Journal verwerfen\nDie Image-Datei wird nicht verändert"},
     {S::BtnLater, L"Decide later", L"Später entscheiden"},
     {S::JournalDiscarded, L"The journal was discarded.", L"Das Journal wurde verworfen."},
+    {S::BtnRecreate, L"Add to the plan\nRecreate the found partitions around their file systems (nothing inside them is written)",
+                     L"Zum Plan hinzufügen\nDie gefundenen Partitionen um ihre Dateisysteme neu anlegen (in ihnen wird nichts geschrieben)"},
+    {S::RecreatePlanned, L"%1 partition(s) to recreate were added to the plan. Check them, then apply the plan.",
+                         L"%1 neu anzulegende Partition(en) wurden zum Plan hinzugefügt. Prüfen Sie sie und wenden Sie dann den Plan an."},
     {S::ApplyResultTitle, L"Apply to image file", L"Auf Image-Datei anwenden"},
     {S::ApplyBusy, L"Please wait until the image file has been written.", L"Bitte warten, bis die Image-Datei geschrieben ist."},
     // Partition-table diagnostics (core/src/partition_table.cpp)
