@@ -39,6 +39,9 @@ void usage() {
         "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute] [--log file.html]\n"
         "                                                 Check a saved plan against a disk image file;\n"
         "                                                 with --execute, apply it to that image file\n"
+        "  wparted-cli resume <image> [--execute | --discard] [--log file.html]\n"
+        "                                                 Show an interrupted execution; continue it with\n"
+        "                                                 --execute, or delete its journal with --discard\n"
         "  wparted-cli version                            Print version\n\n"
         "Only apply-plan --execute writes, and only to an image file; physical disks are never written.\n"
         "Raw partition table access to physical disks requires an elevated prompt.\n",
@@ -146,11 +149,32 @@ int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json)
     return 0;
 }
 
+int printResult(const ExecuteResult& res, const std::string& image, const std::string& logPath);
+
+ExecuteOptions executeOptions(const std::string& journal) {
+    ExecuteOptions opt;
+    opt.journalPath = journal;
+    opt.progress = [](std::size_t op, std::uint64_t done, std::uint64_t total) {
+        std::fprintf(stderr, "\r  operation %zu: %3u %%", op + 1, static_cast<unsigned>(total ? done * 100 / total : 100));
+        if (done == total) std::fprintf(stderr, "\n");
+    };
+    return opt;
+}
+
 int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uint32_t ss, bool execute,
                  const std::string& logPath) {
     if (isDevicePath(image)) {
         std::fprintf(stderr, "error: apply-plan works on disk image files only; '%s' is a device\n", image.c_str());
         return 2;
+    }
+    const std::string journal = journalPathFor(image);
+    if (journalExists(journal)) {
+        std::fprintf(stderr,
+                     "error: an interrupted execution was found for %s.\n"
+                     "       Run 'wparted-cli resume %s' to see it and continue it, or add --discard to delete the\n"
+                     "       journal. Nothing was written.\n",
+                     image.c_str(), image.c_str());
+        return 4;
     }
     std::string json, err;
     {
@@ -200,12 +224,57 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
         std::fprintf(stderr, "error: %s\n", err.c_str());
         return 2;
     }
-    ExecuteOptions opt;
-    opt.progress = [](std::size_t op, std::uint64_t done, std::uint64_t total) {
-        std::fprintf(stderr, "\r  operation %zu: %3u %%", op + 1, static_cast<unsigned>(total ? done * 100 / total : 100));
-        if (done == total) std::fprintf(stderr, "\n");
-    };
-    const ExecuteResult res = executePlanOnImage(dev, q, image, opt);
+    return printResult(executePlanOnImage(dev, q, image, executeOptions(journal)), image, logPath);
+}
+
+int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool discard, const std::string& logPath) {
+    if (isDevicePath(image)) {
+        std::fprintf(stderr, "error: resume works on disk image files only; '%s' is a device\n", image.c_str());
+        return 2;
+    }
+    const std::string journal = journalPathFor(image);
+    if (!journalExists(journal)) {
+        std::printf("No interrupted execution for %s.\n", image.c_str());
+        return 0;
+    }
+    JournalState s;
+    std::string err;
+    if (!readJournal(journal, s, err)) {
+        std::fprintf(stderr, "error: %s (%s)\n", err.c_str(), journal.c_str());
+        return 2;
+    }
+    std::printf("Interrupted execution on %s:\n  %zu of %zu operation(s) were applied and verified.\n", image.c_str(),
+                s.completed, s.operationCount);
+    if (s.phase == "copy")
+        std::printf("  Operation %zu was interrupted during its block copy after %s.\n", s.operation + 1,
+                    formatSize(s.copyDone).c_str());
+    if (s.phase == "work") std::printf("  Operation %zu was interrupted while %s.\n", s.operation + 1, s.step.c_str());
+    if (discard) {
+        if (!discardJournal(journal, err)) {
+            std::fprintf(stderr, "error: %s\n", err.c_str());
+            return 2;
+        }
+        std::printf("The journal was deleted; the image was not changed.\n");
+        return 0;
+    }
+    if (!s.resumable()) {
+        std::printf("That step changes data in place and cannot be resumed; the image may be inconsistent.\n"
+                    "Restore the image from a backup, then delete the journal with --discard.\n");
+        return 3;
+    }
+    if (!execute) {
+        std::printf("It can be resumed: run again with --execute to continue, or --discard to delete the journal.\n");
+        return 0;
+    }
+    ImageFileDevice dev;
+    if (!dev.open(image, ss, err)) {
+        std::fprintf(stderr, "error: %s\n", err.c_str());
+        return 2;
+    }
+    return printResult(resumePlanOnImage(dev, image, executeOptions(journal)), image, logPath);
+}
+
+int printResult(const ExecuteResult& res, const std::string& image, const std::string& logPath) {
     for (const auto& d : res.validation.diagnostics)
         if (d.severity != Severity::Info)
             std::printf("%s [%s] %s\n", d.severity == Severity::Error ? "ERROR" : "WARNING", d.code.c_str(), d.message.c_str());
@@ -312,6 +381,19 @@ int wmain(int argc, wchar_t** argv) {
             if (args[i] == "--log") logPath = args[i + 1];
         }
         return cmdApplyPlan(args[1], args[2], ss, has("--execute"), logPath);
+    }
+    if (args[0] == "resume") {
+        if (args.size() < 2) {
+            usage();
+            return 2;
+        }
+        std::uint32_t ss = 512;
+        std::string logPath;
+        for (std::size_t i = 2; i + 1 < args.size(); ++i) {
+            if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
+            if (args[i] == "--log") logPath = args[i + 1];
+        }
+        return cmdResume(args[1], ss, has("--execute"), has("--discard"), logPath);
     }
     if (args[0] == "inspect-image") {
         if (args.size() < 2) {

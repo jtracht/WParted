@@ -318,7 +318,7 @@ TEST("executor: refuses invalid plans and changed images without writing") {
     }
 }
 
-TEST("executor: system partitions are warnings on images, extended moves are refused") {
+TEST("executor: system partitions are warnings on images") {
     Image im(64 * MiB, 512);
     im.gpt({{"C12A7328-F81F-11D2-BA4B-00A0C93EC93B", 2048, 4095, "EFI", 0}});
     OperationQueue q = queueFor(im);
@@ -330,28 +330,242 @@ TEST("executor: system partitions are warnings on images, extended moves are ref
     for (const auto& d : r.validation.diagnostics)
         if (d.code == "op.system_critical") warned = d.severity == Severity::Warning;
     CHECK(warned);
+}
 
+TEST("executor: moving an extended partition rewrites the EBR chain, logical data stays") {
     Image mbr(64 * MiB, 512);
     OperationQueue m = queueFor(mbr);
+    std::string err;
     Operation t = op(OpType::CreateTable);
     t.table = TableType::Mbr;
     REQUIRE(m.add(t, err));
     Operation ex = op(OpType::CreatePartition);
     ex.kind = PartitionKind::Extended;
-    ex.firstLba = 2048;
-    ex.sectorCount = 20480;
+    ex.firstLba = 4096;
+    ex.sectorCount = 61440;
     REQUIRE(m.add(ex, err));
+    for (std::uint64_t start : {8192u, 30720u}) {
+        Operation lg = op(OpType::CreatePartition);
+        lg.kind = PartitionKind::Logical;
+        lg.firstLba = start;
+        lg.sectorCount = 16384;
+        REQUIRE(m.add(lg, err));
+    }
     REQUIRE(run(mbr, m).ok);
-    OperationQueue m2 = queueFor(mbr);
-    Operation mv = op(OpType::ResizeMove, 1);
-    mv.firstLba = 4096;
-    mv.sectorCount = 20480;
-    REQUIRE(m2.add(mv, err));
-    const ExecuteResult r2 = run(mbr, m2);
-    CHECK(!r2.ok);
-    CHECK(r2.error.find("extended") != std::string::npos);
-    CHECK(!r2.validation.ok());  // refused by validation, before anything is written
+    fillPattern(mbr, 8192, 16384, 0);
+    fillPattern(mbr, 30720, 16384, 0);
+    auto extOf = [](const OperationQueue& q) {
+        for (const auto& p : q.original().partitions)
+            if (p.kind == PartitionKind::Extended) return p.planId;
+        return 0u;
+    };
+
+    // Start 1 MiB later (the old first EBR is cleared), then 2 MiB earlier.
+    for (std::uint64_t start : {6144u, 2048u}) {
+        OperationQueue q = queueFor(mbr);
+        REQUIRE(extOf(q) != 0);
+        Operation mv = op(OpType::ResizeMove, extOf(q));
+        mv.firstLba = start;
+        mv.sectorCount = 65536 - start;
+        REQUIRE(q.add(mv, err));
+        const ExecuteResult r = run(mbr, q);
+        REQUIRE(r.ok);
+        const DiskLayout back = parse(mbr);
+        CHECK(!back.hasErrors());
+        REQUIRE(back.partitions.size() == 3);
+        const PartitionEntry* e = nullptr;
+        for (const auto& p : back.partitions)
+            if (p.kind == PartitionKind::Extended) e = &p;
+        REQUIRE(e != nullptr);
+        CHECK_EQ(e->firstLba, start);
+        CHECK(byNumber(back, 5) && byNumber(back, 5)->firstLba == 8192u);
+        CHECK(byNumber(back, 6) && byNumber(back, 6)->firstLba == 30720u);
+        CHECK(hasPattern(mbr, 8192, 16384, 0));
+        CHECK(hasPattern(mbr, 30720, 16384, 0));
+    }
+    CHECK(mbr.b(4096 * 512 + 510) == 0 && mbr.b(6144 * 512 + 510) == 0);  // stale EBRs cleared
+
+    // A logical partition must stay inside, with room for its EBR.
+    OperationQueue bad = queueFor(mbr);
+    Operation mv = op(OpType::ResizeMove, extOf(bad));
+    mv.firstLba = 8192;
+    mv.sectorCount = 57344;
+    REQUIRE(bad.add(mv, err));
+    CHECK(!run(mbr, bad).ok);
+    CHECK(hasPattern(mbr, 8192, 16384, 0));
 }
+
+namespace {
+
+// A temporary image file on disk (the journal lives next to it).
+struct TempImage {
+    std::string path;
+    explicit TempImage(const Image& im, const char* name) : path(name) {
+        std::string err;
+        discardJournal(journalPathFor(path), err);
+        std::FILE* f = nullptr;
+#ifdef _WIN32
+        if (fopen_s(&f, path.c_str(), "wb") != 0) f = nullptr;
+#else
+        f = std::fopen(path.c_str(), "wb");
+#endif
+        if (f) {
+            std::fwrite(im.data.data(), 1, im.data.size(), f);
+            std::fclose(f);
+        }
+    }
+    ~TempImage() {
+        std::string err;
+        discardJournal(journalPathFor(path), err);
+        std::remove(path.c_str());
+    }
+    Image load(std::uint32_t ss = 512) const {
+        Image im(0, ss);
+        std::FILE* f = nullptr;
+#ifdef _WIN32
+        if (fopen_s(&f, path.c_str(), "rb") != 0) f = nullptr;
+#else
+        f = std::fopen(path.c_str(), "rb");
+#endif
+        if (!f) return im;
+        std::uint8_t buf[65536];
+        for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) im.data.insert(im.data.end(), buf, buf + n);
+        std::fclose(f);
+        return im;
+    }
+};
+
+}  // namespace
+
+TEST("executor: an interrupted overlapping move is journalled and resumed without data loss") {
+    for (bool backwards : {false, true}) {
+        Image im(64 * MiB, 512);
+        im.gpt({{kData, 2048, 4095, "first", 0}, {kLinux, 16384, 49151, "data", 0}});
+        fillPattern(im, 16384, 32768, 0);
+        TempImage file(im, backwards ? "wparted_journal_back.img" : "wparted_journal_fwd.img");
+        OperationQueue q = queueFor(im);
+        std::string err;
+        REQUIRE(q.add(op(OpType::DeletePartition, 1), err));
+        Operation mv = op(OpType::ResizeMove, 2);
+        mv.firstLba = backwards ? 12288 : 20480;  // 2 MiB shift of a 16 MiB partition
+        mv.sectorCount = 32768;
+        REQUIRE(q.add(mv, err));
+        Operation fl = op(OpType::SetFlags, 2);
+        fl.flagsOn = {"linux-home"};
+        REQUIRE(q.add(fl, err));
+        const std::string journal = journalPathFor(file.path);
+        {
+            ImageFileDevice dev;
+            REQUIRE(dev.open(file.path, 512, err));
+            ExecuteOptions o;
+            o.journalPath = journal;
+            o.chunkBytes = 4 * MiB;       // limited to the 2 MiB shift distance
+            o.abortAfterChunks = 3;       // "crash" after the third chunk was written
+            const ExecuteResult r = executePlanOnImage(dev, q, file.path, o);
+            CHECK(!r.ok);
+            CHECK_EQ(r.completed, std::size_t{1});
+            CHECK(r.error.find("interrupted") != std::string::npos);
+        }
+        JournalState s;
+        REQUIRE(readJournal(journal, s, err));
+        CHECK_EQ(s.completed, std::size_t{1});
+        CHECK_EQ(s.phase, std::string("copy"));
+        CHECK_EQ(s.operation, std::size_t{1});
+        CHECK_EQ(s.copyDone, 4 * MiB);  // two chunks on disk; the third was not recorded
+        CHECK_EQ(s.operationCount, std::size_t{3});
+        CHECK(s.resumable());
+        {
+            ImageFileDevice dev;
+            REQUIRE(dev.open(file.path, 512, err));
+            ExecuteOptions o;
+            o.journalPath = journal;
+            CHECK(!executePlanOnImage(dev, q, file.path, o).ok);  // the journal blocks a new run
+            const ExecuteResult r = resumePlanOnImage(dev, file.path, o);
+            if (!r.ok) std::printf("    %s\n", r.error.c_str());
+            REQUIRE(r.ok);
+            CHECK_EQ(r.completed, std::size_t{3});
+        }
+        CHECK(!journalExists(journal));
+        const Image after = file.load();
+        CHECK(hasPattern(after, mv.firstLba, 32768, 0));
+        const DiskLayout back = parse(after);
+        REQUIRE(back.partitions.size() == 1);
+        CHECK_EQ(back.partitions[0].firstLba, mv.firstLba);
+    }
+}
+
+TEST("executor: cancelling between operations leaves a resumable journal; damage is detected") {
+    Image im(64 * MiB, 512);
+    im.gpt({{kData, 2048, 4095, "a", 0}, {kData, 8192, 10239, "b", 0}});
+    TempImage file(im, "wparted_journal_cancel.img");
+    OperationQueue q = queueFor(im);
+    std::string err;
+    REQUIRE(q.add(op(OpType::DeletePartition, 1), err));
+    REQUIRE(q.add(op(OpType::DeletePartition, 2), err));
+    const std::string journal = journalPathFor(file.path);
+    std::atomic<bool> cancel{false};
+    {
+        ImageFileDevice dev;
+        REQUIRE(dev.open(file.path, 512, err));
+        ExecuteOptions o;
+        o.journalPath = journal;
+        o.cancel = &cancel;
+        o.progress = [&](std::size_t, std::uint64_t, std::uint64_t) {};
+        // Cancel as soon as the first operation is done: watch the journal.
+        struct Watch final : public BlockDevice {
+            BlockDevice& d;
+            std::atomic<bool>& c;
+            int tableWrites = 0;
+            Watch(BlockDevice& dd, std::atomic<bool>& cc) : d(dd), c(cc) {}
+            std::uint64_t size() const override { return d.size(); }
+            std::uint32_t sectorSize() const override { return d.sectorSize(); }
+            bool read(std::uint64_t off, void* b, std::size_t n) override { return d.read(off, b, n); }
+            bool write(std::uint64_t off, const void* b, std::size_t n) override {
+                if (off == 512) c = true;  // GPT header: the first table write
+                return d.write(off, b, n);
+            }
+            bool flush() override { return d.flush(); }
+        } watch(dev, cancel);
+        const ExecuteResult r = executePlanOnImage(watch, q, file.path, o);
+        CHECK(!r.ok);
+        CHECK_EQ(r.completed, std::size_t{1});
+    }
+    JournalState s;
+    REQUIRE(readJournal(journal, s, err));
+    CHECK_EQ(s.phase, std::string("idle"));
+    CHECK_EQ(s.completed, std::size_t{1});
+
+    // A changed header is refused as damaged; restored, the journal resumes.
+    auto poke = [&](char c) {
+        std::FILE* f = nullptr;
+#ifdef _WIN32
+        if (fopen_s(&f, journal.c_str(), "r+b") != 0) f = nullptr;
+#else
+        f = std::fopen(journal.c_str(), "r+b");
+#endif
+        if (!f) return false;
+        std::fseek(f, 28, SEEK_SET);  // first digit of "completed=0000000001"
+        std::fputc(c, f);
+        std::fclose(f);
+        return true;
+    };
+    REQUIRE(poke('5'));
+    JournalState damaged;
+    CHECK(!readJournal(journal, damaged, err));
+    REQUIRE(poke('0'));
+    {
+        ImageFileDevice dev;
+        REQUIRE(dev.open(file.path, 512, err));
+        ExecuteOptions o;
+        o.journalPath = journal;
+        const ExecuteResult r = resumePlanOnImage(dev, file.path, o);
+        REQUIRE(r.ok);
+        CHECK_EQ(r.completed, std::size_t{2});
+    }
+    CHECK(!journalExists(journal));
+    CHECK(parse(file.load()).partitions.empty());
+}
+
 
 TEST("executor: device paths are refused, image files are modified in place only") {
     CHECK(isDevicePath("\\\\.\\PhysicalDrive0"));

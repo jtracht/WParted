@@ -37,7 +37,6 @@ file system. System partitions are warnings, because an image is not the running
 | `op.encrypted_format` | Warning | number | Formatting destroys BitLocker-encrypted data. |
 | `op.capability` | Warning / Error / Error | action, file system, support level | A file-system action this build cannot do (`create`, `grow`, `shrink`, `move`, `copy`, `check`, `label`, `uuid`). |
 | `op.shrink_below_used` | Error | used size | The new size is smaller than the space in use. |
-| `op.image_unsupported` | – / – / Error | number | Moving an extended partition (its EBR chain) on an image. |
 | `op.too_small` | Error | number, file system, minimum | A partition is smaller than its file system allows. |
 | `layout.out_of_bounds` | Error | number | Outside the usable area of the disk. |
 | `layout.overlap` | Error | `primary` or `logical`, number, number | Two partitions overlap. |

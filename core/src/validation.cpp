@@ -182,13 +182,8 @@ private:
     // op.capability args: {action, file system, support level}; action is one of
     // create, grow, shrink, move, copy, check, label, uuid.
     void capability(int index, const PartitionEntry& p, const Operation& op, const DiskLayout& layout) {
-        // op.image_unsupported args: {number}. The image executor moves data of
-        // primary and logical partitions only, not an extended partition with its EBR chain.
-        if (c_.mode == ValidationMode::ImageExecution && p.kind == PartitionKind::Extended &&
-            op.type == OpType::ResizeMove && op.firstLba != p.firstLba)
-            add(Severity::Error, "op.image_unsupported",
-                where(index) + "moving extended partition #" + std::to_string(p.number) + " is not supported yet.", index,
-                {std::to_string(p.number)});
+        // An extended partition only changes its boundaries (the logical
+        // partitions stay where they are; layout checks keep them inside).
         if (p.kind == PartitionKind::Extended) return;
         const FsType fs = p.fs.type;
         const auto& cap = capabilitiesFor(fs);

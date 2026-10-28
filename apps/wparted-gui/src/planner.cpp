@@ -182,7 +182,7 @@ std::wstring diagText(const Diagnostic& d) {
         {"layout.physical_unaligned", S::DiagPhysUnaligned, 1}, {"layout.too_many_primary", S::DiagTooManyPrimary, 0},
         {"layout.multiple_extended", S::DiagMultipleExtended, 0}, {"layout.logical_without_extended", S::DiagLogicalNoExt, 0},
         {"mbr.multiple_bootable", S::DiagMultipleBootable, 0}, {"layout.logical_outside_extended", S::DiagLogicalOutside, 1},
-        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1}, {"op.image_unsupported", S::DiagImageExtendedMove, 1},
+        {"layout.no_room_for_ebr", S::DiagNoRoomEbr, 1},
         // partition-table parser
         {"gpt.no_valid_header", S::PdNoValidHeader, 2},
         {"gpt.primary_invalid", S::PdPrimaryInvalid, 1},
@@ -874,21 +874,24 @@ void MainWindow::showApplySummary() {
     }
 }
 
-void MainWindow::startImageApply() {
+void MainWindow::startImageApply(bool resume) {
     const win::PhysicalDisk* d = currentDisk();
     OperationQueue* q = currentQueue();
-    if (!isImageDisk(d) || !q || q->empty() || applying_) return;
+    if (!isImageDisk(d) || applying_) return;
+    JournalState journal;
+    std::string journalErr;
+    if (resume ? !readJournal(journalPathFor(win::narrow(d->path)), journal, journalErr) : !q || q->empty()) return;
     if (applyWorker_.joinable()) applyWorker_.join();
     applying_ = true;
-    applyTotal_ = q->operations().size();
+    applyTotal_ = resume ? journal.operationCount : q->operations().size();
     onImageApplyProgress(0, 0);
-    const OperationQueue plan = *q;  // the worker gets its own copies
+    const OperationQueue plan = resume ? OperationQueue() : *q;  // the worker gets its own copies
     const std::wstring path = d->path;
     const std::string name = d->modelName();
     const std::uint32_t ss = d->logicalSectorSize;
     HWND target = hwnd_;
     log::info("Applying " + std::to_string(applyTotal_) + " operation(s) to image file " + win::narrow(path));
-    applyWorker_ = std::thread([plan, path, name, ss, target] {
+    applyWorker_ = std::thread([plan, path, name, ss, target, resume] {
         auto* r = new ImageApplyResult;
         r->path = path;
         r->name = name;
@@ -898,6 +901,7 @@ void MainWindow::startImageApply() {
             r->result.error = err;
         } else {
             ExecuteOptions opt;
+            opt.journalPath = journalPathFor(win::narrow(path));  // interrupted runs can be resumed
             int lastPct = -1;
             std::size_t lastOp = 0;
             opt.progress = [&](std::size_t op, std::uint64_t done, std::uint64_t total) {
@@ -907,7 +911,7 @@ void MainWindow::startImageApply() {
                 lastOp = op;
                 PostMessageW(target, WM_APP + 52, static_cast<WPARAM>(op), static_cast<LPARAM>(pct));
             };
-            r->result = executePlanOnImage(dev, plan, name, opt);
+            r->result = resume ? resumePlanOnImage(dev, name, opt) : executePlanOnImage(dev, plan, name, opt);
         }
         if (!PostMessageW(target, WM_APP + 53, 0, reinterpret_cast<LPARAM>(r))) delete r;
     });
@@ -929,7 +933,10 @@ void MainWindow::onImageApplyDone(LPARAM lp) {
     std::wstring steps;
     for (std::size_t i = 0; i < res.log.children.size(); ++i) {
         const LogStep& s = res.log.children[i];
-        const wchar_t* mark = s.status == LogStep::Status::Success ? L"✔ " : s.status == LogStep::Status::Error ? L"✖ " : L"– ";
+        const wchar_t* mark = s.status == LogStep::Status::Success   ? L"✔ "
+                              : s.status == LogStep::Status::Warning ? L"⚠ "
+                              : s.status == LogStep::Status::Error   ? L"✖ "
+                                                                     : L"– ";
         steps += std::to_wstring(i + 1) + L". " + mark + w(s.title) + L"\n";
     }
     const std::wstring head = res.ok ? formatText(S::ApplyDoneOk, {std::to_wstring(res.completed)}) : std::wstring(tr(S::ApplyDoneFailed));
@@ -1124,6 +1131,50 @@ void MainWindow::openImage(const std::wstring& path) {
     log::info("Opened disk image read-only: " + win::narrow(path));
     rebuildDeviceMenu();
     selectDisk(static_cast<int>(result_->disks.size()) - 1);
+    offerResume(path);
+}
+
+// An image with an execution journal was interrupted (crash, power loss or
+// cancel during a move): offer to continue it, or to discard the journal.
+void MainWindow::offerResume(const std::wstring& path) {
+    const std::string journalPath = journalPathFor(win::narrow(path));
+    if (!journalExists(journalPath)) return;
+    JournalState s;
+    std::string err;
+    std::wstring content;
+    if (!readJournal(journalPath, s, err)) {
+        content = w(err);
+    } else {
+        content = formatText(S::JournalFound, {std::to_wstring(s.completed), std::to_wstring(s.operationCount)});
+        if (s.phase == "copy")
+            content += L"\n\n" + formatText(S::JournalCopy, {std::to_wstring(s.operation + 1), w(formatSize(s.copyDone))});
+        if (s.phase == "work") content += L"\n\n" + formatText(S::JournalWork, {std::to_wstring(s.operation + 1), w(s.step)});
+        content += L"\n\n" + std::wstring(tr(s.resumable() ? S::JournalResumable : S::JournalNotResumable));
+    }
+    log::warn("Execution journal found for " + win::narrow(path) + ": " + s.phase + ", " + std::to_string(s.completed) +
+              " operation(s) completed");
+    std::vector<TASKDIALOG_BUTTON> buttons;
+    if (s.resumable()) buttons.push_back({200, tr(S::BtnResume)});
+    buttons.push_back({201, tr(S::BtnDiscardJournal)});
+    buttons.push_back({202, tr(S::BtnLater)});
+    TASKDIALOGCONFIG cfg{sizeof cfg};
+    cfg.hwndParent = hwnd_;
+    cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_USE_COMMAND_LINKS | TDF_SIZE_TO_CONTENT;
+    cfg.pszWindowTitle = tr(S::JournalTitle);
+    cfg.pszMainInstruction = tr(S::JournalTitle);
+    cfg.pszContent = content.c_str();
+    cfg.pButtons = buttons.data();
+    cfg.cButtons = static_cast<UINT>(buttons.size());
+    cfg.nDefaultButton = 202;
+    cfg.pszMainIcon = TD_WARNING_ICON;
+    int pressed = 0;
+    TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr);
+    if (pressed == 200) startImageApply(true);
+    if (pressed == 201) {
+        const bool ok = discardJournal(journalPath, err);
+        log::info(ok ? "Execution journal discarded" : "Discarding the journal failed: " + err);
+        MessageBoxW(hwnd_, ok ? tr(S::JournalDiscarded) : w(err).c_str(), tr(S::AppTitle), ok ? MB_ICONINFORMATION : MB_ICONERROR);
+    }
 }
 
 }  // namespace wparted::ui

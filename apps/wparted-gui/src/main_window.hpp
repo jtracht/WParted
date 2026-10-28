@@ -93,7 +93,8 @@ private:
     void openImage(const std::wstring& path);
     void startRescue();
     void onRescueDone(LPARAM lp);
-    void startImageApply();
+    void startImageApply(bool resume = false);
+    void offerResume(const std::wstring& path);
     void onImageApplyProgress(WPARAM op, LPARAM percent);
     void onImageApplyDone(LPARAM lp);
     void reloadImage(const std::wstring& path);

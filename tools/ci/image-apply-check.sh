@@ -5,7 +5,10 @@
 # Executes WParted plans on image files and checks the result with independent
 # tools (WP-030/031/041/042): sgdisk -v and sfdisk for the partition tables,
 # e2fsck and debugfs for the moved/copied file systems, blkid for cleared
-# signatures. Works on sparse files in a temporary directory only.
+# signatures. The same plan is also killed in the middle of its overlapping
+# move (fault injection: the process ends without clean-up) and resumed from
+# its journal; the result must pass the same checks. Works on sparse files in
+# a temporary directory only.
 #
 # Usage: tools/ci/image-apply-check.sh <path to wparted_image_tool>
 set -euo pipefail
@@ -42,15 +45,34 @@ mkfs.ext4 -q -F -L wp-data -d "$W/root" "$W/p2.img"
 dd if="$W/p2.img" of="$img" bs=512 seek="$s2" conv=notrunc status=none
 
 "$TOOL" plan "$img" gpt-demo "$W/plan.json"
+cp --sparse=always "$img" "$W/crash.img"
 if "$TOOL" apply "$img" "$W/plan.json"; then pass "gpt: plan applied"; else bad "gpt: apply failed"; fi
 
-sgdisk -v "$img" >"$W/verify.txt" 2>&1 || true
-if grep -q "No problems found" "$W/verify.txt"; then pass "gpt: sgdisk -v reports no problems"
-else bad "gpt: sgdisk -v"; cat "$W/verify.txt"; fi
+# Fault injection: the overlapping move of partition 2 (+16 MiB, 64 MiB) is
+# copied in 4 MiB chunks; the process dies after writing the third one.
+set +e
+"$TOOL" apply "$W/crash.img" "$W/plan.json" --journal --chunk 4194304 --crash-after-chunks 3 >"$W/crash.txt" 2>&1
+rc=$?
+set -e
+if [[ $rc == 75 && -f "$W/crash.img.wparted-journal" ]]; then pass "crash: process killed mid-move, journal left behind"
+else bad "crash: expected exit 75 and a journal (exit $rc)"; cat "$W/crash.txt"; fi
+dd if="$W/crash.img" of="$W/half.img" bs=512 skip="$((s2 + 32768))" count="$n2" status=none
+if ! e2fsck -fn "$W/half.img" >/dev/null 2>&1; then pass "crash: the half-moved file system is really inconsistent"
+else bad "crash: the interruption did not hit the move"; fi
+if "$TOOL" apply "$W/crash.img" "$W/plan.json" --journal >"$W/again.txt" 2>&1; then bad "crash: a new run ignored the journal"
+else pass "crash: a new run is refused while the journal exists"; fi
+if "$TOOL" resume "$W/crash.img"; then pass "crash: resumed from the journal"; else bad "crash: resume failed"; fi
+[[ ! -f "$W/crash.img.wparted-journal" ]] && pass "crash: journal removed after success" || bad "crash: journal still there"
 
-sfdisk --json "$img" >"$W/layout.json"
 moved=$((s2 + 32768))
 copy=$(((moved + n2 + 2047) / 2048 * 2048))
+verify_gpt() {
+local img=$1 tag=$2
+sgdisk -v "$img" >"$W/verify.txt" 2>&1 || true
+if grep -q "No problems found" "$W/verify.txt"; then pass "$tag: sgdisk -v reports no problems"
+else bad "$tag: sgdisk -v"; cat "$W/verify.txt"; fi
+
+sfdisk --json "$img" >"$W/layout.json"
 if python3 - "$W/layout.json" "$s1" "$moved" "$copy" "$n2" <<'PY'
 import json, sys
 t = json.load(open(sys.argv[1]))["partitiontable"]
@@ -62,21 +84,24 @@ ok = t["label"] == "gpt" and len(parts) == 3 and all(
 print(parts)
 sys.exit(0 if ok else 1)
 PY
-then pass "gpt: sfdisk sees the planned geometry"; else bad "gpt: geometry differs from the plan"; fi
+then pass "$tag: sfdisk sees the planned geometry"; else bad "$tag: geometry differs from the plan"; fi
 
 for start in "$moved" "$copy"; do
   dd if="$img" of="$W/check.img" bs=512 skip="$start" count="$n2" status=none
-  if e2fsck -fn "$W/check.img" >"$W/fsck.txt" 2>&1; then pass "ext4 at sector $start: e2fsck clean"
-  else bad "ext4 at sector $start: e2fsck"; cat "$W/fsck.txt"; fi
+  if e2fsck -fn "$W/check.img" >"$W/fsck.txt" 2>&1; then pass "$tag: ext4 at sector $start: e2fsck clean"
+  else bad "$tag: ext4 at sector $start: e2fsck"; cat "$W/fsck.txt"; fi
   rm -f "$W/out.bin"
   debugfs -R "dump /payload.bin $W/out.bin" "$W/check.img" >/dev/null 2>&1 || true
-  if [[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]]; then pass "ext4 at sector $start: payload intact"
-  else bad "ext4 at sector $start: payload missing or changed"; fi
-  [[ "$(blkid -p -s LABEL -o value "$W/check.img" || true)" == "wp-data" ]] && pass "ext4 at sector $start: label" || bad "ext4 at sector $start: label"
+  if [[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]]; then pass "$tag: ext4 at sector $start: payload intact"
+  else bad "$tag: ext4 at sector $start: payload missing or changed"; fi
+  [[ "$(blkid -p -s LABEL -o value "$W/check.img" || true)" == "wp-data" ]] && pass "$tag: ext4 at sector $start: label" || bad "$tag: ext4 at sector $start: label"
 done
 dd if="$img" of="$W/new.img" bs=512 skip="$s1" count=4096 status=none
-if [[ -z "$(blkid -p -o value -s TYPE "$W/new.img" || true)" ]]; then pass "gpt: old FAT signature cleared in the new partition"
-else bad "gpt: old signature still present"; fi
+if [[ -z "$(blkid -p -o value -s TYPE "$W/new.img" || true)" ]]; then pass "$tag: old FAT signature cleared in the new partition"
+else bad "$tag: old signature still present"; fi
+}
+verify_gpt "$img" gpt
+verify_gpt "$W/crash.img" "crash+resume"
 
 # --- file-system steps in plans: create FAT32, then grow, label, serial, check ---
 export MTOOLS_SKIP_CHECK=1
@@ -114,6 +139,29 @@ print(nodes, starts)
 sys.exit(0 if t["label"] == "dos" and nodes == [1, 2, 5, 6] and starts[0] == 2048 else 1)
 PY
 then pass "mbr: sfdisk sees primary, extended and logicals 5 and 6"; else bad "mbr: unexpected layout"; fi
+
+# --- msdos: move the extended partition (start 1 MiB earlier, grow to 123 MiB) ---
+l5=$(sfdisk --json "$mbr" | python3 -c 'import json,sys; print(sorted(p["start"] for p in json.load(sys.stdin)["partitiontable"]["partitions"])[2])')
+head -c 8M /dev/urandom | dd of="$mbr" bs=512 seek="$((l5 + 2048))" conv=notrunc status=none
+lsha=$(dd if="$mbr" bs=512 skip="$((l5 + 2048))" count=16384 status=none | sha256sum | cut -d' ' -f1)
+"$TOOL" plan "$mbr" ext-move "$W/ext.json"
+if "$TOOL" apply "$mbr" "$W/ext.json"; then pass "mbr: extended partition moved"; else bad "mbr: extended move failed"; fi
+if sfdisk -V "$mbr" >"$W/v.txt" 2>&1; then pass "mbr: sfdisk -V clean after the move"; else bad "mbr: sfdisk -V after the move"; cat "$W/v.txt"; fi
+sfdisk --json "$mbr" >"$W/mbr-moved.json"
+if python3 - "$W/mbr-moved.json" "$l5" <<'PY'
+import json, sys
+t = json.load(open(sys.argv[1]))["partitiontable"]
+ext = [p for p in t["partitions"] if p["type"] in ("5", "f", "85")]
+logical = sorted(p["start"] for p in t["partitions"] if int(p["node"].rsplit("img", 1)[1]) >= 5)
+print(ext, logical)
+sys.exit(0 if len(ext) == 1 and ext[0]["start"] == 33 * 2048 and ext[0]["start"] + ext[0]["size"] == 123 * 2048
+         and logical[0] == int(sys.argv[2]) and len(logical) == 2 else 1)
+PY
+then pass "mbr: extended partition at 33-123 MiB, logical partitions unchanged"; else bad "mbr: layout after the extended move"; fi
+[[ "$(dd if="$mbr" bs=512 skip="$((l5 + 2048))" count=16384 status=none | sha256sum | cut -d' ' -f1)" == "$lsha" ]] &&
+  pass "mbr: data in the logical partition unchanged" || bad "mbr: logical partition data changed"
+[[ "$(dd if="$mbr" bs=1 skip=$((34 * 1048576 + 510)) count=2 status=none | od -An -tx1 | tr -d ' ')" == "0000" ]] &&
+  pass "mbr: old first EBR cleared" || bad "mbr: old first EBR still present"
 
 echo "image apply check: $([[ $fail == 0 ]] && echo passed || echo FAILED)"
 exit "$fail"

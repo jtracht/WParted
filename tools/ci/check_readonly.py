@@ -39,6 +39,7 @@ FORBIDDEN = [
     (r"\bSetVolumeLabel\w*\b", "label change"),
     (r"\bfopen(_s)?\s*\([^;]*\"[^\"]*[wa+][^\"]*\"", "file opened for writing"),
     (r"\b_w?fsopen\s*\([^;]*\"[^\"]*[wa+][^\"]*\"", "file opened for writing"),
+    (r"\b_wfopen(_s)?\s*\([^;]*\"[^\"]*[wa+][^\"]*\"", "file opened for writing"),
     (r"\b(std::)?ofstream\b", "file opened for writing"),
 ]
 ALLOW = "readonly-guard: allow"

@@ -3,7 +3,11 @@
 //
 // Test driver for plan execution on image files (WP-030/031/041/042).
 //   image_tool plan <image> gpt-demo|mbr-demo <plan.json>   writes a plan for the image
-//   image_tool apply <image> <plan.json>                      executes it with the core executor
+//   image_tool apply <image> <plan.json> [--journal] [--chunk BYTES] [--crash-after-chunks N]
+//                                                             executes it with the core executor;
+//                                                             --crash-after-chunks ends the process
+//                                                             mid-copy without clean-up (fault injection)
+//   image_tool resume <image>                                 continues an interrupted execution
 // Used by tools/ci/image-apply-check.sh (verification with sgdisk, sfdisk,
 // e2fsck, debugfs) and by the CLI end-to-end test. Only touches the given file.
 #include <algorithm>
@@ -143,6 +147,31 @@ bool mbrDemo(OperationQueue& q) {
            part(PartitionKind::Logical, 35, 20) && part(PartitionKind::Logical, 57, 20);
 }
 
+// msdos image from mbr-demo: the extended partition starts 1 MiB earlier and
+// grows to 123 MiB; the logical partitions stay where they are.
+bool extMove(OperationQueue& q) {
+    const std::uint64_t spm = kMiB / q.original().sectorSize;
+    for (const auto& p : q.original().partitions)
+        if (p.kind == PartitionKind::Extended) {
+            Operation m;
+            m.type = OpType::ResizeMove;
+            m.target = p.planId;
+            m.firstLba = p.firstLba - spm;
+            m.sectorCount = 123 * spm - m.firstLba;
+            return add(q, m);
+        }
+    std::fprintf(stderr, "plan: ext-move needs an extended partition\n");
+    return false;
+}
+
+int printLog(const ExecuteResult& res) {
+    for (std::size_t i = 0; i < res.log.children.size(); ++i)
+        std::printf("%zu. [%s] %s\n", i + 1, logStatusName(res.log.children[i].status),
+                    res.log.children[i].title.c_str());
+    if (!res.ok) std::fprintf(stderr, "apply: %s\n", res.error.c_str());
+    return res.ok ? 0 : 1;
+}
+
 }  // namespace
 
 FsType fsByName(const char* n) {
@@ -200,13 +229,21 @@ int main(int argc, char** argv) {
                         : scenario == "mbr-demo" ? mbrDemo(q)
                         : scenario == "fat-create" ? fatCreate(q)
                         : scenario == "fat-grow"   ? fatGrow(q)
+                        : scenario == "ext-move"   ? extMove(q)
                                                    : false;
         if (!ok) return 1;
         std::ofstream out(argv[4], std::ios::binary);
         out << q.toJson();
         return out ? 0 : 1;
     }
-    if (argc == 4 && std::strcmp(argv[1], "apply") == 0) {
+    if (argc >= 4 && std::strcmp(argv[1], "apply") == 0) {
+        ExecuteOptions opt;
+        for (int i = 4; i < argc; ++i) {
+            if (std::strcmp(argv[i], "--journal") == 0) opt.journalPath = journalPathFor(argv[2]);
+            if (std::strcmp(argv[i], "--chunk") == 0 && i + 1 < argc) opt.chunkBytes = std::strtoull(argv[++i], nullptr, 10);
+            if (std::strcmp(argv[i], "--crash-after-chunks") == 0 && i + 1 < argc)
+                opt.abortAfterChunks = std::strtoull(argv[++i], nullptr, 10);
+        }
         std::string json, err;
         if (!readFile(argv[3], json)) return 2;
         DiskLayout original;
@@ -225,14 +262,26 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "apply: %s\n", err.c_str());
             return 2;
         }
-        const ExecuteResult res = executePlanOnImage(dev, q, argv[2]);
-        for (std::size_t i = 0; i < res.log.children.size(); ++i)
-            std::printf("%zu. [%s] %s\n", i + 1, logStatusName(res.log.children[i].status),
-                        res.log.children[i].title.c_str());
-        if (!res.ok) std::fprintf(stderr, "apply: %s\n", res.error.c_str());
-        return res.ok ? 0 : 1;
+        const ExecuteResult res = executePlanOnImage(dev, q, argv[2], opt);
+        if (opt.abortAfterChunks && !res.ok && res.error.find("interrupted") != std::string::npos) {
+            std::fflush(stdout);
+            std::_Exit(75);  // like a crash: buffered image data and handles are dropped
+        }
+        return printLog(res);
     }
-    std::fprintf(stderr, "usage: image_tool plan <image> gpt-demo|mbr-demo <plan.json>\n"
-                         "       image_tool apply <image> <plan.json>\n");
+    if (argc == 3 && std::strcmp(argv[1], "resume") == 0) {
+        ImageFileDevice dev;
+        std::string err;
+        if (!dev.open(argv[2], 512, err)) {
+            std::fprintf(stderr, "resume: %s\n", err.c_str());
+            return 2;
+        }
+        ExecuteOptions opt;
+        opt.journalPath = journalPathFor(argv[2]);
+        return printLog(resumePlanOnImage(dev, argv[2], opt));
+    }
+    std::fprintf(stderr, "usage: image_tool plan <image> gpt-demo|mbr-demo|fat-create|fat-grow|ext-move <plan.json>\n"
+                         "       image_tool apply <image> <plan.json> [--journal] [--chunk BYTES] [--crash-after-chunks N]\n"
+                         "       image_tool resume <image>\n");
     return 2;
 }

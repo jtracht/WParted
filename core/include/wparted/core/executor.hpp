@@ -6,8 +6,10 @@
 // write path. What runs here:
 //   - partition table changes (create table, create/delete partition,
 //     resize/move boundaries, flags, names) through layout_writer,
-//   - raw block moves and copies of partition contents (any file system,
-//     same size; growing/shrinking a file system is not possible yet),
+//   - raw block moves and copies of partition contents (any file system),
+//     file-system steps through fs_tools (create, resize, label, UUID, check),
+//   - boundary changes of extended partitions (the logical partitions stay;
+//     the EBR chain is rewritten),
 //   - clearing old signatures at the start of new or "cleared" partitions.
 // Every step is re-read and compared with the simulated layout before the
 // next one starts ("calibration"); the first mismatch stops the plan.
@@ -101,6 +103,13 @@ struct ExecuteOptions {
     const std::atomic<bool>* cancel = nullptr;   // honoured between steps and between copy chunks
     // Progress of the current operation (0-based index), bytes copied so far.
     std::function<void(std::size_t op, std::uint64_t done, std::uint64_t total)> progress;
+    // Execution journal (see journalPathFor); empty = no journal. With a
+    // journal, an interrupted execution (crash, power loss, cancel during a
+    // move) is detected next time and can be resumed where that is safe.
+    std::string journalPath;
+    // Fault injection for tests: stop after this many copy chunks without any
+    // clean-up, as a crash would. 0 = off.
+    std::uint64_t abortAfterChunks = 0;
 };
 
 struct ExecuteResult {
@@ -121,5 +130,43 @@ void addImageUsage(BlockReader& image, const DiskLayout& layout, ValidationConte
 // original layout or the validation reports an error.
 ExecuteResult executePlanOnImage(BlockDevice& device, const OperationQueue& plan, const std::string& deviceName,
                                  const ExecuteOptions& options = {});
+
+// --- Execution journal --------------------------------------------------------
+// A sidecar file next to the image ("<image>.wparted-journal"). It holds the
+// plan, a copy of every sector the layout detection read before the first
+// write (so the plan can be rebuilt exactly), and a 512-byte progress header
+// that is rewritten in place - after the image data it describes has been
+// flushed to disk. It is removed when the plan finishes or fails cleanly.
+//
+// Block moves whose source and destination overlap are copied in chunks no
+// larger than the shift distance, so repeating the chunk that was being
+// written when the process died never reads data that chunk overwrote; this
+// is what makes resuming a move safe. Steps that change data in place
+// (file-system resize/create, table writes) cannot be resumed: an interruption
+// there is reported, not repaired.
+std::string journalPathFor(const std::string& imagePath);
+bool journalExists(const std::string& journalPath);
+
+struct JournalState {
+    std::size_t completed = 0;      // operations fully applied and verified
+    std::string phase;              // "idle", "copy" or "work"
+    std::size_t operation = 0;      // running operation (phase copy/work), 0-based
+    std::uint64_t copyDone = 0;     // bytes moved so far (phase copy)
+    std::string step;               // what operation `operation` was doing (phase work)
+    std::uint64_t imageBytes = 0;
+    std::uint32_t sectorSize = 0;
+    std::string planJson;
+    std::size_t operationCount = 0;
+    bool resumable() const { return phase == "idle" || phase == "copy"; }
+};
+
+bool readJournal(const std::string& journalPath, JournalState& out, std::string& error);
+// Deletes the journal (after the user has decided not to resume).
+bool discardJournal(const std::string& journalPath, std::string& error);
+
+// Continues the execution recorded in options.journalPath. Refused unless the
+// journal is resumable and the image holds exactly the layout the journal
+// expects (the table after the completed operations).
+ExecuteResult resumePlanOnImage(BlockDevice& device, const std::string& deviceName, const ExecuteOptions& options);
 
 }  // namespace wparted
