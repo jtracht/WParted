@@ -66,11 +66,22 @@ Rückgängig-Funktion gibt es nicht, legen Sie daher bei Bedarf vorher eine Kopi
 - löscht alte Dateisystem-Signaturen am Anfang neuer Partitionen,
 - zeigt jeden Schritt im Ergebnis und liest das Image neu ein.
 
-Auf Images möglich: neue Partitionstabelle, neue (unformatierte) Partition, Löschen, Verschieben,
-Kopieren, Größenänderung unformatierter Partitionen, Flags und Namen. Noch nicht möglich: Dateisysteme
-erstellen, vergrößern, verkleinern, prüfen, benennen oder mit neuer UUID versehen sowie eine erweiterte
-Partition verschieben; solche Pläne werden abgelehnt, bevor etwas geschrieben wird. Physische
-Datenträger beschreibt diese Version nie.
+Auf Images möglich:
+
+| | erstellen | vergrößern | verkleinern | verschieben / kopieren | prüfen | Bezeichnung | neue UUID |
+|---|---|---|---|---|---|---|---|
+| FAT16 / FAT32 | ✓ | ✓ | ✓ (Daten werden umgelagert) | ✓ | ✓ nur lesend | ✓ | ✓ |
+| NTFS | – | ✓ | ✓ wenn der Bereich hinter dem neuen Ende frei ist | ✓ | – | ✓ | ✓ |
+| exFAT | ✓ | – | – | ✓ | – | ✓ | ✓ |
+| ext2 / ext3 / ext4 | – | – | – | ✓ | – | ✓ | ✓ |
+| Linux-Swap | – | – | – | ✓ | – | ✓ | ✓ |
+| andere | – | – | – | verschieben ✓, kopieren wo sicher | – | – | – |
+
+Außerdem: neue Partitionstabellen, neue oder gelöschte Partitionen, Flags und Namen. Verschieben und
+Kopieren arbeiten blockweise bei gleicher Größe; eine Kopie in eine größere FAT-Partition wird
+vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, bevor etwas geschrieben
+wird – ebenso das Verkleinern von NTFS mit Daten hinter dem neuen Ende und Dateisysteme mit Fehlern.
+Physische Datenträger beschreibt diese Version nie.
 
 ## Datenrettung (nur lesend)
 

@@ -126,6 +126,24 @@ TEST("fstools: FAT16 and FAT32 are created, detected and pass the check") {
     CHECK(fstools::labelProblem(FsType::Ntfs, "Daten \xC3\xA4").empty());
 }
 
+TEST("fstools: exFAT is created with a valid boot region checksum") {
+    Image im(64 * MiB, 512);
+    MemoryBlockDevice dev(im.data, 512);
+    std::string err;
+    REQUIRE(fstools::create(dev, FsType::ExFat, "Neu", 2048, err));
+    const auto d = detect(im);
+    CHECK(d.type == FsType::ExFat);
+    CHECK_EQ(d.label, std::string("Neu"));
+    std::uint32_t sum = 0;
+    for (std::size_t i = 0; i < 11 * 512; ++i)
+        if (i != 106 && i != 107 && i != 112) sum = ((sum & 1) ? 0x80000000u : 0) + (sum >> 1) + im.data[i];
+    CHECK_EQ(le32(&im.data[11 * 512]), sum);
+    CHECK(std::memcmp(&im.data[0], &im.data[12 * 512], 12 * 512) == 0);  // backup region identical
+    CHECK_EQ(le64(&im.data[64]), 2048u);                                 // partition offset
+    REQUIRE(fstools::setLabel(dev, FsType::ExFat, "Umbenannt", err));
+    CHECK_EQ(detect(im).label, std::string("Umbenannt"));
+}
+
 TEST("fstools: FAT32 shrink relocates a file behind the new end") {
     Image im(128 * MiB, 512);
     MemoryBlockDevice dev(im.data, 512);

@@ -11,7 +11,7 @@
 // those tools (tools/ci/fs-tools-check.sh).
 //
 //   FAT16/FAT32   create, label, serial, check (read-only), grow, shrink
-//   exFAT         label, serial
+//   exFAT         create, label, serial
 //   NTFS          label, serial, grow, shrink (if the space behind the new end is free)
 //   ext2/3/4      label, UUID
 //   Linux swap    label, UUID

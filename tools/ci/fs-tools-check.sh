@@ -71,6 +71,14 @@ mkfs.exfat -L OLD "$img" >/dev/null
 uuid=$("$TOOL" fs "$img" uuid exfat) && same "exfat serial: blkid" "$(blk "$img" UUID)" "$uuid" || bad "exfat: serial"
 if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "exfat: fsck.exfat -n clean (boot checksum valid)"; else bad "exfat: fsck.exfat"; cat "$W/x.txt"; fi
 
+# exFAT created by WParted
+img=$W/exfat-new.img
+truncate -s 200M "$img"
+"$TOOL" fs "$img" create exfat "WP Neu" && pass "exfat: create" || bad "exfat: create"
+if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "exfat created by WParted: fsck.exfat -n clean"; else bad "exfat created: fsck.exfat"; cat "$W/x.txt"; fi
+same "exfat created: blkid label" "$(blk "$img" LABEL)" "WP Neu"
+same "exfat created: exfatlabel" "$(exfatlabel "$img" 2>/dev/null | sed -n 's/^label: //p')" "WP Neu"
+
 # --- NTFS ----------------------------------------------------------------------
 img=$W/ntfs.img
 truncate -s 64M "$img"

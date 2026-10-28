@@ -42,6 +42,10 @@ bool hasControl(const std::string& s) {
     return false;
 }
 
+void put64le(std::uint8_t* p, std::uint64_t v) {
+    for (int i = 0; i < 8; ++i) p[i] = static_cast<std::uint8_t>(v >> (8 * i));
+}
+
 std::uint32_t randomU32() {
     const Guid g = randomGuid();
     std::uint32_t v = 0;
@@ -101,6 +105,139 @@ bool exfatWriteBootRegion(BlockDevice& d, const ExFat& x, const std::vector<std:
         }
     }
     return d.flush() || (err = "flush failed", false);
+}
+
+// Creates an empty exFAT file system (Microsoft exFAT specification 1.00):
+// boot region + backup, one FAT, allocation bitmap, up-case table and root
+// directory in clusters 2, 3, ...; default cluster sizes from Microsoft.
+bool exfatCreate(BlockDevice& d, const std::string& label, std::uint64_t hidden, std::string& err) {
+    const std::uint32_t bps = d.sectorSize();
+    unsigned bpsShift = 0;
+    while ((1u << bpsShift) < bps) ++bpsShift;
+    if ((1u << bpsShift) != bps || bpsShift < 9 || bpsShift > 12) {
+        err = "unsupported sector size for exFAT";
+        return false;
+    }
+    const std::uint64_t bytes = d.size(), sectors = bytes / bps;
+    const std::uint64_t cb = bytes <= 256ull << 20 ? 4096 : bytes <= 32ull << 30 ? 32768 : 131072;
+    const std::uint32_t spc = static_cast<std::uint32_t>(std::max<std::uint64_t>(1, cb / bps));
+    unsigned spcShift = 0;
+    while ((1u << spcShift) < spc) ++spcShift;
+    if (sectors < 4096 || sectors > 0xFFFFFFFFull * spc) {
+        err = "the partition size does not fit exFAT (at least 2 MiB)";
+        return false;
+    }
+    auto alignUp = [](std::uint64_t v, std::uint64_t a) { return (v + a - 1) / a * a; };
+    const std::uint32_t fatOffset = static_cast<std::uint32_t>(alignUp(24, spc));
+    std::uint32_t fatLength = 1, clusterCount = 0, heapOffset = 0;
+    for (int i = 0; i < 32; ++i) {  // FAT length and cluster count depend on each other
+        heapOffset = static_cast<std::uint32_t>(alignUp(std::uint64_t{fatOffset} + fatLength, spc));
+        clusterCount = static_cast<std::uint32_t>((sectors - heapOffset) / spc);
+        const std::uint32_t need = static_cast<std::uint32_t>(alignUp((std::uint64_t{clusterCount} + 2) * 4, bps) / bps);
+        if (need <= fatLength) break;
+        fatLength = need;
+    }
+    std::vector<std::uint8_t> u16;
+    const std::size_t units = utf16Units(label, 11, &u16);
+    if (units == SIZE_MAX || units > 11) {
+        err = "label too long for exFAT";
+        return false;
+    }
+    // Up-case table, compressed: identity runs are 0xFFFF + count.
+    std::vector<std::uint16_t> up = {0xFFFF, 'a'};
+    for (std::uint16_t c = 'a'; c <= 'z'; ++c) up.push_back(static_cast<std::uint16_t>(c - 'a' + 'A'));
+    up.push_back(0xFFFF);
+    up.push_back(static_cast<std::uint16_t>(0x10000 - ('z' + 1)));
+    std::vector<std::uint8_t> upBytes(up.size() * 2);
+    for (std::size_t i = 0; i < up.size(); ++i) put16(&upBytes[2 * i], up[i]);
+    std::uint32_t upSum = 0;
+    for (std::uint8_t b : upBytes) upSum = ((upSum & 1) ? 0x80000000u : 0) + (upSum >> 1) + b;
+    const std::uint64_t clusterBytes = std::uint64_t{spc} * bps;
+    const std::uint64_t bitmapBytes = (clusterCount + 7) / 8;
+    const std::uint32_t bitmapClusters = static_cast<std::uint32_t>((bitmapBytes + clusterBytes - 1) / clusterBytes);
+    const std::uint32_t upClusters = static_cast<std::uint32_t>((upBytes.size() + clusterBytes - 1) / clusterBytes);
+    const std::uint32_t bitmapFirst = 2, upFirst = bitmapFirst + bitmapClusters, rootFirst = upFirst + upClusters;
+    const std::uint32_t usedClusters = bitmapClusters + upClusters + 1;
+    if (usedClusters + 2 > clusterCount) {
+        err = "the partition is too small for exFAT";
+        return false;
+    }
+    auto heap = [&](std::uint32_t c) { return std::uint64_t{heapOffset} * bps + std::uint64_t{c - 2} * clusterBytes; };
+    // Zero boot regions, FAT and the metadata clusters.
+    {
+        std::vector<std::uint8_t> zero(1 << 20, 0);
+        auto clear = [&](std::uint64_t off, std::uint64_t len) {
+            for (std::uint64_t o = 0; o < len; o += zero.size())
+                if (!d.write(off + o, zero.data(), static_cast<std::size_t>(std::min<std::uint64_t>(zero.size(), len - o)))) return false;
+            return true;
+        };
+        if (!clear(0, std::uint64_t{fatOffset + fatLength} * bps) || !clear(heap(2), std::uint64_t{usedClusters} * clusterBytes)) {
+            err = "clearing the exFAT area failed";
+            return false;
+        }
+    }
+    // FAT: media entry, end-of-chain markers for the metadata chains.
+    std::vector<std::uint8_t> fat(static_cast<std::size_t>((std::uint64_t{rootFirst} + 1) * 4), 0);
+    put32(&fat[0], 0xFFFFFFF8u);
+    put32(&fat[4], 0xFFFFFFFFu);
+    auto chain = [&](std::uint32_t first, std::uint32_t n) {
+        for (std::uint32_t i = 0; i < n; ++i) put32(&fat[4 * (first + i)], i + 1 < n ? first + i + 1 : 0xFFFFFFFFu);
+    };
+    chain(bitmapFirst, bitmapClusters);
+    chain(upFirst, upClusters);
+    chain(rootFirst, 1);
+    // Allocation bitmap: the metadata clusters are in use.
+    std::vector<std::uint8_t> bitmap(static_cast<std::size_t>(bitmapBytes), 0);
+    for (std::uint32_t i = 0; i < usedClusters; ++i) bitmap[i / 8] = static_cast<std::uint8_t>(bitmap[i / 8] | (1u << (i % 8)));
+    // Root directory: label, bitmap and up-case entries.
+    std::vector<std::uint8_t> root(32 * 3, 0);
+    root[0] = units ? 0x83 : 0x03;
+    root[1] = static_cast<std::uint8_t>(units);
+    std::memcpy(&root[2], u16.data(), 2 * units);
+    root[32] = 0x81;
+    put32(&root[32 + 20], bitmapFirst);
+    put64le(&root[32 + 24], bitmapBytes);
+    root[64] = 0x82;
+    put32(&root[64 + 4], upSum);
+    put32(&root[64 + 20], upFirst);
+    put64le(&root[64 + 24], upBytes.size());
+    if (!d.write(std::uint64_t{fatOffset} * bps, fat.data(), fat.size()) || !d.write(heap(bitmapFirst), bitmap.data(), bitmap.size()) ||
+        !d.write(heap(upFirst), upBytes.data(), upBytes.size()) || !d.write(heap(rootFirst), root.data(), root.size())) {
+        err = "writing exFAT metadata failed";
+        return false;
+    }
+    // Boot region: main boot sector + 8 extended boot sectors with signatures.
+    std::vector<std::uint8_t> boot(bps, 0);
+    boot[0] = 0xEB;
+    boot[1] = 0x76;
+    boot[2] = 0x90;
+    std::memcpy(&boot[3], "EXFAT   ", 8);
+    put64le(&boot[64], hidden);
+    put64le(&boot[72], sectors);
+    put32(&boot[80], fatOffset);
+    put32(&boot[84], fatLength);
+    put32(&boot[88], heapOffset);
+    put32(&boot[92], clusterCount);
+    put32(&boot[96], rootFirst);
+    put32(&boot[100], randomU32());
+    put16(&boot[104], 0x0100);
+    boot[108] = static_cast<std::uint8_t>(bpsShift);
+    boot[109] = static_cast<std::uint8_t>(spcShift);
+    boot[110] = 1;
+    boot[111] = 0x80;
+    boot[112] = static_cast<std::uint8_t>(std::min<std::uint64_t>(100, std::uint64_t{usedClusters} * 100 / clusterCount));
+    boot[510] = 0x55;
+    boot[511] = 0xAA;
+    std::vector<std::uint8_t> ext(bps, 0);
+    put32(&ext[bps - 4], 0xAA550000u);
+    for (std::uint32_t s = 1; s <= 8; ++s)
+        if (!d.write(std::uint64_t{s} * bps, ext.data(), ext.size()) || !d.write(std::uint64_t{s + 12} * bps, ext.data(), ext.size())) {
+            err = "writing the exFAT boot region failed";
+            return false;
+        }
+    ExFat x;
+    x.bps = bps;
+    return exfatWriteBootRegion(d, x, boot, err);
 }
 
 bool exfatSetSerial(BlockDevice& d, std::uint32_t serial, std::string& err) {
@@ -456,7 +593,7 @@ std::uint32_t crc32c(std::uint32_t crc, const std::uint8_t* data, std::size_t le
     return crc;
 }
 
-bool canCreate(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32; }
+bool canCreate(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat; }
 bool canLabel(FsType t) noexcept {
     return t == FsType::Fat12 || t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::ExFat || t == FsType::Ntfs ||
            t == FsType::Ext2 || t == FsType::Ext3 || t == FsType::Ext4 || t == FsType::LinuxSwap;
@@ -494,7 +631,7 @@ bool create(BlockDevice& part, FsType t, const std::string& label, std::uint64_t
         error = p;
         return false;
     }
-    return fat::create(part, t, label, hidden, error);
+    return t == FsType::ExFat ? exfatCreate(part, label, hidden, error) : fat::create(part, t, label, hidden, error);
 }
 
 bool setLabel(BlockDevice& part, FsType t, const std::string& label, std::string& error) {

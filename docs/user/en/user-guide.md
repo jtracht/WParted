@@ -64,10 +64,22 @@ the file first if you may need its current state. WParted then
 - clears old file system signatures at the start of new partitions,
 - shows every step in the result and re-reads the image.
 
-Possible on images: new partition table, new (unformatted) partition, delete, move, copy, resize of
-unformatted partitions, flags and names. Not yet possible: creating, growing, shrinking, checking,
-labelling or re-UUIDing file systems, and moving an extended partition; such plans are refused before
-anything is written. Physical disks are never written by this version.
+Possible on images:
+
+| | create | grow | shrink | move / copy | check | label | new UUID |
+|---|---|---|---|---|---|---|---|
+| FAT16 / FAT32 | ✓ | ✓ | ✓ (data is relocated) | ✓ | ✓ read-only | ✓ | ✓ |
+| NTFS | – | ✓ | ✓ if the space behind the new end is free | ✓ | – | ✓ | ✓ |
+| exFAT | ✓ | – | – | ✓ | – | ✓ | ✓ |
+| ext2 / ext3 / ext4 | – | – | – | ✓ | – | ✓ | ✓ |
+| Linux swap | – | – | – | ✓ | – | ✓ | ✓ |
+| any other | – | – | – | move ✓, copy where safe | – | – | – |
+
+Also: new partition tables, new or deleted partitions, flags and names. Moves and copies are raw block
+operations of the same size; a copy into a larger FAT partition grows the copied file system. Plans
+with steps WParted cannot do are refused before anything is written, as are shrinks of NTFS volumes
+with data behind the new end and file systems with errors. Physical disks are never written by this
+version.
 
 ## Data rescue (read-only)
 

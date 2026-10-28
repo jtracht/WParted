@@ -22,6 +22,15 @@ versions follow [Semantic Versioning](https://semver.org/).
   by default): partition tables, create/delete, move and copy as raw blocks, resize of unformatted
   partitions, flags, names. Every step is read back and compared with the plan. Results are checked in
   CI with sgdisk, sfdisk, e2fsck and debugfs. Physical disks are still never written.
+- **File-system operations on image files**, implemented natively from the on-disk specifications:
+  FAT16/32 create, grow, shrink (with data relocation), read-only check, label and serial; NTFS grow,
+  shrink (when the space behind the new end is free), label and serial; exFAT create, label and serial;
+  ext2/3/4 and Linux swap label and UUID (ext4 keeps metadata checksums valid via csum_seed). Every operation is checked in CI
+  with dosfstools, mtools, ntfs-3g (ntfsresize --check), exfatprogs, e2fsprogs and util-linux.
+- Used space of FAT and NTFS partitions on images (list columns; validation refuses shrinking below the
+  data). Validation checks labels per file system and maximum FAT sizes.
+- Accessibility: the disk map exposes its segments through MSAA.
+- Disks managed by Windows (dynamic disks, Storage Spaces) are marked and never planned on.
 - Labels of NTFS, exFAT and F2FS (and the F2FS UUID) are read; detection is checked in CI against
   images made by the real mkfs tools, with blkid as reference.
 
