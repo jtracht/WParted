@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted Benutzerhandbuch (v0.3.0-alpha)
+# WParted Benutzerhandbuch (v0.4.0-alpha)
 
 ## Was ist WParted?
 
@@ -140,6 +140,10 @@ wparted-cli inspect-image disk.img [--sector-size 4096] [--json]
 wparted-cli fs-support [--json]
 wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
 wparted-cli apply-plan disk.img plan.json [--execute] [--log details.html]   prüfen bzw. auf das Image anwenden
+wparted-cli apply-plan disk.img plan.json --execute --helper  dasselbe über wparted-helper.exe (Prototyp)
+wparted-cli resume disk.img [--execute | --discard]          unterbrochene Ausführung anzeigen bzw. fortsetzen
+wparted-cli rescue-scan-image disk.img --plan rettung.json     Plan, der die gefundenen Partitionen neu anlegt
+wparted-cli rescue-scan 0                                      nur lesender Rettungs-Scan von Datenträger 0 (Administrator)
 wparted-cli version
 ```
 

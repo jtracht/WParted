@@ -6,6 +6,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0-alpha] – 2026-10-28
+
+Fourth pre-release: the privileged-helper channel of ADR-0002 as a prototype, and the first
+verification on real hardware with administrator rights (read-only). Physical disks are still never
+written.
+
 ### Added
 - **Privileged-helper prototype** (ADR-0002): `wparted-helper.exe` talks to WParted over a named pipe
   (one instance, no remote clients, DACL for the user, SYSTEM and Administrators), accepts only the
@@ -15,9 +21,24 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `wparted-cli rescue-scan <disk>`: read-only rescue scan of a physical disk (administrator).
 - `tools/verify/elevated-readonly.ps1`: manual read-only verification on real hardware.
 
+### Verified
+- **Real hardware, administrator, read-only** (Windows 11 Pro x64; NVMe SSD with GPT, USB SSD with
+  msdos/exFAT): partition tables read without diagnostics, every partition offset equal to Windows'
+  view, boot manager / Windows / page file marked, BitLocker "not encrypted" matching
+  `manage-bde -status`, rescue scan on both disks, Windows' view unchanged afterwards.
+
 ### Removed
 - The project website (sources and generator) moved out of this repository; it will be maintained
   separately.
+
+### Known limitations
+- The helper is a prototype: it executes on disk image files only, is not elevated and is started
+  without UAC. Physical-disk execution still needs the human security review of ADR-0002.
+- Only the BitLocker state "not encrypted" has been observed on real hardware. High-contrast mode,
+  Windows 7–10, ARM64 binaries and Windows' chkdsk on NTFS created by WParted are not verified.
+- The release binaries were not run on a real Windows machine before publication (maintainer decision
+  for alpha releases); equivalent MSVC builds were tested on Windows 11 x64, including the helper path.
+- See 0.3.0-alpha for the file-system limitations, which are unchanged.
 
 ## [0.3.0-alpha] – 2026-10-28
 

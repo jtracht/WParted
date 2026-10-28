@@ -3,7 +3,7 @@
 
 Only results that were actually observed are marked as verified. Everything else is an open check.
 
-## v0.3.0-alpha (execution on image files only)
+## v0.4.0-alpha and v0.3.0-alpha (execution on image files only)
 
 | Windows | Arch | Builds | Tests | GUI | Writes | Evidence / open check |
 |---|---|---|---|---|---|---|
