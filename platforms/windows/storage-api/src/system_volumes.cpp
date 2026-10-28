@@ -6,9 +6,9 @@
 //   - boot manager: HKLM\SYSTEM\Setup\SystemPartition names the device of the
 //     partition Windows booted from (EFI system partition or "System Reserved");
 //   - page file:    HKLM\...\Memory Management\PagingFiles;
-//   - BitLocker:    Win32_EncryptableVolume (root\CIMV2\Security\
-//     MicrosoftVolumeEncryption). Windows answers administrators only; for
-//     everyone else the state stays NotReported.
+//   - BitLocker:    Win32_EncryptableVolume in the WMI namespace
+//     root\CIMV2\Security\MicrosoftVolumeEncryption. Windows answers
+//     administrators only; for everyone else the state stays NotReported.
 #include "system_volumes.hpp"
 
 #include <windows.h>
@@ -102,7 +102,7 @@ void queryBitLocker(std::vector<VolumeInfo>& volumes) {
         while (SUCCEEDED(hr) && rows.p) {
             ComPtr<IWbemClassObject> row;
             ULONG n = 0;
-            if (rows->Next(WBEM_INFINITE, 1, &row, &n) != WBEM_S_NO_ERROR || n == 0) break;
+            if (rows->Next(static_cast<LONG>(WBEM_INFINITE), 1, &row, &n) != WBEM_S_NO_ERROR || n == 0) break;
             VARIANT id;
             VariantInit(&id);
             if (SUCCEEDED(row->Get(L"DeviceID", 0, &id, nullptr, nullptr)) && id.vt == VT_BSTR && id.bstrVal) {
