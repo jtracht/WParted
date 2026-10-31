@@ -6,11 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.4.0-alpha] – 2026-10-28
+## [0.4.0-alpha] – 2026-10-31
 
-Fourth pre-release: the privileged-helper channel of ADR-0002 as a prototype, and the first
-verification on real hardware with administrator rights (read-only). Physical disks are still never
-written.
+Fourth pre-release and the first one built and published on GitHub: the privileged-helper channel of
+ADR-0002 as a prototype, and the first verification on real hardware with administrator rights
+(read-only). Physical disks are still never written.
 
 ### Added
 - **Privileged-helper prototype** (ADR-0002): `wparted-helper.exe` talks to WParted over a named pipe
