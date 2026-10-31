@@ -26,6 +26,7 @@
 #include "wparted/core/fs_tools.hpp"
 #include "wparted/core/log.hpp"
 #include "wparted/core/operation_log.hpp"
+#include "wparted/win/helper_client.hpp"
 
 namespace wparted::ui {
 
@@ -912,7 +913,25 @@ void MainWindow::startImageApply(bool resume) {
         r->name = name;
         ImageFileDevice dev;
         std::string err;
-        if (!dev.open(win::narrow(path), ss, err)) {
+        if (!resume && win::helperAvailable()) {
+            // ADR-0002: wparted-helper.exe validates and executes; the GUI does not write.
+            win::HelperCallbacks cb;
+            int lastPct = -1;
+            cb.progress = [&](std::uint64_t op, std::uint64_t done, std::uint64_t total) {
+                const int pct = total ? static_cast<int>(done * 100 / total) : 100;
+                if (pct == lastPct) return;
+                lastPct = pct;
+                PostMessageW(target, WM_APP + 52, static_cast<WPARAM>(op), static_cast<LPARAM>(pct));
+            };
+            const win::HelperRun run = win::applyViaHelper(win::narrow(path), plan.toJson(), ss, cb);
+            log::info("Helper run: " + (run.result.empty() ? std::string("no result") : run.result) +
+                      (run.error.empty() ? "" : " - " + run.error));
+            if (!run.logJson.empty()) logFromJson(run.logJson, r->result.log);
+            r->result.ok = run.result == "success";
+            r->result.error = r->result.ok ? "" : (run.error.empty() ? "the helper did not finish" : run.error);
+            for (const auto& c : r->result.log.children)
+                if (c.status == LogStep::Status::Success || c.status == LogStep::Status::Warning) ++r->result.completed;
+        } else if (!dev.open(win::narrow(path), ss, err)) {
             r->result.error = err;
         } else {
             ExecuteOptions opt;

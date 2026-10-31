@@ -31,6 +31,8 @@ const char* logStatusName(LogStep::Status s) noexcept;
 LogStep planLog(const OperationQueue& queue, const ValidationResult& validation, const std::string& deviceName);
 
 std::string logToJson(const LogStep& root);
+// Reads what logToJson wrote (e.g. a log the helper sent); false on malformed input.
+bool logFromJson(const std::string& json, LogStep& root);
 std::string logToHtml(const LogStep& root, const std::string& title);
 std::string htmlEscape(const std::string& s);
 

@@ -4,7 +4,9 @@
 - Status: Accepted. **Prototype implemented** (WP-023, `apps/wparted-helper`,
   `platforms/windows/storage-api/src/pipe.cpp`, `core/src/helper_protocol.cpp`): channel, DACL,
   process checks and the full message flow as described below, used by
-  `wparted-cli apply-plan --execute --helper`. Deviations of the prototype, on purpose:
+  `wparted-cli apply-plan --execute --helper` and by the GUI's *Apply to image file* (the GUI no longer
+  writes image files itself when `wparted-helper.exe` is next to it; resuming a journal still runs
+  in-process). Deviations of the prototype, on purpose:
   it executes on **disk image files only** (the `plan` message carries the image path; physical disks
   are refused), its manifest is `asInvoker` and it is started with `CreateProcess`, not with UAC.
   Before the helper gets its first physical-disk write step, this design and the code need a human

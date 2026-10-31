@@ -4,6 +4,7 @@
 // Helper protocol (ADR-0002, WP-023): strict decoding and the plan hash.
 #include "test_framework.hpp"
 #include "wparted/core/helper_protocol.hpp"
+#include "wparted/core/operation_log.hpp"
 
 using namespace wparted;
 using namespace wparted::helper;
@@ -67,4 +68,26 @@ TEST("helper protocol: unknown types and fields, wrong types and oversized messa
     CHECK(!decode("{\"type\":\"log\",\"log\":\"" + std::string(kMaxMessage, 'x') + "\"}", m, err));
     CHECK(decode("{\"type\":\"cancel\"}", m, err));
     CHECK(m.type == Type::Cancel);
+}
+
+TEST("helper protocol: the operation log survives the trip through the pipe") {
+    LogStep root;
+    root.title = "Apply 2 operation(s) to disk.img";
+    root.status = LogStep::Status::Success;
+    LogStep a;
+    a.title = "Create primary partition (ntfs, 64.00 MiB) at sector 73728";
+    a.status = LogStep::Status::Success;
+    a.messages = {"Creating ntfs file system", "File system check after writing: no errors"};
+    LogStep b;
+    b.title = "Set flags";
+    b.status = LogStep::Status::Warning;
+    root.children = {a, b};
+    LogStep back;
+    REQUIRE(logFromJson(logToJson(root), back));
+    CHECK_EQ(back.title, root.title);
+    REQUIRE(back.children.size() == 2);
+    CHECK(back.children[0].status == LogStep::Status::Success);
+    CHECK(back.children[1].status == LogStep::Status::Warning);
+    CHECK(back.children[0].messages == a.messages);
+    CHECK(!logFromJson("not json", back));
 }

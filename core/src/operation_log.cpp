@@ -2,6 +2,8 @@
 // Copyright (C) 2026 The WParted contributors
 #include "wparted/core/operation_log.hpp"
 
+#include "wparted/core/json_value.hpp"
+
 #include "wparted/core/json.hpp"
 
 namespace wparted {
@@ -78,6 +80,38 @@ void stepHtml(std::string& out, const LogStep& s) {
 }
 
 }  // namespace
+
+namespace {
+bool stepFromJson(const JsonValue& v, LogStep& s, int depth) {
+    if (!v.isObject() || depth > 8) return false;
+    bool ok = true;
+    s.title = v.getString("title", "", &ok);
+    const std::string status = v.getString("status", "pending", &ok);
+    s.status = LogStep::Status::Pending;
+    for (auto st : {LogStep::Status::Running, LogStep::Status::Success, LogStep::Status::Warning, LogStep::Status::Error,
+                    LogStep::Status::Skipped})
+        if (status == logStatusName(st)) s.status = st;
+    s.startMs = static_cast<std::int64_t>(v.getUint("startMs", 0, &ok));
+    s.endMs = static_cast<std::int64_t>(v.getUint("endMs", 0, &ok));
+    if (const JsonValue* m = v.find("messages"))
+        for (const auto& x : m->array)
+            if (x.isString()) s.messages.push_back(x.string);
+    if (const JsonValue* c = v.find("children"))
+        for (const auto& x : c->array) {
+            LogStep child;
+            if (!stepFromJson(x, child, depth + 1)) return false;
+            s.children.push_back(child);
+        }
+    return ok;
+}
+}  // namespace
+
+bool logFromJson(const std::string& json, LogStep& root) {
+    JsonValue v;
+    std::string err;
+    root = LogStep{};
+    return parseJson(json, v, err) && stepFromJson(v, root, 0);
+}
 
 std::string logToJson(const LogStep& root) {
     JsonWriter w;

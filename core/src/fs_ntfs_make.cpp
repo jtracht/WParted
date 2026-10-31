@@ -559,7 +559,7 @@ bool create(BlockDevice& d, const std::string& label, std::uint64_t hidden, std:
     // Write everything; the boot sector last.
     auto writeAt = [&](std::uint64_t lcn, const std::vector<std::uint8_t>& data) { return d.write(lcn * cs, data.data(), data.size()); };
     std::vector<std::uint8_t> mft(static_cast<std::size_t>(mftRecords * recSize));
-    for (std::size_t n = 0; n < recs.size(); ++n) std::memcpy(&mft[n * recSize], recs[n].data(), recs[n].size());
+    for (std::size_t n = 0; n < recs.size(); ++n) std::memcpy(&mft[static_cast<std::size_t>(n * recSize)], recs[n].data(), recs[n].size());
     std::vector<std::uint8_t> mirr(mft.begin(), mft.begin() + static_cast<std::ptrdiff_t>(4 * recSize));
     mirr.resize(static_cast<std::size_t>(clustersFor(4 * recSize) * cs), 0);
     std::vector<std::uint8_t> log(static_cast<std::size_t>(logBytes), 0xFF);

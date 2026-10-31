@@ -8,3 +8,7 @@ if(MINGW)
 endif()
 # Next to the CLI and the GUI: the helper only accepts a pipe server in its own directory.
 set_target_properties(wparted-helper PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/apps/wparted-cli)
+# The GUI's build directory gets a copy too (in the packages all three are in one folder).
+add_custom_command(TARGET wparted-helper POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/apps/wparted-gui
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:wparted-helper> ${CMAKE_BINARY_DIR}/apps/wparted-gui/)

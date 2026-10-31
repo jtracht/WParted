@@ -11,6 +11,8 @@ versions follow [Semantic Versioning](https://semver.org/).
   is recognised and never written, so the VHD stays valid (checked in CI with qemu-img and sgdisk).
   Dynamic/differencing VHD and VHDX files are refused with an explanation instead of being
   misread as raw disks.
+- The GUI's *Apply to image file* executes through `wparted-helper.exe` (ADR-0002): the GUI no longer
+  writes the image itself; the helper validates the plan and reports progress and the log back.
 
 ## [0.4.0-alpha] – 2026-10-31
 

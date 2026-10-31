@@ -87,13 +87,13 @@ struct FatView {
     // Follows DATA.BIN and verifies the pattern.
     bool fileIntact(std::size_t clustersExpected) const {
         std::uint64_t e = rootOff();
-        while (im.b(e) != 0 && std::memcmp(&im.data[e], "DATA    BIN", 11) != 0) e += 32;
+        while (im.b(e) != 0 && std::memcmp(&im.data[static_cast<std::size_t>(e)], "DATA    BIN", 11) != 0) e += 32;
         if (im.b(e) == 0) return false;
-        std::uint32_t c = (fat32 ? std::uint32_t{le16(&im.data[e + 20])} << 16 : 0u) | le16(&im.data[e + 26]);
+        std::uint32_t c = (fat32 ? std::uint32_t{le16(&im.data[static_cast<std::size_t>(e + 20)])} << 16 : 0u) | le16(&im.data[static_cast<std::size_t>(e + 26)]);
         for (std::size_t i = 0; i < clustersExpected; ++i) {
             if (c < 2 || c >= clusters() + 2) return false;
             for (std::uint32_t k = 0; k < spc * bps; k += 4)
-                if (le32(&im.data[clusterOff(c) + k]) != (0x5A000000u | (i << 12) | k)) return false;
+                if (le32(&im.data[static_cast<std::size_t>(clusterOff(c) + k)]) != (0x5A000000u | (i << 12) | k)) return false;
             c = get(c);
         }
         return fat32 ? c >= 0x0FFFFFF8 : c >= 0xFFF8;
@@ -213,9 +213,9 @@ TEST("fstools: exFAT is created with a valid boot region checksum") {
     std::uint32_t sum = 0;
     for (std::size_t i = 0; i < 11 * 512; ++i)
         if (i != 106 && i != 107 && i != 112) sum = ((sum & 1) ? 0x80000000u : 0) + (sum >> 1) + im.data[i];
-    CHECK_EQ(le32(&im.data[11 * 512]), sum);
-    CHECK(std::memcmp(&im.data[0], &im.data[12 * 512], 12 * 512) == 0);  // backup region identical
-    CHECK_EQ(le64(&im.data[64]), 2048u);                                 // partition offset
+    CHECK_EQ(le32(&im.data[static_cast<std::size_t>(11 * 512)]), sum);
+    CHECK(std::memcmp(&im.data[static_cast<std::size_t>(0)], &im.data[static_cast<std::size_t>(12 * 512)], 12 * 512) == 0);  // backup region identical
+    CHECK_EQ(le64(&im.data[static_cast<std::size_t>(64)]), 2048u);                                 // partition offset
     REQUIRE(fstools::setLabel(dev, FsType::ExFat, "Umbenannt", err));
     CHECK_EQ(detect(im).label, std::string("Umbenannt"));
 }
@@ -303,9 +303,9 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
         std::uint32_t sum = 0;
         for (std::size_t i = 0; i < 11 * 512; ++i)
             if (i != 106 && i != 107 && i != 112) sum = ((sum & 1) ? 0x80000000u : 0) + (sum >> 1) + im.data[i];
-        CHECK_EQ(le32(&im.data[11 * 512]), sum);
-        CHECK_EQ(le32(&im.data[23 * 512]), sum);
-        CHECK(std::memcmp(&im.data[0], &im.data[12 * 512], 512) == 0);
+        CHECK_EQ(le32(&im.data[static_cast<std::size_t>(11 * 512)]), sum);
+        CHECK_EQ(le32(&im.data[static_cast<std::size_t>(23 * 512)]), sum);
+        CHECK(std::memcmp(&im.data[static_cast<std::size_t>(0)], &im.data[static_cast<std::size_t>(12 * 512)], 512) == 0);
     }
     {  // NTFS: $Volume in $MFT and $MFTMirr, update sequence protected
         Image im(8 * MiB, 512);
@@ -343,7 +343,7 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
         const auto d = detect(im);
         CHECK_EQ(d.label, std::string("Windows Daten"));
         CHECK_EQ(d.uuid, uuid);
-        CHECK(std::memcmp(&im.data[4 * 4096 + 3 * 1024], &im.data[8 * 4096 + 3 * 1024], 1024) == 0);  // mirror equal
+        CHECK(std::memcmp(&im.data[static_cast<std::size_t>(4 * 4096 + 3 * 1024)], &im.data[static_cast<std::size_t>(8 * 4096 + 3 * 1024)], 1024) == 0);  // mirror equal
     }
     {  // ext4 with metadata_csum: superblock checksum and csum_seed
         Image im(16 * MiB, 512);
@@ -355,7 +355,7 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
         im.b(1024 + 0x175) = 1;        // crc32c
         const std::array<std::uint8_t, 16> oldUuid = [&] {
             std::array<std::uint8_t, 16> a{};
-            std::memcpy(a.data(), &im.data[1024 + 0x68], 16);
+            std::memcpy(a.data(), &im.data[static_cast<std::size_t>(1024 + 0x68)], 16);
             return a;
         }();
         MemoryBlockDevice dev(im.data, 512);
@@ -364,9 +364,9 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
         const auto d = detect(im);
         CHECK_EQ(d.label, std::string("home"));
         CHECK_EQ(d.uuid, uuid);
-        CHECK((le32(&im.data[1024 + 0x60]) & 0x2000) != 0);  // csum_seed enabled
-        CHECK_EQ(le32(&im.data[1024 + 0x270]), fstools::crc32c(0xFFFFFFFFu, oldUuid.data(), 16));
-        CHECK_EQ(le32(&im.data[1024 + 0x3FC]), fstools::crc32c(0xFFFFFFFFu, &im.data[1024], 0x3FC));
+        CHECK((le32(&im.data[static_cast<std::size_t>(1024 + 0x60)]) & 0x2000) != 0);  // csum_seed enabled
+        CHECK_EQ(le32(&im.data[static_cast<std::size_t>(1024 + 0x270)]), fstools::crc32c(0xFFFFFFFFu, oldUuid.data(), 16));
+        CHECK_EQ(le32(&im.data[static_cast<std::size_t>(1024 + 0x3FC)]), fstools::crc32c(0xFFFFFFFFu, &im.data[static_cast<std::size_t>(1024)], 0x3FC));
     }
     {
         Image im(1 * MiB, 512);
@@ -383,9 +383,9 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
             const std::uint64_t o = ag * 1024 * 4096;
             im.putStr(o, "XFSB", 4);
             const std::uint8_t bs[4] = {0, 0, 0x10, 0};  // 4096 big endian
-            std::memcpy(&im.data[o + 4], bs, 4);
+            std::memcpy(&im.data[static_cast<std::size_t>(o + 4)], bs, 4);
             const std::uint8_t agb[4] = {0, 0, 0x04, 0};  // 1024 blocks per AG
-            std::memcpy(&im.data[o + 84], agb, 4);
+            std::memcpy(&im.data[static_cast<std::size_t>(o + 84)], agb, 4);
             im.b(o + 91) = 2;   // agcount 2
             im.b(o + 101) = 5;  // version 5
             im.b(o + 102) = 2;  // sector size 512 (big endian 0x0200)
@@ -417,9 +417,9 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
         REQUIRE(fstools::setNewUuid(dev, FsType::Btrfs, uuid, err));
         CHECK_EQ(detect(im).label, std::string("pool"));
         CHECK_EQ(detect(im).uuid, uuid);
-        CHECK_EQ(le32(&im.data[o]), ~fstools::crc32c(0xFFFFFFFFu, &im.data[o + 0x20], 4096 - 0x20));
+        CHECK_EQ(le32(&im.data[static_cast<std::size_t>(o)]), ~fstools::crc32c(0xFFFFFFFFu, &im.data[static_cast<std::size_t>(o + 0x20)], 4096 - 0x20));
         CHECK_EQ(im.b(o + 0x23B), 0x50);
-        CHECK((le64(&im.data[o + 0xBC]) & (1ull << 10)) != 0);
+        CHECK((le64(&im.data[static_cast<std::size_t>(o + 0xBC)]) & (1ull << 10)) != 0);
     }
     const std::uint8_t text[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
     CHECK_EQ(fstools::crc32c(0xFFFFFFFFu, text, 9) ^ 0xFFFFFFFFu, 0xE3069283u);  // standard CRC32C check value
