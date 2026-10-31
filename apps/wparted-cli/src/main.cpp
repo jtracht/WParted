@@ -134,7 +134,8 @@ int cmdList(bool json) {
 int cmdInspectImage(const std::string& path, std::uint32_t sectorSize, bool json) {
     FileBlockReader reader;
     if (!reader.open(path, sectorSize)) {
-        std::fprintf(stderr, "error: cannot open image '%s' for reading\n", path.c_str());
+        std::fprintf(stderr, "error: cannot open image '%s' for reading%s%s\n", path.c_str(), reader.error().empty() ? "" : ": ",
+                     reader.error().c_str());
         return 2;
     }
     DiskLayout l = parseDiskLayout(reader, true);
@@ -150,7 +151,8 @@ int cmdInspectImage(const std::string& path, std::uint32_t sectorSize, bool json
 int cmdRescueImage(const std::string& path, std::uint32_t sectorSize, bool json, const std::string& planPath) {
     FileBlockReader reader;
     if (!reader.open(path, sectorSize)) {
-        std::fprintf(stderr, "error: cannot open image '%s' for reading\n", path.c_str());
+        std::fprintf(stderr, "error: cannot open image '%s' for reading%s%s\n", path.c_str(), reader.error().empty() ? "" : ": ",
+                     reader.error().c_str());
         return 2;
     }
     const DiskLayout l = parseDiskLayout(reader, true);
@@ -335,7 +337,8 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
     {
         FileBlockReader r;  // closed before the exclusive write handle is opened
         if (!r.open(image, ss)) {
-            std::fprintf(stderr, "error: cannot open image '%s'\n", image.c_str());
+            std::fprintf(stderr, "error: cannot open image '%s'%s%s\n", image.c_str(), r.error().empty() ? "" : ": ",
+                         r.error().c_str());
             return 2;
         }
         original = parseDiskLayout(r, true);

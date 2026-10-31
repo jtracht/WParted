@@ -1112,7 +1112,7 @@ void MainWindow::chooseImage() {
     wchar_t file[MAX_PATH] = L"";
     OPENFILENAMEW ofn{sizeof ofn};
     ofn.hwndOwner = hwnd_;
-    ofn.lpstrFilter = L"Disk images (*.img;*.raw;*.bin;*.dd)\0*.img;*.raw;*.bin;*.dd\0All files\0*.*\0";
+    ofn.lpstrFilter = L"Disk images (*.img;*.raw;*.bin;*.dd;*.vhd)\0*.img;*.raw;*.bin;*.dd;*.vhd\0All files\0*.*\0";
     ofn.lpstrFile = file;
     ofn.nMaxFile = MAX_PATH;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
@@ -1131,7 +1131,8 @@ void MainWindow::openImage(const std::wstring& path) {
     for (std::uint32_t ss : {512u, 4096u}) {
         FileBlockReader r;  // opened read-only
         if (!r.open(win::narrow(path), ss)) {
-            MessageBoxW(hwnd_, tr(S::ImageOpenFailed), tr(S::AppTitle), MB_ICONERROR);
+            const std::wstring text = std::wstring(tr(S::ImageOpenFailed)) + (r.error().empty() ? L"" : L"\n\n" + w(r.error()));
+            MessageBoxW(hwnd_, text.c_str(), tr(S::AppTitle), MB_ICONERROR);
             return;
         }
         layout = parseDiskLayout(r, true);

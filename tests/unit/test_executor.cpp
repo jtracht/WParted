@@ -437,6 +437,86 @@ struct TempImage {
 
 }  // namespace
 
+TEST("image files: fixed-size VHD keeps its footer; dynamic VHD and VHDX are refused") {
+    Image im(32 * MiB, 512);
+    im.gpt({{kLinux, 2048, 8191, "x", 0}});
+    auto footer = [](std::uint32_t type, std::uint64_t size) {
+        std::vector<std::uint8_t> f(512, 0);
+        std::memcpy(f.data(), "conectix", 8);
+        for (int i = 0; i < 8; ++i) f[0x30 + i] = static_cast<std::uint8_t>(size >> (56 - 8 * i));
+        for (int i = 0; i < 4; ++i) f[0x3C + i] = static_cast<std::uint8_t>(type >> (24 - 8 * i));
+        return f;
+    };
+    auto write = [](const char* path, const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b) {
+        std::FILE* f = nullptr;
+#ifdef _WIN32
+        if (fopen_s(&f, path, "wb") != 0) f = nullptr;
+#else
+        f = std::fopen(path, "wb");
+#endif
+        if (!f) return false;
+        std::fwrite(a.data(), 1, a.size(), f);
+        std::fwrite(b.data(), 1, b.size(), f);
+        std::fclose(f);
+        return true;
+    };
+    const char* path = "wparted_fixed.vhd";
+    const auto vhdFooter = footer(2, im.data.size());
+    REQUIRE(write(path, im.data, vhdFooter));
+    {
+        FileBlockReader r;
+        REQUIRE(r.open(path, 512));
+        CHECK(r.container() == ImageContainer::FixedVhd);
+        CHECK_EQ(r.size(), im.data.size());  // the footer is not part of the disk
+        const DiskLayout l = parseDiskLayout(r, false);
+        CHECK(!l.hasErrors());  // the GPT backup header is found at the disk end, not inside the footer
+        CHECK(l.gptBackupValid);
+    }
+    std::string err;
+    {
+        ImageFileDevice dev;
+        REQUIRE(dev.open(path, 512, err));
+        CHECK_EQ(dev.size(), im.data.size());
+        OperationQueue q = queueFor(im);
+        REQUIRE(q.add(op(OpType::DeletePartition, 1), err));
+        CHECK(executePlanOnImage(dev, q, path).ok);
+    }
+    {
+        std::FILE* f = nullptr;
+#ifdef _WIN32
+        if (fopen_s(&f, path, "rb") != 0) f = nullptr;
+#else
+        f = std::fopen(path, "rb");
+#endif
+        REQUIRE(f != nullptr);
+        std::vector<std::uint8_t> tail(512);
+        std::fseek(f, static_cast<long>(im.data.size()), SEEK_SET);
+        CHECK(std::fread(tail.data(), 1, 512, f) == 512);
+        std::fclose(f);
+        CHECK(tail == vhdFooter);  // untouched
+    }
+    std::remove(path);
+    // Dynamic VHD (type 3) and VHDX are refused with a reason.
+    REQUIRE(write(path, im.data, footer(3, im.data.size())));
+    {
+        FileBlockReader r;
+        CHECK(!r.open(path, 512));
+        CHECK(r.error().find("dynamic") != std::string::npos);
+        ImageFileDevice dev;
+        CHECK(!dev.open(path, 512, err));
+        CHECK(err.find("dynamic") != std::string::npos);
+    }
+    std::vector<std::uint8_t> vhdx(im.data);
+    std::memcpy(vhdx.data(), "vhdxfile", 8);
+    REQUIRE(write(path, vhdx, {}));
+    {
+        FileBlockReader r;
+        CHECK(!r.open(path, 512));
+        CHECK(r.error().find("VHDX") != std::string::npos);
+    }
+    std::remove(path);
+}
+
 TEST("executor: an interrupted overlapping move is journalled and resumed without data loss") {
     for (bool backwards : {false, true}) {
         Image im(64 * MiB, 512);

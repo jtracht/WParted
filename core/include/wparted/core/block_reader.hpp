@@ -42,6 +42,16 @@ private:
 };
 
 // Reader over a raw disk image file (opened read-only).
+// Image file containers. A fixed-size VHD is the raw disk followed by a
+// 512-byte footer ("conectix"); the disk is the file without the footer, so
+// the footer is never read or written as disk data. Dynamic and differencing
+// VHDs and VHDX files are recognised and refused (their blocks are not stored
+// in order).
+enum class ImageContainer { Raw, FixedVhd, Unsupported };
+// Inspects an open image file of `fileBytes` bytes; sets `diskBytes` (the size
+// of the disk inside) and, for Unsupported, `why`.
+ImageContainer detectImageContainer(std::FILE* file, std::uint64_t fileBytes, std::uint64_t& diskBytes, std::string& why);
+
 class FileBlockReader final : public BlockReader {
 public:
     FileBlockReader() = default;
@@ -53,11 +63,15 @@ public:
     std::uint64_t size() const override { return size_; }
     std::uint32_t sectorSize() const override { return sectorSize_; }
     bool read(std::uint64_t offset, void* buffer, std::size_t len) override;
+    ImageContainer container() const { return container_; }
+    const std::string& error() const { return error_; }  // why open() failed, if known
 
 private:
     std::FILE* file_ = nullptr;
     std::uint64_t size_ = 0;
     std::uint32_t sectorSize_ = 512;
+    ImageContainer container_ = ImageContainer::Raw;
+    std::string error_;
 };
 
 // A window into another reader, e.g. one partition of a disk.

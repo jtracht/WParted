@@ -54,6 +54,10 @@ file (`.img`).
 
 ## Applying a plan to a disk image file
 
+Image files are raw disk images (`.img`, `.raw`, `.bin`, …) or **fixed-size VHD** files (as created by
+Hyper-V or Disk Management with "fixed size"); WParted keeps the VHD footer intact. Dynamic VHD and
+VHDX files are not supported yet and are refused with an explanation.
+
 For an opened image file, *Apply* validates the plan for the image and, if it passes, offers
 **Apply to image file…**. A second confirmation names the file; there is no automatic undo, so copy
 the file first if you may need its current state. WParted then

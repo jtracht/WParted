@@ -56,6 +56,10 @@ Zum gefahrlosen Ausprobieren *WParted → Datenträger-Image öffnen* (Strg+O) m
 
 ## Plan auf eine Image-Datei anwenden
 
+Image-Dateien sind rohe Datenträgerabbilder (`.img`, `.raw`, `.bin`, …) oder **VHD-Dateien fester Größe**
+(wie Hyper-V oder die Datenträgerverwaltung sie mit „feste Größe“ anlegen); WParted lässt den VHD-Footer
+unverändert. Dynamische VHD- und VHDX-Dateien werden noch nicht unterstützt und mit Begründung abgelehnt.
+
 Bei einer geöffneten Image-Datei prüft *Anwenden* den Plan für das Image und bietet, wenn er besteht,
 **Auf Image-Datei anwenden…** an. Eine zweite Bestätigung nennt die Datei; eine automatische
 Rückgängig-Funktion gibt es nicht, legen Sie daher bei Bedarf vorher eine Kopie an. WParted

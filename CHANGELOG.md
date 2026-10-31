@@ -6,6 +6,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Fixed-size VHD files** can be opened, planned and changed like raw images: the 512-byte footer
+  is recognised and never written, so the VHD stays valid (checked in CI with qemu-img and sgdisk).
+  Dynamic/differencing VHD and VHDX files are refused with an explanation instead of being
+  misread as raw disks.
+
 ## [0.4.0-alpha] – 2026-10-31
 
 Fourth pre-release and the first one built and published on GitHub: the privileged-helper channel of

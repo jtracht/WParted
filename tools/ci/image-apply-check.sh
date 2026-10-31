@@ -200,5 +200,24 @@ fsck.fat -n "$W/r3.img" >/dev/null 2>&1 && pass "rescue: recovered FAT32 fsck.fa
 rm -f "$W/out.bin"; mcopy -i "$W/r3.img" ::/payload.bin "$W/out.bin" 2>/dev/null || true
 [[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "rescue: FAT32 payload intact" || bad "rescue: FAT32 payload"
 
+# --- fixed-size VHD (qemu-img): the plan runs on the disk inside, the footer stays valid ---
+if command -v qemu-img >/dev/null; then
+  raw=$W/vhd-src.img
+  truncate -s 64M "$raw"
+  sgdisk -n1:2048:+16M -t1:8300 "$raw" >/dev/null
+  qemu-img convert -f raw -O vpc -o subformat=fixed,force_size=on "$raw" "$W/disk.vhd"
+  "$TOOL" plan "$W/disk.vhd" fat-create "$W/vhd.json" && pass "vhd: plan made on the fixed VHD" || bad "vhd: plan"
+  if "$TOOL" apply "$W/disk.vhd" "$W/vhd.json"; then pass "vhd: plan applied to the fixed VHD"; else bad "vhd: apply"; fi
+  [[ "$(qemu-img info -f vpc --output=json "$W/disk.vhd" | python3 -c 'import json,sys;print(json.load(sys.stdin)["virtual-size"])')" == $((64 * 1048576)) ]] &&
+    pass "vhd: qemu-img still reads a 64 MiB fixed VHD" || bad "vhd: VHD size changed"
+  qemu-img convert -f vpc -O raw "$W/disk.vhd" "$W/vhd-back.img"
+  sgdisk -v "$W/vhd-back.img" >"$W/verify.txt" 2>&1 || true
+  grep -q "No problems found" "$W/verify.txt" && pass "vhd: sgdisk -v on the disk inside: no problems" || { bad "vhd: sgdisk -v"; cat "$W/verify.txt"; }
+  [[ "$(sfdisk --json "$W/vhd-back.img" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)["partitiontable"]["partitions"]))')" == 2 ]] &&
+    pass "vhd: the new FAT32 partition is there" || bad "vhd: partition count"
+else
+  bad "vhd: qemu-img missing"
+fi
+
 echo "image apply check: $([[ $fail == 0 ]] && echo passed || echo FAILED)"
 exit "$fail"

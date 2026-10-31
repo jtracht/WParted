@@ -105,7 +105,12 @@ bool ImageFileDevice::open(const std::string& path, std::uint32_t sectorSize, st
         file_ = nullptr;
         return false;
     }
-    size_ = static_cast<std::uint64_t>(st.st_size);
+    // A fixed-size VHD keeps its footer: writes stay inside the disk part.
+    if (detectImageContainer(file_, static_cast<std::uint64_t>(st.st_size), size_, error) == ImageContainer::Unsupported) {
+        std::fclose(file_);
+        file_ = nullptr;
+        return false;
+    }
     sectorSize_ = sectorSize;
     if (size_ == 0 || sectorSize_ == 0 || size_ % sectorSize_ != 0) {
         error = "the image size is not a multiple of the sector size";
