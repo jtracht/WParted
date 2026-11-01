@@ -12,6 +12,8 @@
 // e2fsck, debugfs) and by the CLI end-to-end test. Only touches the given file.
 #include <algorithm>
 #include <cstdio>
+#include <cctype>
+#include <iterator>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -220,6 +222,196 @@ bool lastPartition(OperationQueue& q, bool grow) {
     return add(q, o) && (!fstools::canCheck(last->fs.type) || add(q, ck));
 }
 
+// exFAT fixture: no Linux tool writes exFAT without mounting, so the test places
+// files at the end of the heap itself: /a.bin (contiguous, no FAT chain) and
+// /dir/b.bin (FAT chain in falling cluster order). `exfat-cat` reads a file back.
+struct ExFix {
+    BlockDevice& d;
+    std::vector<std::uint8_t> boot = std::vector<std::uint8_t>(512);
+    std::uint64_t bps = 0, cb = 0, fat = 0, heap = 0;
+    std::uint32_t count = 0, root = 0;
+    static std::uint32_t rd32(const std::uint8_t* p) { return p[0] | p[1] << 8 | p[2] << 16 | static_cast<std::uint32_t>(p[3]) << 24; }
+    static std::uint64_t rd64(const std::uint8_t* p) { return rd32(p) | std::uint64_t{rd32(p + 4)} << 32; }
+    static void wr32(std::uint8_t* p, std::uint64_t v) {
+        for (int i = 0; i < 4; ++i) p[i] = static_cast<std::uint8_t>(v >> (8 * i));
+    }
+    static void wr64(std::uint8_t* p, std::uint64_t v) {
+        for (int i = 0; i < 8; ++i) p[i] = static_cast<std::uint8_t>(v >> (8 * i));
+    }
+    bool load() {
+        if (!d.read(0, boot.data(), 512)) return false;
+        bps = 1ull << boot[108];
+        cb = bps << boot[109];
+        fat = rd32(&boot[80]) * bps;
+        heap = rd32(&boot[88]) * bps;
+        count = rd32(&boot[92]);
+        root = rd32(&boot[96]);
+        return true;
+    }
+    std::uint64_t at(std::uint32_t c) const { return heap + (c - 2) * cb; }
+    std::uint32_t next(std::uint32_t c) const {
+        std::uint8_t b[4];
+        d.read(fat + 4ull * c, b, 4);
+        return rd32(b);
+    }
+    void setFat(std::uint32_t c, std::uint32_t v) {
+        std::uint8_t b[4];
+        wr32(b, v);
+        d.write(fat + 4ull * c, b, 4);
+    }
+    // Writes a file set for `name` at directory offset `where`; returns the set size.
+    std::size_t entrySet(std::vector<std::uint8_t>& dir, std::size_t o, const std::string& name, bool isDir, std::uint32_t first,
+                         std::uint64_t bytes, bool noChain) {
+        const std::size_t count2 = 1 + (name.size() + 14) / 15;
+        std::uint8_t* e = &dir[o];
+        e[0] = 0x85;
+        e[1] = static_cast<std::uint8_t>(count2);
+        e[4] = isDir ? 0x10 : 0x20;
+        e[32] = 0xC0;
+        e[33] = static_cast<std::uint8_t>(noChain ? 3 : 1);
+        e[35] = static_cast<std::uint8_t>(name.size());
+        std::uint16_t hash = 0;
+        for (char c : name) {
+            const char u = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            hash = static_cast<std::uint16_t>(((hash << 15) | (hash >> 1)) + static_cast<std::uint8_t>(u));
+            hash = static_cast<std::uint16_t>(((hash << 15) | (hash >> 1)));
+        }
+        e[36] = static_cast<std::uint8_t>(hash);
+        e[37] = static_cast<std::uint8_t>(hash >> 8);
+        wr64(&e[40], bytes);
+        wr32(&e[52], first);
+        wr64(&e[56], bytes);
+        for (std::size_t i = 0; i < name.size(); ++i) {
+            std::uint8_t* n = &e[64 + i / 15 * 32];
+            n[0] = 0xC1;
+            n[2 + i % 15 * 2] = static_cast<std::uint8_t>(name[i]);
+        }
+        std::uint16_t sum = 0;
+        for (std::size_t i = 0; i < (count2 + 1) * 32; ++i) {
+            if (i == 2 || i == 3) continue;
+            sum = static_cast<std::uint16_t>(((sum << 15) | (sum >> 1)) + e[i]);
+        }
+        e[2] = static_cast<std::uint8_t>(sum);
+        e[3] = static_cast<std::uint8_t>(sum >> 8);
+        return (count2 + 1) * 32;
+    }
+};
+
+int exfatInject(const std::string& file, const std::string& payload) {
+    ImageFileDevice dev;
+    std::string err;
+    if (!dev.open(file, 512, err)) return 2;
+    ExFix x{dev};
+    if (!x.load()) return 2;
+    std::ifstream in(payload, std::ios::binary);
+    std::vector<std::uint8_t> data((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const std::uint64_t n = (data.size() + x.cb - 1) / x.cb;
+    if (2 * n + 8 >= x.count) return 2;
+    std::vector<std::uint8_t> rootDir(static_cast<std::size_t>(x.cb));
+    if (!dev.read(x.at(x.root), rootDir.data(), rootDir.size())) return 2;
+    std::size_t o = 0;
+    std::uint32_t bitmapFirst = 0;
+    std::uint64_t bitmapBytes = 0;
+    for (; o + 32 <= rootDir.size() && rootDir[o]; o += 32)
+        if (rootDir[o] == 0x81) {
+            bitmapFirst = ExFix::rd32(&rootDir[o + 20]);
+            bitmapBytes = ExFix::rd64(&rootDir[o + 24]);
+        }
+    std::vector<std::uint8_t> bits(static_cast<std::size_t>(bitmapBytes));
+    if (!bitmapFirst || !dev.read(x.at(bitmapFirst), bits.data(), bits.size())) return 2;
+    auto take = [&](std::uint32_t c) { bits[(c - 2) / 8] = static_cast<std::uint8_t>(bits[(c - 2) / 8] | (1u << ((c - 2) % 8))); };
+    const std::uint32_t last = x.count + 1;  // highest cluster number
+    // /a.bin: contiguous at the end of the heap.
+    const std::uint32_t aFirst = static_cast<std::uint32_t>(last - n + 1);
+    for (std::uint32_t c = 0; c < n; ++c) take(aFirst + c);
+    dev.write(x.at(aFirst), data.data(), data.size());
+    // /dir at one cluster in front of it, /dir/b.bin below in falling order.
+    const std::uint32_t dirCluster = aFirst - 1;
+    take(dirCluster);
+    x.setFat(dirCluster, 0xFFFFFFFFu);
+    std::vector<std::uint32_t> chain;
+    for (std::uint64_t i = 0; i < n; ++i) chain.push_back(static_cast<std::uint32_t>(dirCluster - 1 - i));
+    for (std::size_t i = 0; i < chain.size(); ++i) {
+        take(chain[i]);
+        x.setFat(chain[i], i + 1 < chain.size() ? chain[i + 1] : 0xFFFFFFFFu);
+        const std::size_t len = static_cast<std::size_t>(std::min<std::uint64_t>(x.cb, data.size() - i * x.cb));
+        dev.write(x.at(chain[i]), &data[i * x.cb], len);
+    }
+    std::vector<std::uint8_t> sub(static_cast<std::size_t>(x.cb), 0);
+    x.entrySet(sub, 0, "b.bin", false, chain.front(), data.size(), false);
+    dev.write(x.at(dirCluster), sub.data(), sub.size());
+    o += x.entrySet(rootDir, o, "a.bin", false, aFirst, data.size(), true);
+    x.entrySet(rootDir, o, "dir", true, dirCluster, x.cb, false);
+    dev.write(x.at(x.root), rootDir.data(), rootDir.size());
+    dev.write(x.at(bitmapFirst), bits.data(), bits.size());
+    // Percent in use in the boot region is informational; fsck.exfat does not require it.
+    return dev.flush() ? 0 : 1;
+}
+
+int exfatCat(const std::string& file, const std::string& path) {
+    FileBlockReader r;
+    if (!r.open(file, 512)) return 2;
+    // Read through a device-shaped view: ExFix only reads here.
+    std::vector<std::uint8_t> boot(512);
+    if (!r.read(0, boot.data(), 512)) return 2;
+    const std::uint64_t bps = 1ull << boot[108], cb = bps << boot[109];
+    const std::uint64_t fat = ExFix::rd32(&boot[80]) * bps, heap = ExFix::rd32(&boot[88]) * bps;
+    auto at = [&](std::uint32_t c) { return heap + (c - 2) * cb; };
+    auto chainOf = [&](std::uint32_t first, std::uint64_t bytes, bool noChain) {
+        std::vector<std::uint32_t> out;
+        if (noChain) {
+            for (std::uint64_t i = 0; i * cb < bytes; ++i) out.push_back(static_cast<std::uint32_t>(first + i));
+            return out;
+        }
+        for (std::uint32_t c = first; c >= 2 && c < 0xFFFFFFF7u && out.size() < 100000000u;) {
+            out.push_back(c);
+            std::uint8_t b[4];
+            if (!r.read(fat + 4ull * c, b, 4)) break;
+            c = ExFix::rd32(b);
+        }
+        return out;
+    };
+    std::vector<std::uint32_t> dirChain = chainOf(ExFix::rd32(&boot[96]), 0, false);
+    std::string rest = path;
+    for (;;) {
+        const std::size_t slash = rest.find('/');
+        const std::string name = rest.substr(0, slash);
+        std::vector<std::uint8_t> dir(dirChain.size() * static_cast<std::size_t>(cb));
+        for (std::size_t i = 0; i < dirChain.size(); ++i)
+            if (!r.read(at(dirChain[i]), &dir[i * static_cast<std::size_t>(cb)], static_cast<std::size_t>(cb))) return 2;
+        bool found = false;
+        for (std::size_t o = 0; o + 32 <= dir.size() && dir[o]; o += 32) {
+            if (dir[o] != 0x85) continue;
+            const std::size_t count = dir[o + 1];
+            std::string got;
+            for (std::size_t i = 0; i < dir[o + 32 + 3]; ++i) got += static_cast<char>(dir[o + 64 + i / 15 * 32 + 2 + i % 15 * 2]);
+            if (got == name) {
+                const bool noChain = (dir[o + 33] & 2) != 0;
+                const std::uint32_t first = ExFix::rd32(&dir[o + 52]);
+                const std::uint64_t bytes = ExFix::rd64(&dir[o + 56]);
+                const std::vector<std::uint32_t> chain = chainOf(first, bytes, noChain);
+                if (slash != std::string::npos) {
+                    dirChain = chain;
+                    rest = rest.substr(slash + 1);
+                    found = true;
+                    break;
+                }
+                std::vector<std::uint8_t> buf(static_cast<std::size_t>(cb));
+                std::uint64_t left = bytes;
+                for (std::uint32_t c : chain) {
+                    if (!r.read(at(c), buf.data(), buf.size())) return 2;
+                    const std::size_t n = static_cast<std::size_t>(std::min<std::uint64_t>(left, cb));
+                    std::fwrite(buf.data(), 1, n, stdout);
+                    left -= n;
+                }
+                return left ? 1 : 0;
+            }
+            o += count * 32;
+        }
+        if (!found) return 1;
+    }
+}
+
 // image_tool fs <file> create <fs> [label] | label <fs> <label> | uuid <fs> | resize <fs> <bytes> | check <fs>
 // The whole file is the partition.
 int fsCommand(int argc, char** argv) {
@@ -258,6 +450,8 @@ int fsCommand(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
+    if (argc >= 4 && std::strcmp(argv[1], "exfat-inject") == 0) return exfatInject(argv[2], argv[3]);
+    if (argc >= 4 && std::strcmp(argv[1], "exfat-cat") == 0) return exfatCat(argv[2], argv[3]);
     if (argc >= 2 && std::strcmp(argv[1], "fs") == 0) return fsCommand(argc, argv);
     if (argc == 5 && std::strcmp(argv[1], "plan") == 0) {
         FileBlockReader r;

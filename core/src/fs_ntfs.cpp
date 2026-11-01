@@ -7,8 +7,8 @@
 //
 // Grow: boot sector size, $Bitmap (extended, new clusters allocated in the
 // added space if needed), $BadClus:$Bad (sparse over the volume) and the
-// backup boot sector at the new end. Shrink: the same, but only if every
-// cluster behind the new end is free; data is never relocated.
+// backup boot sector at the new end. Shrink: the same, after moving what lies
+// behind the new end (see relocate).
 #include <algorithm>
 #include <cstring>
 
@@ -283,6 +283,245 @@ bool isClean(BlockReader& r, const Vol& v, std::string& err) {
     return true;
 }
 
+// --- Moving data out of the removed clusters ------------------------------------
+// All attributes of all MFT records are rewritten with new runs; the data is
+// copied and flushed before a record refers to it. $MFT itself comes last. A run
+// moves as a whole; it may be split over several free areas if the record has room.
+
+bool hasAttributeList(const std::vector<std::uint8_t>& rec) {
+    const std::uint32_t inUse = std::min<std::uint32_t>(le32(&rec[0x18]), static_cast<std::uint32_t>(rec.size()));
+    for (std::size_t a = le16(&rec[0x14]); a + 16 <= inUse;) {
+        const std::uint32_t type = le32(&rec[a]), len = le32(&rec[a + 4]);
+        if (type == 0xFFFFFFFFu || len < 16 || a + len > inUse) break;
+        if (type == 0x20) return true;
+        a += len;
+    }
+    return false;
+}
+
+class NtfsMover {
+public:
+    NtfsMover(BlockDevice& d, const Vol& v, std::vector<std::uint8_t>& bits, std::uint64_t limit)
+        : d_(d), v_(v), bits_(bits), limit_(limit), buf_(1024 * 1024) {}
+
+    // Moves the runs of all non-resident attributes of `rec`.
+    bool moveRecord(std::vector<std::uint8_t>& rec, bool& changed, std::string& err) {
+        changed = false;
+        for (std::size_t a = le16(&rec[0x14]);;) {
+            const std::uint32_t inUse = std::min<std::uint32_t>(le32(&rec[0x18]), static_cast<std::uint32_t>(rec.size()));
+            if (a + 16 > inUse) break;
+            const std::uint32_t type = le32(&rec[a]), len = le32(&rec[a + 4]);
+            if (type == 0xFFFFFFFFu || len < 16 || a + len > inUse) break;
+            if (rec[a + 8] == 1) {
+                const std::size_t mp = le16(&rec[a + 0x20]);
+                std::vector<Run> runs;
+                if (mp >= len || !decodeRuns(&rec[a + mp], len - mp, runs)) {
+                    err = "an NTFS runlist is invalid";
+                    return false;
+                }
+                bool any = false;
+                std::vector<Run> out;
+                for (const Run& r : runs) {
+                    if (r.lcn < 0 || static_cast<std::uint64_t>(r.lcn) + r.len <= limit_) {
+                        out.push_back(r);
+                        continue;
+                    }
+                    any = true;
+                    if (!moveRun(r, out, err)) return false;
+                }
+                if (any) {
+                    if (!d_.flush()) {
+                        err = "flushing moved NTFS data failed";
+                        return false;
+                    }
+                    const std::uint64_t highest = le64(&rec[a + 0x18]);  // an extension record keeps its VCN range
+                    if (!rewriteAttr(rec, a, out, le64(&rec[a + 0x28]), le64(&rec[a + 0x30]), le64(&rec[a + 0x38]), err)) return false;
+                    put64(&rec[a + 0x18], highest);
+                    changed = true;
+                }
+            }
+            a += le32(&rec[a + 4]);
+        }
+        return true;
+    }
+
+private:
+    bool moveRun(const Run& r, std::vector<Run>& out, std::string& err) {
+        std::uint64_t left = r.len, from = static_cast<std::uint64_t>(r.lcn);
+        while (left) {
+            // The first free area that holds all of it, otherwise the largest one.
+            std::uint64_t bestAt = 0, bestLen = 0, runAt = 0, runLen = 0;
+            for (std::uint64_t c = 0; c <= limit_; ++c) {
+                if (c < limit_ && !getBit(bits_, c)) {
+                    if (!runLen) runAt = c;
+                    if (++runLen >= left) {
+                        bestAt = runAt;
+                        bestLen = runLen;
+                        break;
+                    }
+                } else {
+                    if (runLen > bestLen) {
+                        bestAt = runAt;
+                        bestLen = runLen;
+                    }
+                    runLen = 0;
+                }
+            }
+            if (!bestLen) {
+                err = "there is not enough free space in front of the new end";
+                return false;
+            }
+            const std::uint64_t n = std::min(left, bestLen);
+            for (std::uint64_t i = 0; i < n; ++i) {
+                setBit(bits_, bestAt + i, true);
+                setBit(bits_, from + i, false);
+            }
+            for (std::uint64_t done = 0; done < n * v_.cs;) {
+                const std::size_t step = static_cast<std::size_t>(std::min<std::uint64_t>(buf_.size(), n * v_.cs - done));
+                if (!d_.read(from * v_.cs + done, buf_.data(), step) || !d_.write(bestAt * v_.cs + done, buf_.data(), step)) {
+                    err = "copying NTFS data failed";
+                    return false;
+                }
+                done += step;
+            }
+            Run moved;
+            moved.len = n;
+            moved.lcn = static_cast<std::int64_t>(bestAt);
+            out.push_back(moved);
+            left -= n;
+            from += n;
+        }
+        return true;
+    }
+
+    BlockDevice& d_;
+    const Vol& v_;
+    std::vector<std::uint8_t>& bits_;
+    std::uint64_t limit_;
+    std::vector<std::uint8_t> buf_;
+};
+
+bool mftOffset(const std::vector<Run>& runs, const Vol& v, std::uint64_t record, std::uint64_t& offset) {
+    std::uint64_t pos = record * v.recSize;
+    for (const Run& r : runs) {
+        const std::uint64_t bytes = r.len * v.cs;
+        if (pos < bytes) {
+            if (r.lcn < 0) return false;
+            offset = static_cast<std::uint64_t>(r.lcn) * v.cs + pos;
+            return true;
+        }
+        pos -= bytes;
+    }
+    return false;
+}
+
+bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint64_t limit, std::string& err) {
+    Bitmap bm;
+    if (!loadBitmap(d, v, bm, err)) return false;
+    bool behind = false;
+    for (std::uint64_t c = limit; c < v.clusters; ++c) behind = behind || getBit(bm.bits, c);
+    if (!behind) return true;
+    std::vector<std::uint8_t> mft;
+    if (!readRecord(d, v, 0, mft, err)) return false;
+    if (hasAttributeList(mft)) {
+        err = "the $MFT is too fragmented to be moved (it has an attribute list); defragment the volume in Windows first";
+        return false;
+    }
+    const std::size_t md = findData(mft, "");
+    if (!md || mft[md + 8] != 1) {
+        err = "$MFT has an unexpected layout";
+        return false;
+    }
+    const std::size_t mp = le16(&mft[md + 0x20]);
+    std::vector<Run> mftRuns;
+    if (!decodeRuns(&mft[md + mp], le32(&mft[md + 4]) - mp, mftRuns) || mftRuns.empty() || mftRuns[0].lcn < 0) {
+        err = "$MFT runlist is invalid";
+        return false;
+    }
+    const std::uint64_t records = le64(&mft[md + 0x30]) / v.recSize;
+    NtfsMover mover(d, v, bm.bits, limit);
+    std::vector<std::uint8_t> rec(static_cast<std::size_t>(v.recSize));
+    std::uint64_t newMirr = le64(&boot[0x38]);
+    for (std::uint64_t n = 1; n < records; ++n) {
+        std::uint64_t at = 0;
+        if (!mftOffset(mftRuns, v, n, at) || !d.read(at, rec.data(), rec.size())) {
+            err = "MFT record " + std::to_string(n) + " cannot be read";
+            return false;
+        }
+        if (std::memcmp(rec.data(), "FILE", 4) != 0 || !(le16(&rec[0x16]) & 1)) continue;  // unused
+        if (!fixups(rec, false)) {
+            err = "MFT record " + std::to_string(n) + " is damaged; run chkdsk in Windows first";
+            return false;
+        }
+        bool changed = false;
+        if (!mover.moveRecord(rec, changed, err)) return false;
+        if (!changed) continue;
+        if (n == 1) {  // $MFTMirr: the boot sector names its first cluster
+            const std::size_t ma = findData(rec, "");
+            const std::size_t mo = ma ? le16(&rec[ma + 0x20]) : 0;
+            std::vector<Run> runs;
+            if (!ma || !decodeRuns(&rec[ma + mo], le32(&rec[ma + 4]) - mo, runs) || runs.empty() || runs[0].lcn < 0) {
+                err = "$MFTMirr has an unexpected layout";
+                return false;
+            }
+            newMirr = static_cast<std::uint64_t>(runs[0].lcn);
+        }
+        std::vector<std::uint8_t> packed = rec;
+        if (!fixups(packed, true) || !d.write(at, packed.data(), packed.size())) {
+            err = "writing MFT record " + std::to_string(n) + " failed";
+            return false;
+        }
+    }
+    // $MFT last: its data may move, including the records just written.
+    if (!d.flush()) {
+        err = "flushing failed";
+        return false;
+    }
+    bool changed = false;
+    if (!mover.moveRecord(mft, changed, err)) return false;
+    std::vector<Run> finalRuns = mftRuns;
+    if (changed) {
+        const std::size_t md2 = findData(mft, "");
+        const std::size_t mp2 = le16(&mft[md2 + 0x20]);
+        finalRuns.clear();
+        if (!decodeRuns(&mft[md2 + mp2], le32(&mft[md2 + 4]) - mp2, finalRuns) || finalRuns.empty() || finalRuns[0].lcn < 0 ||
+            finalRuns[0].len * v.cs < 16 * v.recSize) {
+            err = "not enough contiguous free space for the start of the $MFT";
+            return false;
+        }
+        std::vector<std::uint8_t> packed = mft;
+        std::uint64_t at = 0;
+        if (!mftOffset(finalRuns, v, 0, at) || !fixups(packed, true) || !d.write(at, packed.data(), packed.size())) {
+            err = "writing the $MFT record failed";
+            return false;
+        }
+    }
+    // $Bitmap may have moved: its record says where the bits go now.
+    v.mftLcn = static_cast<std::uint64_t>(finalRuns[0].lcn);
+    Bitmap now;
+    std::vector<std::uint8_t> keep = bm.bits;
+    if (!readRecord(d, v, 6, now.rec, err)) return false;
+    now.attr = findData(now.rec, "");
+    const std::size_t bp = now.attr ? le16(&now.rec[now.attr + 0x20]) : 0;
+    if (!now.attr || !decodeRuns(&now.rec[now.attr + bp], le32(&now.rec[now.attr + 4]) - bp, now.runs) ||
+        !runsIo(&d, d, v, now.runs, keep, keep.size(), true, err))
+        return false;
+    // $MFTMirr: the first records again, then the boot sectors with the new locations.
+    std::vector<std::uint8_t> head(static_cast<std::size_t>(4 * v.recSize));
+    std::uint64_t at0 = 0;
+    if (!mftOffset(finalRuns, v, 0, at0) || !d.read(at0, head.data(), head.size()) || !d.write(newMirr * v.cs, head.data(), head.size())) {
+        err = "writing $MFTMirr failed";
+        return false;
+    }
+    put64(&boot[0x30], v.mftLcn);
+    put64(&boot[0x38], newMirr);
+    if (!d.write(0, boot.data(), boot.size()) || !d.write(v.totalSectors * v.bps, boot.data(), boot.size()) || !d.flush()) {
+        err = "writing the NTFS boot sectors failed";
+        return false;
+    }
+    return true;
+}
+
 }  // namespace
 
 std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes) {
@@ -292,10 +531,10 @@ std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes) {
     Bitmap bm;
     if (!parse(r, v, boot, err) || !loadBitmap(r, v, bm, err)) return err;
     const std::uint64_t newClusters = (newBytes / v.bps - 1) / v.spc;
-    for (std::uint64_t c = newClusters; c < v.clusters; ++c)
-        if (getBit(bm.bits, c))
-            return "NTFS data lies behind the new end (WParted does not move NTFS data yet; shrink the volume in "
-                   "Windows first or choose a larger size)";
+    std::uint64_t used = 0;
+    for (std::uint64_t c = 0; c < v.clusters; ++c) used += getBit(bm.bits, c);
+    if (used + 16 > newClusters) return "the data does not fit into the new size";
+    if (!isClean(r, v, err)) return err;
     return {};
 }
 
@@ -328,6 +567,7 @@ bool resize(BlockDevice& d, std::uint64_t newBytes, std::string& err) {
         return false;
     }
     if (!isClean(d, v, err)) return false;
+    if (newClusters < v.clusters && !relocate(d, v, boot, newClusters, err)) return false;
     Bitmap bm;
     if (!loadBitmap(d, v, bm, err)) return false;
     // Convention for the bits behind the last cluster (keep what the creator used).

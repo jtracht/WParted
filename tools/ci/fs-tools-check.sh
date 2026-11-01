@@ -100,6 +100,19 @@ truncate -s 64M "$img"
 mkfs.exfat -L MK "$img" >/dev/null
 exfat_cycle "$img" "mkfs.exfat volume" 400 100
 
+# exFAT shrink that must move data, directories and chains
+img=$W/exfat-move.img
+truncate -s 256M "$img"
+mkfs.exfat -L MOVE "$img" >/dev/null
+"$TOOL" exfat-inject "$img" "$W/payload.bin" || bad "exfat move: fixture"
+if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "exfat move: fixture clean"; else bad "exfat move: fixture fsck"; cat "$W/x.txt"; fi
+"$TOOL" fs "$img" resize exfat $((32 * 1048576)) && pass "exfat move: shrink 256 -> 32 MiB moves the data" || bad "exfat move: shrink"
+truncate -s 32M "$img"
+if fsck.exfat -n "$img" >"$W/x.txt" 2>&1; then pass "exfat move: fsck.exfat -n clean"; else bad "exfat move: fsck.exfat"; cat "$W/x.txt"; fi
+for f in a.bin dir/b.bin; do
+  [[ "$("$TOOL" exfat-cat "$img" "$f" | sha256sum | cut -d' ' -f1)" == "$sha" ]] && pass "exfat move: $f intact" || bad "exfat move: $f"
+done
+
 # --- NTFS ----------------------------------------------------------------------
 img=$W/ntfs.img
 truncate -s 64M "$img"
@@ -126,6 +139,19 @@ truncate -s 200M "$img"
 ntfs_ok "ntfs after shrink"
 ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs after shrink: writable" || bad "ntfs: write after shrink"
 ours "$img" ntfs "mkntfs volume after resize and writes"
+
+# NTFS shrink that must move data: mkntfs puts $MFT, $LogFile and more in the
+# middle of the volume, and the payload follows them.
+img=$W/ntfs-move.img
+truncate -s 512M "$img"
+mkfs.ntfs -q -Q -F -L MOVE "$img" >/dev/null
+ntfscp -f "$img" "$W/payload.bin" payload.bin >/dev/null 2>&1 || bad "ntfs move: ntfscp"
+ntfs_ok "ntfs move, before"
+"$TOOL" fs "$img" resize ntfs $((64 * 1024 * 1024)) && pass "ntfs move: shrink 512 -> 64 MiB moves the data" || bad "ntfs move: shrink"
+truncate -s 64M "$img"
+ntfs_ok "ntfs move, after"
+ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs move: writable afterwards" || bad "ntfs move: write"
+ours "$img" ntfs "ntfs move, after"
 
 # --- NTFS created by WParted ----------------------------------------------------
 img=$W/wp-ntfs.img
@@ -221,6 +247,22 @@ for fs in ext3 ext4; do
   if [[ $rc == 1 ]]; then pass "mke2fs $fs: shrink below the data refused ($(tail -1 "$W/r.txt"))"
   else bad "mke2fs $fs: shrink to 8 MiB not refused as expected (exit $rc)"; cat "$W/r.txt"; fi
   [[ "$(sha256sum "$img" | cut -d' ' -f1)" == "$before" ]] && pass "mke2fs $fs: refused shrink wrote nothing" || bad "mke2fs $fs: refused shrink changed the image"
+done
+
+# ext shrink that must move data: the journal and a file behind the new end.
+for fs in ext2 ext3 ext4; do
+  img=$W/move-$fs.img
+  truncate -s 400M "$img"
+  "mkfs.$fs" -q -F -L move "$img"
+  head -c 200M /dev/zero >"$W/filler.bin"
+  debugfs -w -R "write $W/filler.bin filler.bin" "$img" >/dev/null 2>&1
+  debugfs -w -R "write $W/payload.bin payload.bin" "$img" >/dev/null 2>&1
+  debugfs -w -R "rm filler.bin" "$img" >/dev/null 2>&1
+  e2clean "$img" "$fs move, before"
+  if "$TOOL" fs "$img" resize "$fs" $((128 * 1048576)); then pass "$fs move: shrink 400 -> 128 MiB moves the data"; else bad "$fs move: shrink"; fi
+  truncate -s 128M "$img"
+  e2clean "$img" "$fs move, after"
+  e2payload "$img" "$fs move, after"
 done
 
 # --- XFS / btrfs ----------------------------------------------------------------

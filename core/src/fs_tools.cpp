@@ -370,6 +370,173 @@ bool exfatBitmapIo(BlockDevice* w, BlockReader& r, const ExFat& x, const ExFatBi
     return done >= bits.size();
 }
 
+// Moves every file, directory, the bitmap and the up-case table out of the
+// clusters that a shrink removes. A moved item gets a FAT chain. Children are
+// handled after their parent moved, so each directory entry is updated where
+// it lies now. Data is copied before anything refers to it.
+class ExFatMover {
+public:
+    ExFatMover(BlockDevice& d, const ExFat& x, std::vector<std::uint8_t>& bits, std::uint32_t limit)
+        : d_(d), x_(x), bits_(bits), limit_(limit), buf_(x.cb) {}
+
+    bool run(std::uint32_t& root, std::string& err) {
+        std::vector<std::uint32_t> chain;
+        if (!exfatChain(d_, x_, root, chain)) {  // the root directory always uses the FAT
+            err = "the exFAT root directory chain is invalid";
+            return false;
+        }
+        if (!moveChain(chain, err)) return false;
+        root = chain.front();
+        return walk(chain, err);
+    }
+
+private:
+    std::uint64_t at(std::uint32_t c) const { return std::uint64_t{x_.heapOffset} * x_.bps + std::uint64_t{c - 2} * x_.cb; }
+    bool used(std::uint32_t c) const { return (bits_[(c - 2) / 8] >> ((c - 2) % 8)) & 1; }
+    void mark(std::uint32_t c, bool on) {
+        auto& b = bits_[(c - 2) / 8];
+        b = static_cast<std::uint8_t>(on ? b | (1u << ((c - 2) % 8)) : b & ~(1u << ((c - 2) % 8)));
+    }
+    bool putFat(std::uint32_t c, std::uint32_t v) {
+        std::uint8_t b[4];
+        put32(b, v);
+        return d_.write(std::uint64_t{x_.fatOffset} * x_.bps + 4ull * c, b, 4);
+    }
+    bool chainOf(std::uint32_t first, std::uint64_t bytes, bool contiguous, std::vector<std::uint32_t>& out) const {
+        if (!contiguous) return exfatChain(d_, x_, first, out);
+        out.clear();
+        const std::uint64_t n = (bytes + x_.cb - 1) / x_.cb;
+        if (first < 2 || first + n > x_.clusterCount + 2ull) return false;
+        for (std::uint64_t i = 0; i < n; ++i) out.push_back(static_cast<std::uint32_t>(first + i));
+        return true;
+    }
+    // Moves the clusters behind the limit; afterwards the FAT holds the whole chain.
+    bool moveChain(std::vector<std::uint32_t>& chain, std::string& err) {
+        bool moved = false;
+        for (auto& c : chain) {
+            if (c < limit_ + 2) continue;
+            while (next_ < limit_ && used(next_ + 2)) ++next_;
+            if (next_ >= limit_) {
+                err = "there is not enough free space in front of the new end";
+                return false;
+            }
+            const std::uint32_t to = next_ + 2;
+            if (!d_.read(at(c), buf_.data(), x_.cb) || !d_.write(at(to), buf_.data(), x_.cb) || !d_.flush()) {
+                err = "copying exFAT data failed";
+                return false;
+            }
+            mark(to, true);
+            mark(c, false);
+            if (!putFat(c, 0)) {
+                err = "updating the exFAT FAT failed";
+                return false;
+            }
+            c = to;
+            moved = true;
+        }
+        if (!moved) return true;
+        for (std::size_t i = 0; i < chain.size(); ++i)
+            if (!putFat(chain[i], i + 1 < chain.size() ? chain[i + 1] : 0xFFFFFFFFu)) {
+                err = "updating the exFAT FAT failed";
+                return false;
+            }
+        return true;
+    }
+    bool walk(const std::vector<std::uint32_t>& dirClusters, std::string& err) {
+        if (++depth_ > 256) {
+            err = "the exFAT directories are nested too deeply";
+            return false;
+        }
+        std::vector<std::uint8_t> dir(dirClusters.size() * x_.cb);
+        for (std::size_t i = 0; i < dirClusters.size(); ++i)
+            if (!d_.read(at(dirClusters[i]), &dir[i * x_.cb], x_.cb)) {
+                err = "an exFAT directory cannot be read";
+                return false;
+            }
+        auto save = [&](std::size_t o, std::size_t n) {  // entry bytes may cross a cluster boundary
+            for (std::size_t i = o / x_.cb; i <= (o + n - 1) / x_.cb; ++i)
+                if (!d_.write(at(dirClusters[i]), &dir[i * x_.cb], x_.cb)) return false;
+            return true;
+        };
+        std::vector<std::vector<std::uint32_t>> subdirs;
+        for (std::size_t o = 0; o + 32 <= dir.size(); o += 32) {
+            const std::uint8_t type = dir[o];
+            if (type == 0x00) break;
+            if (type == 0x81 || type == 0x82) {  // allocation bitmap, up-case table
+                const std::uint64_t bytes = le64(&dir[o + 24]);
+                const std::uint32_t first = le32(&dir[o + 20]);
+                std::vector<std::uint32_t> chain;
+                // They may be contiguous without a usable FAT chain.
+                if (!exfatChain(d_, x_, first, chain) || chain.size() * std::uint64_t{x_.cb} < bytes) {
+                    if (!chainOf(first, bytes, true, chain)) {
+                        err = "an exFAT system file has an invalid chain";
+                        return false;
+                    }
+                }
+                std::vector<std::uint32_t> before = chain;
+                if (!moveChain(chain, err)) return false;
+                if (chain != before) {
+                    put32(&dir[o + 20], chain.front());
+                    if (!save(o, 32)) {
+                        err = "updating an exFAT directory failed";
+                        return false;
+                    }
+                }
+            } else if (type == 0x85) {
+                const std::size_t count = dir[o + 1];
+                const std::size_t setBytes = (count + 1) * 32;
+                if (count < 2 || o + setBytes > dir.size() || dir[o + 32] != 0xC0) {
+                    err = "an exFAT directory entry set is invalid";
+                    return false;
+                }
+                const std::size_t s = o + 32;
+                const bool isDir = (le16(&dir[o + 4]) & 0x10) != 0;
+                const bool noChain = (dir[s + 1] & 0x02) != 0;
+                const std::uint32_t first = le32(&dir[s + 20]);
+                const std::uint64_t bytes = le64(&dir[s + 24]);
+                if (first) {
+                    std::vector<std::uint32_t> chain;
+                    if (!chainOf(first, bytes, noChain, chain)) {
+                        err = "an exFAT file has an invalid chain";
+                        return false;
+                    }
+                    const std::vector<std::uint32_t> before = chain;
+                    if (!moveChain(chain, err)) return false;
+                    if (chain != before) {
+                        dir[s + 1] = static_cast<std::uint8_t>(dir[s + 1] & ~0x02);
+                        put32(&dir[s + 20], chain.front());
+                        std::uint16_t sum = 0;  // SetChecksum over the whole set, skipping its own two bytes
+                        for (std::size_t i = 0; i < setBytes; ++i) {
+                            if (i == 2 || i == 3) continue;
+                            sum = static_cast<std::uint16_t>(((sum << 15) | (sum >> 1)) + dir[o + i]);
+                        }
+                        dir[o + 2] = static_cast<std::uint8_t>(sum);
+                        dir[o + 3] = static_cast<std::uint8_t>(sum >> 8);
+                        if (!save(o, setBytes)) {
+                            err = "updating an exFAT directory failed";
+                            return false;
+                        }
+                    }
+                    if (isDir) subdirs.push_back(chain);
+                }
+                o += count * 32;
+            }
+        }
+        for (const auto& sub : subdirs)
+            if (!walk(sub, err)) return false;
+        --depth_;
+        return true;
+    }
+
+    BlockDevice& d_;
+    const ExFat& x_;
+    std::vector<std::uint8_t>& bits_;
+    std::uint32_t limit_;
+    std::vector<std::uint8_t> buf_;
+    std::uint32_t next_ = 0;
+    int depth_ = 0;
+};
+
 std::string exfatResizeProblem(BlockReader& r, std::uint64_t newBytes) {
     ExFat x;
     std::vector<std::uint8_t> boot;
@@ -390,9 +557,9 @@ std::string exfatResizeProblem(BlockReader& r, std::uint64_t newBytes) {
         if (!exfatFindBitmap(r, x, bm, err)) return err;
         std::vector<std::uint8_t> bits(static_cast<std::size_t>(bm.length));
         if (!exfatBitmapIo(nullptr, r, x, bm, bits, false)) return "the exFAT allocation bitmap cannot be read";
-        for (std::uint64_t c = want; c < x.clusterCount; ++c)
-            if ((bits[static_cast<std::size_t>(c / 8)] >> (c % 8)) & 1)
-                return "exFAT data lies behind the new end (WParted does not move exFAT data yet)";
+        std::uint64_t used = 0;
+        for (std::uint64_t c = 0; c < x.clusterCount; ++c) used += (bits[static_cast<std::size_t>(c / 8)] >> (c % 8)) & 1;
+        if (used + 4 > want) return "the data does not fit into the new size";
     }
     return {};
 }
@@ -409,6 +576,34 @@ bool exfatResize(BlockDevice& d, std::uint64_t newBytes, std::string& err) {
     const std::uint64_t sectors = newBytes / x.bps;
     const std::uint32_t count = static_cast<std::uint32_t>(std::min<std::uint64_t>((sectors - x.heapOffset) / spc, 0xFFFFFFF5ull));
     if (count == x.clusterCount) return true;
+    if (count < x.clusterCount) {  // move what lies behind the new end first
+        ExFatBitmap bm0;
+        if (!exfatFindBitmap(d, x, bm0, err)) return false;
+        std::vector<std::uint8_t> bits0(static_cast<std::size_t>(bm0.length));
+        if (!exfatBitmapIo(nullptr, d, x, bm0, bits0, false)) {
+            err = "the exFAT allocation bitmap cannot be read";
+            return false;
+        }
+        bool behind = false;
+        for (std::uint64_t c = count; c < x.clusterCount; ++c)
+            behind = behind || ((bits0[static_cast<std::size_t>(c / 8)] >> (c % 8)) & 1);
+        if (behind) {
+            std::uint32_t root = x.root;
+            ExFatMover mover(d, x, bits0, count);
+            if (!mover.run(root, err)) return false;
+            ExFatBitmap moved;
+            if (root != x.root) {
+                put32(&boot[96], root);
+                x.root = root;
+                if (!exfatWriteBootRegion(d, x, boot, err)) return false;
+            }
+            if (!exfatFindBitmap(d, x, moved, err)) return false;
+            if (!exfatBitmapIo(&d, d, x, moved, bits0, true) || !d.flush()) {
+                err = "writing the exFAT allocation bitmap failed";
+                return false;
+            }
+        }
+    }
     ExFatBitmap bm;
     if (!exfatFindBitmap(d, x, bm, err)) return false;
     std::vector<std::uint8_t> bits(static_cast<std::size_t>(bm.length));

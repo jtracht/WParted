@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <map>
 #include <set>
 #include <vector>
 
@@ -449,7 +450,294 @@ bool grow(BlockDevice& d, Fs& f, std::uint64_t target, std::string& err) {
 // ---- shrink -------------------------------------------------------------------
 
 // Why the file system cannot end at block `newBlocks`; empty if it can.
-std::string shrinkBlocker(BlockReader& r, const Fs& f, std::uint64_t newBlocks) {
+// --- Moving data out of the removed blocks ---------------------------------------
+// Extents and block maps of all inodes are rewritten; data is copied and flushed
+// before anything refers to it. An extent moves as one piece, so a fragmented
+// free space can stop the move before the file system is resized. Inodes in
+// removed groups are not moved (their numbers are stored in directories).
+class ExtMover {
+public:
+    ExtMover(BlockDevice& d, Fs& f, std::uint64_t limit) : d_(d), f_(f), limit_(limit), buf_(f.bs) {}
+
+    bool run(std::string& err) {
+        bms_.resize(f_.groups);
+        for (std::uint32_t g = 0; g < f_.groups; ++g)
+            if (!readBlockBitmap(d_, f_, g, bms_[g])) {
+                err = "reading an ext block bitmap failed";
+                return false;
+            }
+        dirty_.assign(f_.groups, false);
+        for (std::uint32_t g = 0; g < f_.groups; ++g) {
+            std::vector<std::uint8_t> ibm;
+            if (!readInodeBitmap(d_, f_, g, ibm)) {
+                err = "reading an ext inode bitmap failed";
+                return false;
+            }
+            for (std::uint32_t i = 0; i < f_.ipg; ++i) {
+                if (!testBit(ibm, i)) continue;
+                const std::uint32_t ino = g * f_.ipg + i + 1;
+                if (ino == 7 || ino == 1) continue;  // resize inode (handled by shrink); bad blocks are checked below
+                if (!moveInode(ino, err)) return false;
+            }
+        }
+        // Anything still behind the limit has no owner we know of.
+        for (std::uint32_t g = 0; g < f_.groups; ++g) {
+            for (std::uint64_t i = 0; i < f_.groupBlocks(g, f_.blocks); ++i) {
+                const std::uint64_t b = f_.first(g) + i;
+                if (b >= limit_ && testBit(bms_[g], i) && !isMeta(b)) {
+                    err = "a used block behind the new end belongs to no file; check the file system with fsck first";
+                    return false;
+                }
+            }
+        }
+        for (std::uint32_t g = 0; g < f_.groups; ++g) {
+            if (!dirty_[g]) continue;
+            if (f_.groupCsum() && (f_.flags(g) & kBlockUninit)) put16(f_.d(g) + 0x12, f_.flags(g) & ~kBlockUninit);
+            if (!d_.write(f_.blockBitmap(g) * f_.bs, bms_[g].data(), bms_[g].size())) {
+                err = "writing an ext block bitmap failed";
+                return false;
+            }
+            bitmapCsums(f_, g, &bms_[g], nullptr);
+            sealDesc(f_, g);
+        }
+        return writeDescriptors(d_, f_, f_.groups, err) && writeSuperblocks(d_, f_, f_.groups, err) &&
+               (d_.flush() || (err = "flush failed", false));
+    }
+
+private:
+    bool isMeta(std::uint64_t b) {
+        if (meta_.empty())
+            for (std::uint32_t g = 0; g < f_.groups; ++g)
+                for (const auto& m : metadata(f_, g))
+                    for (std::uint64_t x = m.first; x < m.first + m.second; ++x) meta_.insert(x);
+        return meta_.count(b) != 0;
+    }
+    std::uint32_t groupOf(std::uint64_t b) const { return static_cast<std::uint32_t>((b - f_.fdb) / f_.bpg); }
+    bool used(std::uint64_t b) const {
+        const std::uint32_t g = groupOf(b);
+        return testBit(bms_[g], b - f_.first(g));
+    }
+    void mark(std::uint64_t b, bool on) {
+        const std::uint32_t g = groupOf(b);
+        const std::uint32_t freeNow = f_.freeBlocks(g);
+        if (on) {
+            setBit(bms_[g], b - f_.first(g));
+            f_.set16(g, 0x0C, 0x2C, freeNow - 1);
+        } else {
+            clearBit(bms_[g], b - f_.first(g));
+            f_.set16(g, 0x0C, 0x2C, freeNow + 1);
+        }
+        dirty_[g] = true;
+    }
+    // First free run of n blocks in front of the limit.
+    bool allocate(std::uint64_t n, std::uint64_t& out) {
+        std::uint64_t run = 0;
+        for (std::uint64_t b = hint_; b < limit_; ++b) {
+            run = used(b) ? 0 : run + 1;
+            if (run == n) {
+                out = b + 1 - n;
+                for (std::uint64_t i = 0; i < n; ++i) mark(out + i, true);
+                if (n == 1) hint_ = out + 1;
+                return true;
+            }
+        }
+        return false;
+    }
+    bool copyBlocks(std::uint64_t from, std::uint64_t to, std::uint64_t n, bool data, std::string& err) {
+        for (std::uint64_t i = 0; i < n; ++i) {
+            if (data && (!d_.read((from + i) * f_.bs, buf_.data(), f_.bs) || !d_.write((to + i) * f_.bs, buf_.data(), f_.bs))) {
+                err = "copying ext data failed";
+                return false;
+            }
+            mark(from + i, false);
+        }
+        return true;
+    }
+    bool moveRun(std::uint64_t from, std::uint64_t n, bool data, std::uint64_t& to, std::string& err) {
+        if (!allocate(n, to)) {
+            err = "there is not enough connected free space in front of the new end (a file needs " + formatSize(n * f_.bs) + " in one piece)";
+            return false;
+        }
+        if (!copyBlocks(from, to, n, data, err)) return false;
+        return d_.flush() || (err = "flush failed", false);
+    }
+    std::uint32_t inodeSeed(std::uint32_t ino, std::uint32_t gen) const {
+        std::uint8_t le[4];
+        put32(le, ino);
+        const std::uint32_t c = crc32c(f_.seed, le, 4);
+        put32(le, gen);
+        return crc32c(c, le, 4);
+    }
+    // Node `n` holds a header and entries: an inode's i_block or a whole block.
+    bool moveExtents(std::uint8_t* n, std::size_t room, std::uint32_t ino, std::uint32_t gen, bool& changed, std::string& err) {
+        if (room < 12 || le16(n) != 0xF30A) {
+            err = "an ext extent tree is invalid (inode " + std::to_string(ino) + ")";
+            return false;
+        }
+        const std::uint32_t entries = le16(n + 2), depth = le16(n + 6);
+        if (12 + std::size_t{entries} * 12 > room || depth > 5) {
+            err = "an ext extent tree is invalid (inode " + std::to_string(ino) + ")";
+            return false;
+        }
+        for (std::uint32_t i = 0; i < entries; ++i) {
+            std::uint8_t* e = n + 12 + i * 12;
+            if (depth == 0) {
+                const std::uint32_t rawLen = le16(e + 4);
+                const bool unwritten = rawLen > 32768;
+                const std::uint64_t len = unwritten ? rawLen - 32768 : rawLen;
+                const std::uint64_t start = le32(e + 8) | (std::uint64_t{le16(e + 6)} << 32);
+                if (start + len <= limit_) continue;
+                std::uint64_t to = 0;
+                if (!moveRun(start, len, !unwritten, to, err)) return false;
+                put16(e + 6, static_cast<std::uint32_t>(to >> 32));
+                put32(e + 8, static_cast<std::uint32_t>(to));
+                changed = true;
+            } else {
+                const std::uint64_t child = le32(e + 4) | (std::uint64_t{le16(e + 8)} << 32);
+                std::vector<std::uint8_t> blk(f_.bs);
+                if (!d_.read(child * f_.bs, blk.data(), blk.size())) {
+                    err = "an ext extent block cannot be read";
+                    return false;
+                }
+                bool sub = false;
+                if (!moveExtents(blk.data(), blk.size(), ino, gen, sub, err)) return false;
+                std::uint64_t at = child;
+                if (child >= limit_) {
+                    if (!moveRun(child, 1, false, at, err)) return false;
+                    put32(e + 4, static_cast<std::uint32_t>(at));
+                    put16(e + 8, static_cast<std::uint32_t>(at >> 32));
+                    changed = true;
+                    sub = true;
+                }
+                if (sub) {
+                    if (f_.metaCsum()) {
+                        const std::size_t tail = 12 + std::size_t{le16(blk.data() + 4)} * 12;
+                        if (tail + 4 > blk.size()) {
+                            err = "an ext extent block is invalid";
+                            return false;
+                        }
+                        put32(&blk[tail], crc32c(inodeSeed(ino, gen), blk.data(), tail));
+                    }
+                    if (!d_.write(at * f_.bs, blk.data(), blk.size())) {
+                        err = "writing an ext extent block failed";
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+    // Classic block maps (ext2/ext3).
+    bool moveMapped(std::uint8_t* slot, int level, bool& changed, std::string& err) {
+        const std::uint64_t b = le32(slot);
+        if (!b) return true;
+        if (b >= f_.blocks) {
+            err = "an ext block map is invalid";
+            return false;
+        }
+        std::uint64_t at = b;
+        if (level == 0) {
+            if (b < limit_) return true;
+            if (!moveRun(b, 1, true, at, err)) return false;
+            put32(slot, static_cast<std::uint32_t>(at));
+            changed = true;
+            return true;
+        }
+        std::vector<std::uint8_t> blk(f_.bs);
+        if (!d_.read(b * f_.bs, blk.data(), blk.size())) {
+            err = "an ext indirect block cannot be read";
+            return false;
+        }
+        bool sub = false;
+        for (std::uint32_t i = 0; i < f_.bs / 4; ++i)
+            if (!moveMapped(&blk[i * 4], level - 1, sub, err)) return false;
+        if (b >= limit_) {
+            if (!moveRun(b, 1, false, at, err)) return false;
+            put32(slot, static_cast<std::uint32_t>(at));
+            changed = true;
+            sub = true;
+        }
+        if (sub && !d_.write(at * f_.bs, blk.data(), blk.size())) {
+            err = "writing an ext indirect block failed";
+            return false;
+        }
+        return true;
+    }
+    bool moveXattrBlock(std::vector<std::uint8_t>& in, bool& changed, std::string& err) {
+        std::uint64_t b = le32(&in[0x68]);
+        if (f_.inodeSize > 128) b |= std::uint64_t{le16(&in[0x76])} << 32;
+        if (!b || b < limit_) return true;
+        std::uint64_t to = 0;
+        const auto known = xattr_.find(b);
+        if (known != xattr_.end()) {
+            to = known->second;
+        } else {  // shared by all inodes with the same attributes; the checksum depends on the block number
+            std::vector<std::uint8_t> blk(f_.bs);
+            if (!d_.read(b * f_.bs, blk.data(), blk.size()) || !moveRun(b, 1, false, to, err)) {
+                if (err.empty()) err = "an ext attribute block cannot be read";
+                return false;
+            }
+            if (f_.metaCsum()) {
+                put32(&blk[0x10], 0);
+                std::uint8_t le[8];
+                put32(le, static_cast<std::uint32_t>(to));
+                put32(le + 4, static_cast<std::uint32_t>(to >> 32));
+                put32(&blk[0x10], crc32c(crc32c(f_.seed, le, 8), blk.data(), blk.size()));
+            }
+            if (!d_.write(to * f_.bs, blk.data(), blk.size())) {
+                err = "writing an ext attribute block failed";
+                return false;
+            }
+            xattr_[b] = to;
+        }
+        put32(&in[0x68], static_cast<std::uint32_t>(to));
+        if (f_.inodeSize > 128) put16(&in[0x76], static_cast<std::uint32_t>(to >> 32));
+        changed = true;
+        return true;
+    }
+    bool moveInode(std::uint32_t ino, std::string& err) {
+        std::vector<std::uint8_t> in;
+        if (!inodeIo(nullptr, d_, f_, ino, in, false)) {
+            err = "an ext inode cannot be read";
+            return false;
+        }
+        const std::uint32_t mode = le16(&in[0x00]) & 0xF000, flags = le32(&in[0x20]);
+        const std::uint32_t sectors = le32(&in[0x1C]);
+        bool changed = false;
+        if (!moveXattrBlock(in, changed, err)) return false;
+        const bool mapped = mode == 0x8000 || mode == 0x4000 || (mode == 0xA000 && sectors != 0);
+        if (mapped && !(flags & 0x10000000u)) {  // not inline data
+            if (flags & 0x80000u) {
+                if (!moveExtents(&in[0x28], 60, ino, le32(&in[0x64]), changed, err)) return false;
+            } else {
+                for (int i = 0; i < 12; ++i)
+                    if (!moveMapped(&in[0x28 + i * 4], 0, changed, err)) return false;
+                for (int level = 1; level <= 3; ++level)
+                    if (!moveMapped(&in[0x28 + (11 + level) * 4], level, changed, err)) return false;
+            }
+        }
+        if (!changed) return true;
+        if (!inodeIo(&d_, d_, f_, ino, in, true)) {
+            err = "writing an ext inode failed";
+            return false;
+        }
+        if (ino == le32(&f_.sb[0xE0]) && le32(&f_.sb[0xE0])) std::memcpy(&f_.sb[0x10C], &in[0x28], 60);  // s_jnl_blocks
+        return true;
+    }
+
+    BlockDevice& d_;
+    Fs& f_;
+    std::uint64_t limit_;
+    std::vector<std::uint8_t> buf_;
+    std::vector<std::vector<std::uint8_t>> bms_;
+    std::vector<bool> dirty_;
+    std::set<std::uint64_t> meta_;
+    std::map<std::uint64_t, std::uint64_t> xattr_;
+    std::uint64_t hint_ = 0;
+};
+
+// allowMove: data behind the new end is fine if it fits in front of it.
+std::string shrinkBlocker(BlockReader& r, const Fs& f, std::uint64_t newBlocks, bool allowMove = false) {
     if (const std::string p = resizeProblem(f); !p.empty()) return p;
     if (newBlocks <= f.fdb + f.headBlocks(0) + 2 + f.itBlocks + 50) return "the new size is too small";
     const std::uint32_t newGroups = static_cast<std::uint32_t>((newBlocks - f.fdb + f.bpg - 1) / f.bpg);
@@ -464,14 +752,28 @@ std::string shrinkBlocker(BlockReader& r, const Fs& f, std::uint64_t newBlocks) 
         for (const auto& m : metadata(f, g))
             if (m.first + m.second > newBlocks) return "metadata of a remaining block group lies behind the new end";
     const std::uint32_t lastKept = newGroups - 1;
+    std::uint64_t toMove = 0;
     for (std::uint32_t g = lastKept; g < f.groups; ++g) {
         std::vector<std::uint8_t> bm;
         if (!readBlockBitmap(r, f, g, bm)) return "an ext block bitmap cannot be read";
         const std::uint64_t n = f.groupBlocks(g, f.blocks);
         for (std::uint64_t i = 0; i < n; ++i) {
             const std::uint64_t b = f.first(g) + i;
-            if (b >= newBlocks && testBit(bm, i) && !removable.count(b)) return "data lies behind the new end (WParted does not move ext data yet)";
+            if (b >= newBlocks && testBit(bm, i) && !removable.count(b)) {
+                if (!allowMove) return "data lies behind the new end";
+                ++toMove;
+            }
         }
+    }
+    if (toMove) {  // free blocks in front of the new end
+        std::uint64_t room = 0;
+        for (std::uint32_t g = 0; g < newGroups; ++g) {
+            std::vector<std::uint8_t> bm;
+            if (!readBlockBitmap(r, f, g, bm)) return "an ext block bitmap cannot be read";
+            const std::uint64_t n = std::min<std::uint64_t>(f.groupBlocks(g, f.blocks), newBlocks - f.first(g));
+            for (std::uint64_t i = 0; i < n; ++i) room += !testBit(bm, i);
+        }
+        if (toMove + 16 > room) return "the data does not fit into the new size";
     }
     return {};
 }
@@ -480,9 +782,17 @@ bool shrink(BlockDevice& d, Fs& f, std::uint64_t target, std::string& err) {
     const std::uint64_t oldBlocks = f.blocks;
     const std::uint32_t oldGroups = f.groups;
     const std::uint64_t newBlocks = usableBlocks(f, target);
-    if (const std::string p = shrinkBlocker(d, f, newBlocks); !p.empty()) {
+    if (const std::string p = shrinkBlocker(d, f, newBlocks, true); !p.empty()) {
         err = p;
         return false;
+    }
+    if (!shrinkBlocker(d, f, newBlocks).empty()) {  // something must move first
+        ExtMover mover(d, f, newBlocks);
+        if (!mover.run(err)) return false;
+        if (const std::string p = shrinkBlocker(d, f, newBlocks); !p.empty()) {
+            err = p;
+            return false;
+        }
     }
     const std::uint32_t newGroups = static_cast<std::uint32_t>((newBlocks - f.fdb + f.bpg - 1) / f.bpg);
     std::uint64_t freeRemoved = 0, inodesRemoved = 0;
@@ -880,7 +1190,7 @@ std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes) {
     if (!readFs(r, f, err)) return err;
     const std::uint64_t target = newBytes / f.bs;
     if (target >= f.blocks) return {};
-    return shrinkBlocker(r, f, usableBlocks(f, target));
+    return shrinkBlocker(r, f, usableBlocks(f, target), true);
 }
 
 std::string growProblem(BlockReader& r, std::uint64_t newBytes) {
