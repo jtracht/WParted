@@ -8,6 +8,7 @@ Only results that were actually observed are marked as verified. Everything else
 | Windows | Arch | Builds | Tests | GUI | Writes | Evidence / open check |
 |---|---|---|---|---|---|---|
 | Windows 11 Pro (26300) | x64 | ✔ MSVC + MinGW | ✔ 88/88 unit + CLI E2E; `wparted-cli` created and grew NTFS, ext4 and exFAT on image files (check after every write), deleted a partition and recreated it from the rescue scan | ✔ resume dialog after a crashed move, rescue dialog → *Add to the plan* | image files only ✔ | Local MSVC runs 2026-10-28, unelevated; boot manager / page file marks seen in `wparted-cli list` |
+| Windows 11 Pro (26300), v0.5.0-alpha release ZIP | x64 | ✔ release pipeline (MinGW) | ✔ checksums; CLI `version`; `apply-plan --execute --helper` (FAT32 create on a test image, read back) | ☐ | image files only ✔ | Checked 2026-11-01, unelevated |
 | Windows 11 | x86 build on x64 | ✔ MSVC + MinGW | ✔ 88/88 unit | – | image files only | Local MSVC run 2026-10-28 |
 | Wine 9 (Ubuntu 24.04, CI) | x64 / x86 | ✔ MinGW | ✔ unit + CLI E2E | ✔ start-up smoke | image files only ✔ | Every CI run; Wine is not Windows |
 | Linux CI (reference tools) | – | ✔ GCC (core) | ✔ e2fsck, dumpe2fs, debugfs, ntfsfix, ntfsls, ntfsresize, ntfs-3g, fsck.exfat, fsck.fat, mtools, sgdisk, sfdisk, blkid; fault injection | – | image files | Every CI run |
