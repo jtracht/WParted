@@ -17,7 +17,7 @@ permissions:
 jobs:
   checks:
     name: static checks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Read-only guard (no write paths in v0.x read-only builds)
@@ -34,7 +34,7 @@ jobs:
 
   core-linux:
     name: core + unit tests (Linux, GCC)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
@@ -61,7 +61,7 @@ jobs:
 
   windows-cross:
     name: Windows ${{ matrix.arch }} (MinGW cross build, tests under Wine)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +80,7 @@ jobs:
 
   windows-arm64:
     name: Windows ARM64 (llvm-mingw cross build, not run)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build with warnings as errors, check machine type and imports

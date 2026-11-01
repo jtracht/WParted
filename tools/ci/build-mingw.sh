@@ -47,7 +47,6 @@ fi
 export WINEDEBUG=-all
 export WINEDLLOVERRIDES="mscoree,mshtml="
 export WINEPREFIX="${WINEPREFIX:-$HOME/.wine-wparted-$ARCH}"
-if [ "$ARCH" = x86 ]; then export WINEARCH=win32; fi
 wineboot --init >/dev/null 2>&1 || true
 
 BUILD="build/mingw-$ARCH"
