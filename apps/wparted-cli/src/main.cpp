@@ -20,6 +20,7 @@
 #include "wparted/core/rescue.hpp"
 #include "wparted/core/helper_protocol.hpp"
 #include "wparted/win/disk_discovery.hpp"
+#include "wparted/win/disk_writer.hpp"
 #include "wparted/win/helper_client.hpp"
 #include "wparted/win/pipe.hpp"
 #include "wparted/win/report.hpp"
@@ -46,8 +47,14 @@ void usage() {
         "  wparted-cli resume <image> [--execute [--helper] | --discard] [--log file.html]\n"
         "                                                 Show an interrupted execution; continue it with\n"
         "                                                 --execute, or delete its journal with --discard\n"
+        "  wparted-cli apply-plan \\\\.\\PhysicalDriveN <plan.json> [--execute --yes-write-to-disk]\n"
+        "                                                 Apply a plan to an attached virtual disk (VHD/VHDX)\n"
+        "                                                 through the helper (UAC); real disks stay locked\n"
+        "  wparted-cli resume \\\\.\\PhysicalDriveN [--execute --yes-write-to-disk | --discard]\n"
+        "  wparted-cli mount <\\\\?\\Volume{...}\\> <E:\\>      Assign a drive letter through the helper (UAC)\n"
+        "  wparted-cli unmount <E:\\>                       Remove all mount points of that volume (UAC)\n"
         "  wparted-cli version                            Print version\n\n"
-        "Only apply-plan --execute writes, and only to an image file; physical disks are never written.\n"
+        "Only apply-plan --execute, resume --execute, mount and unmount change anything.\n"
         "Raw partition table access to physical disks requires an elevated prompt.\n",
         WPARTED_VERSION_STRING);
 }
@@ -241,12 +248,74 @@ int applyViaHelper(const std::string& image, const std::string& planText, std::u
     return run.validationOk ? 1 : 3;
 }
 
-int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uint32_t ss, bool execute,
-                 const std::string& logPath, bool viaHelper) {
-    if (isDevicePath(image)) {
-        std::fprintf(stderr, "error: apply-plan works on disk image files only; '%s' is a device\n", image.c_str());
+bool findDisk(const std::string& path, win::PhysicalDisk& out) {
+    unsigned number = 0;
+    if (!parsePhysicalDrivePath(path, number)) {
+        std::fprintf(stderr, "error: '%s' is a device, but only \\\\.\\PhysicalDriveN can be used\n", path.c_str());
+        return false;
+    }
+    const win::DiscoveryResult found = win::discoverDisks();
+    for (const auto& d : found.disks)
+        if (d.number == number) {
+            out = d;
+            return true;
+        }
+    std::fprintf(stderr, "error: disk %u was not found\n", number);
+    return false;
+}
+
+// The helper decides again; this only reports early and asks for the explicit flag.
+int cmdApplyDisk(const std::string& path, const std::string& planPath, bool execute, bool confirmed) {
+    win::PhysicalDisk disk;
+    if (!findDisk(path, disk)) return 2;
+    std::printf("Target: %s, %s, serial %s, %s, %s\n", path.c_str(), disk.modelName().c_str(), disk.serial.c_str(),
+                formatSize(disk.sizeBytes).c_str(), disk.busType.c_str());
+    DiskWriteFacts facts = win::writeFactsFor(disk, true);  // the helper is elevated
+    facts.layoutReadable = true;                            // only the helper can read it when this process is not elevated
+    const std::string problem = diskWriteProblem(facts);
+    if (!problem.empty()) {
+        std::fprintf(stderr, "error: %s. Nothing was written.\n", problem.c_str());
+        return 3;
+    }
+    if (!execute || !confirmed) {
+        std::printf("Nothing was written. To apply the plan, run again with --execute --yes-write-to-disk.\n");
+        return 0;
+    }
+    std::ifstream f(planPath, std::ios::binary);
+    if (!f) {
+        std::fprintf(stderr, "error: cannot read plan '%s'\n", planPath.c_str());
         return 2;
     }
+    std::ostringstream text;
+    text << f.rdbuf();
+    return applyViaHelper(path, text.str(), disk.logicalSectorSize);
+}
+
+int cmdMount(const std::string& volume, const std::string& mountPoint) {
+    const win::HelperRun run = win::mountViaHelper(volume, mountPoint);
+    if (run.result == "success") {
+        std::printf("Done.\n");
+        return 0;
+    }
+    std::fprintf(stderr, "error: %s\n", run.error.c_str());
+    return 1;
+}
+
+int cmdUnmount(const std::string& mountPoint) {
+    if (!isDriveLetterMountPoint(mountPoint)) {
+        std::fprintf(stderr, "error: give a drive letter in the form E:\\\n");
+        return 2;
+    }
+    wchar_t guid[64];
+    if (!GetVolumeNameForVolumeMountPointW(win::widen(mountPoint).c_str(), guid, 64)) {
+        std::fprintf(stderr, "error: %s is not a mount point\n", mountPoint.c_str());
+        return 2;
+    }
+    return cmdMount(win::narrow(guid), "");
+}
+
+int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uint32_t ss, bool execute,
+                 const std::string& logPath, bool viaHelper) {
     const std::string journal = journalPathFor(image);
     if (journalExists(journal)) {
         std::fprintf(stderr,
@@ -309,12 +378,17 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
     return printResult(executePlanOnImage(dev, q, image, executeOptions(journal)), image, logPath);
 }
 
-int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool discard, const std::string& logPath, bool viaHelper) {
-    if (isDevicePath(image)) {
-        std::fprintf(stderr, "error: resume works on disk image files only; '%s' is a device\n", image.c_str());
+int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool discard, const std::string& logPath, bool viaHelper,
+              bool confirmed = false) {
+    const bool isDisk = isDevicePath(image);
+    win::PhysicalDisk disk;
+    if (isDisk && !findDisk(image, disk)) return 2;
+    if (isDisk) ss = disk.logicalSectorSize;
+    if (isDisk && execute && !confirmed) {
+        std::fprintf(stderr, "error: add --yes-write-to-disk to write to %s\n", image.c_str());
         return 2;
     }
-    const std::string journal = journalPathFor(image);
+    const std::string journal = isDisk ? win::journalPathForDisk(disk) : journalPathFor(image);
     if (!journalExists(journal)) {
         std::printf("No interrupted execution for %s.\n", image.c_str());
         return 0;
@@ -348,7 +422,7 @@ int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool dis
         std::printf("It can be resumed: run again with --execute to continue, or --discard to delete the journal.\n");
         return 0;
     }
-    if (viaHelper) return applyViaHelper(image, s.planJson, ss, true);
+    if (viaHelper || isDisk) return applyViaHelper(image, s.planJson, ss, true);
     ImageFileDevice dev;
     if (!dev.open(image, ss, err)) {
         std::fprintf(stderr, "error: %s\n", err.c_str());
@@ -468,6 +542,7 @@ int wmain(int argc, wchar_t** argv) {
             if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
             if (args[i] == "--log") logPath = args[i + 1];
         }
+        if (isDevicePath(args[1])) return cmdApplyDisk(args[1], args[2], has("--execute"), has("--yes-write-to-disk"));
         return cmdApplyPlan(args[1], args[2], ss, has("--execute"), logPath, has("--helper"));
     }
     if (args[0] == "resume") {
@@ -481,8 +556,10 @@ int wmain(int argc, wchar_t** argv) {
             if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
             if (args[i] == "--log") logPath = args[i + 1];
         }
-        return cmdResume(args[1], ss, has("--execute"), has("--discard"), logPath, has("--helper"));
+        return cmdResume(args[1], ss, has("--execute"), has("--discard"), logPath, has("--helper"), has("--yes-write-to-disk"));
     }
+    if (args[0] == "mount" && args.size() >= 3) return cmdMount(args[1], args[2]);
+    if (args[0] == "unmount" && args.size() >= 2) return cmdUnmount(args[1]);
     if (args[0] == "inspect-image") {
         if (args.size() < 2) {
             usage();

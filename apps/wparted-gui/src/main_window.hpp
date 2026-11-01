@@ -84,6 +84,7 @@ private:
     void planPaste();
     void planFormat(FsType fs);
     void planLabel();
+    void changeMount(bool mount);
     void planName();
     void planFlags();
     void planSimple(OpType type);

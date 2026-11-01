@@ -4,7 +4,8 @@
 // Client side of ADR-0002, shared by wparted.exe and wparted-cli.exe: starts
 // wparted-helper.exe next to the running executable, runs the message flow
 // (hello, plan, validation, confirm with the plan hash, progress, log, done)
-// and reports back. The caller never writes to the image itself.
+// and reports back. The caller never writes itself. For a disk (\\.\PhysicalDriveN)
+// and for mount changes the helper is started through UAC.
 #pragma once
 
 #include <atomic>
@@ -37,6 +38,9 @@ bool helperAvailable();  // wparted-helper.exe exists next to the running execut
 
 HelperRun applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
                          const HelperCallbacks& callbacks = {});
+// Assigns the drive letter `mountPoint` ("E:\\"), or with an empty one removes
+// all mount points of the volume. Started through UAC.
+HelperRun mountViaHelper(const std::string& volumeGuidPath, const std::string& mountPoint);
 // Continues the execution recorded in the image's journal; `planText` is the
 // plan stored there, which the helper must have read as well.
 HelperRun resumeViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,

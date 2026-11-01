@@ -360,6 +360,9 @@ void MainWindow::buildMenu() {
     item(partitionMenu_, IDM_FLAGS, S::MenuManageFlags);
     item(partitionMenu_, IDM_CHECK, S::MenuCheck);
     AppendMenuW(partitionMenu_, MF_SEPARATOR, 0, nullptr);
+    item(partitionMenu_, IDM_MOUNT, S::MenuMount);
+    item(partitionMenu_, IDM_UNMOUNT, S::MenuUnmount);
+    AppendMenuW(partitionMenu_, MF_SEPARATOR, 0, nullptr);
     item(partitionMenu_, IDM_PART_INFO, S::MenuPartitionInfo);
 
     HMENU tools = CreatePopupMenu();
@@ -1041,6 +1044,8 @@ void MainWindow::onCommand(int id) {
         case IDM_COPY: planCopy(); break;
         case IDM_PASTE: planPaste(); break;
         case IDM_LABEL: planLabel(); break;
+        case IDM_MOUNT: changeMount(true); break;
+        case IDM_UNMOUNT: changeMount(false); break;
         case IDM_NAME: planName(); break;
         case IDM_FLAGS: planFlags(); break;
         case IDM_CHECK: planSimple(OpType::Check); break;

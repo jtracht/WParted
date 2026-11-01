@@ -12,7 +12,7 @@
 namespace wparted::helper {
 namespace {
 
-const std::pair<Type, const char*> kTypes[] = {{Type::Hello, "hello"},       {Type::Plan, "plan"}, {Type::Resume, "resume"},
+const std::pair<Type, const char*> kTypes[] = {{Type::Hello, "hello"},       {Type::Plan, "plan"}, {Type::Resume, "resume"}, {Type::Mount, "mount"},
                                               {Type::Validation, "validation"}, {Type::Confirm, "confirm"},
                                               {Type::Progress, "progress"}, {Type::Cancel, "cancel"},
                                               {Type::Log, "log"},           {Type::Done, "done"}};
@@ -23,6 +23,7 @@ std::set<std::string> fieldsOf(Type t) {
         case Type::Hello: return {"protocol", "version"};
         case Type::Plan: return {"plan", "image", "sectorSize"};
         case Type::Resume: return {"image", "sectorSize"};
+        case Type::Mount: return {"volume", "mountPoint"};
         case Type::Validation: return {"ok", "diagnostics", "planHash"};
         case Type::Confirm: return {"planHash"};
         case Type::Progress: return {"step", "done", "total"};
@@ -119,6 +120,10 @@ std::string encode(const Message& m) {
             w.key("image").value(m.image);
             w.key("sectorSize").value(m.sectorSize);
             break;
+        case Type::Mount:
+            w.key("volume").value(m.volume);
+            w.key("mountPoint").value(m.mountPoint);
+            break;
         case Type::Validation:
             w.key("ok").value(m.ok);
             w.key("planHash").value(m.planHash);
@@ -189,6 +194,8 @@ bool decode(const std::string& text, Message& out, std::string& error) {
     out.version = v.getString("version", "", &ok);
     out.plan = v.getString("plan", "", &ok);
     out.image = v.getString("image", "", &ok);
+    out.volume = v.getString("volume", "", &ok);
+    out.mountPoint = v.getString("mountPoint", "", &ok);
     out.sectorSize = static_cast<std::uint32_t>(v.getUint("sectorSize", 512, &ok));
     out.ok = v.getBool("ok", false, &ok);
     out.planHash = v.getString("planHash", "", &ok);

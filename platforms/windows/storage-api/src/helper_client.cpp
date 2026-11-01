@@ -3,7 +3,9 @@
 #include "wparted/win/helper_client.hpp"
 
 #include <windows.h>
+#include <shellapi.h>
 
+#include "wparted/core/executor.hpp"
 #include "wparted/core/helper_protocol.hpp"
 #include "wparted/win/pipe.hpp"
 #include "wparted_storage_version.h"
@@ -15,20 +17,38 @@ bool helperAvailable() { return GetFileAttributesW((ownDirectory() + L"wparted-h
 namespace {
 
 HelperRun runHelper(helper::Type request, const std::string& image, const std::string& planText, std::uint32_t sectorSize,
-                    const HelperCallbacks& cb) {
+                    const HelperCallbacks& cb, const std::string& mountPoint = {}) {
     HelperRun run;
     const std::wstring helperPath = ownDirectory() + L"wparted-helper.exe";
     const std::wstring pipeName = randomPipeName();
     Pipe pipe;
     if (!pipe.create(pipeName, run.error)) return run;
-    std::wstring cmd = L"\"" + helperPath + L"\" --pipe " + pipeName;
-    STARTUPINFOW si{sizeof si};
     PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(helperPath.c_str(), &cmd[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-        run.error = "wparted-helper.exe cannot be started (" + std::to_string(GetLastError()) + ")";
-        return run;
+    const bool elevate = request == helper::Type::Mount || isDevicePath(image);
+    if (elevate) {  // ADR-0002: the user sees the UAC prompt for every change to a disk
+        const std::wstring params = L"--pipe " + pipeName;
+        SHELLEXECUTEINFOW sei{sizeof sei};
+        sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+        sei.lpVerb = L"runas";
+        sei.lpFile = helperPath.c_str();
+        sei.lpParameters = params.c_str();
+        sei.nShow = SW_HIDE;
+        if (!ShellExecuteExW(&sei) || !sei.hProcess) {
+            run.error = GetLastError() == ERROR_CANCELLED ? std::string("administrator rights were declined; nothing was changed")
+                                                          : "wparted-helper.exe cannot be started (" + std::to_string(GetLastError()) + ")";
+            return run;
+        }
+        pi.hProcess = sei.hProcess;
+        pi.dwProcessId = GetProcessId(sei.hProcess);
+    } else {
+        std::wstring cmd = L"\"" + helperPath + L"\" --pipe " + pipeName;
+        STARTUPINFOW si{sizeof si};
+        if (!CreateProcessW(helperPath.c_str(), &cmd[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            run.error = "wparted-helper.exe cannot be started (" + std::to_string(GetLastError()) + ")";
+            return run;
+        }
+        CloseHandle(pi.hThread);
     }
-    CloseHandle(pi.hThread);
     auto finish = [&]() {
         WaitForSingleObject(pi.hProcess, 10000);
         CloseHandle(pi.hProcess);
@@ -40,7 +60,7 @@ HelperRun runHelper(helper::Type request, const std::string& image, const std::s
         std::string text;
         return pipe.receive(text, timeout, err) && helper::decode(text, m, err);
     };
-    if (!pipe.accept(pi.dwProcessId, 10000, run.error)) return finish();
+    if (!pipe.accept(pi.dwProcessId, elevate ? 30000 : 10000, run.error)) return finish();
     helper::Message hello;
     hello.type = helper::Type::Hello;
     hello.protocol = helper::kProtocol;
@@ -52,6 +72,19 @@ HelperRun runHelper(helper::Type request, const std::string& image, const std::s
     }
     run.started = true;
     run.helperVersion = m.version;
+    if (request == helper::Type::Mount) {
+        helper::Message mount;
+        mount.type = request;
+        mount.volume = image;
+        mount.mountPoint = mountPoint;
+        if (!send(mount) || !receive(m, 60000) || m.type != helper::Type::Done) {
+            run.error = err.empty() ? std::string("unexpected message from the helper") : err;
+            return finish();
+        }
+        run.result = m.result;
+        run.error = m.error;
+        return finish();
+    }
     helper::Message plan;
     plan.type = request;
     plan.plan = planText;
@@ -121,6 +154,10 @@ HelperRun runHelper(helper::Type request, const std::string& image, const std::s
 HelperRun applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
                          const HelperCallbacks& cb) {
     return runHelper(helper::Type::Plan, image, planText, sectorSize, cb);
+}
+
+HelperRun mountViaHelper(const std::string& volumeGuidPath, const std::string& mountPoint) {
+    return runHelper(helper::Type::Mount, volumeGuidPath, {}, 512, {}, mountPoint);
 }
 
 HelperRun resumeViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,

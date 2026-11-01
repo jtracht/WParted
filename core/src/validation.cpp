@@ -203,9 +203,9 @@ private:
                 index, {num, bitLockerStateName(bl)});
         // op.bitlocker_unknown args: {number}. On a physical disk, an NTFS or
         // BitLocker volume whose BitLocker state Windows did not report.
-        if (c_.mode == ValidationMode::Execution && bl == BitLockerState::NotReported && st.mounted &&
-            (p.fs.type == FsType::Ntfs || p.fs.type == FsType::BitLocker))
-            add(Severity::Warning, "op.bitlocker_unknown",
+        if ((c_.mode == ValidationMode::Execution || c_.mode == ValidationMode::DeviceExecution) &&
+            bl == BitLockerState::NotReported && st.mounted && (p.fs.type == FsType::Ntfs || p.fs.type == FsType::BitLocker))
+            add(c_.mode == ValidationMode::DeviceExecution ? Severity::Error : Severity::Warning, "op.bitlocker_unknown",
                 at + "the BitLocker state of " + what + " is unknown (Windows reports it to administrators only).", index,
                 {num});
         // op.bitlocker_recovery args: {number}. Boot-relevant partitions on a

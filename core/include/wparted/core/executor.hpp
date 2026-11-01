@@ -107,6 +107,10 @@ struct ExecuteOptions {
     // journal, an interrupted execution (crash, power loss, cancel during a
     // move) is detected next time and can be resumed where that is safe.
     std::string journalPath;
+    // Physical or attached virtual disk (helper only): the validation context
+    // for the given original layout, in ValidationMode::DeviceExecution. Empty =
+    // image file rules.
+    std::function<ValidationContext(const DiskLayout&)> deviceContext;
     // Fault injection for tests: stop after this many copy chunks without any
     // clean-up, as a crash would. 0 = off.
     std::uint64_t abortAfterChunks = 0;

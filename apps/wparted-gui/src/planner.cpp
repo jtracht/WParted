@@ -26,6 +26,7 @@
 #include "wparted/core/fs_tools.hpp"
 #include "wparted/core/log.hpp"
 #include "wparted/core/operation_log.hpp"
+#include "wparted/win/disk_writer.hpp"
 #include "wparted/win/helper_client.hpp"
 
 namespace wparted::ui {
@@ -72,6 +73,19 @@ struct ImageApplyResult {
 };
 
 bool isImageDisk(const win::PhysicalDisk* d) { return d && d->busType == "Image file"; }
+
+// A disk the helper may write (the helper checks again): today attached virtual disks.
+bool isWritableDisk(const win::PhysicalDisk* d) {
+    return d && !isImageDisk(d) && diskWriteProblem(win::writeFactsFor(*d, true)).empty();
+}
+
+ValidationMode executionMode(const win::PhysicalDisk* d) {
+    return isImageDisk(d) ? ValidationMode::ImageExecution : isWritableDisk(d) ? ValidationMode::DeviceExecution : ValidationMode::Execution;
+}
+
+std::string journalPathOf(const win::PhysicalDisk& d) {
+    return isImageDisk(&d) ? journalPathFor(win::narrow(d.path)) : win::journalPathForDisk(d);
+}
 
 // Images have no Windows volumes; for file systems whose usage WParted can
 // read itself (FAT) a volume entry carries used/free space, so the list shows
@@ -373,28 +387,8 @@ ValidationContext MainWindow::validationContext(ValidationMode mode) const {
     const win::PhysicalDisk* d = currentDisk();
     auto it = d ? queues_.find(d->path) : queues_.end();
     if (!d || it == queues_.end()) return ctx;
-    const OperationQueue& q = it->second;
-    ctx.physicalSectorSize = d->physicalSectorSize;
-    ctx.deviceWriteProtected = d->writeProtected == win::Tristate::Yes;
-    for (const auto& v : d->volumes)
-        if (v.extentCount > 1) ctx.managedByWindows = true;
-    if (isManagedByWindows(q.original())) ctx.managedByWindows = true;
-    for (const auto& p : q.original().partitions) {
-        PartitionState st;
-        if (const auto* vol = win::volumeForPartition(*d, p)) {
-            st.mounted = !vol->mountPoints.empty();
-            st.containsWindows = vol->containsWindows;
-            st.pageFile = vol->isPageFileVolume;
-            st.bootManager = vol->isSystemPartition;
-            st.bitLocker = vol->bitLocker;
-            if (vol->hasUsage) st.usedBytes = vol->totalBytes - vol->freeBytes;
-        }
-        ctx.state[p.planId] = st;
-    }
-    if (mode != ValidationMode::Planning) {
-        ctx.haveCurrentIdentity = true;
-        ctx.currentIdentity = identityOf(d->layout, d->serial, d->modelName());
-    }
+    ctx = win::contextForDisk(*d, it->second.original(), mode);
+    if (mode != ValidationMode::Planning) ctx.currentIdentity = identityOf(d->layout, d->serial, d->modelName());
     return ctx;
 }
 
@@ -427,7 +421,7 @@ void MainWindow::refreshView() {
             const LRESULT idx = SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(line.c_str()));
             SendMessageW(pending_, LB_SETITEMDATA, static_cast<WPARAM>(idx), static_cast<LPARAM>(riskOf(q->operations()[i])) + 1);
         }
-        const ValidationResult vr = validatePlan(*q, validationContext(isImageDisk(currentDisk()) ? ValidationMode::ImageExecution : ValidationMode::Planning));
+        const ValidationResult vr = validatePlan(*q, validationContext(isImageDisk(currentDisk()) || isWritableDisk(currentDisk()) ? executionMode(currentDisk()) : ValidationMode::Planning));
         for (const auto& diag : vr.diagnostics) {
             (diag.severity == Severity::Error ? errors : warnings)++;
             const std::wstring line = diagText(diag);
@@ -541,12 +535,18 @@ void MainWindow::updateCommandState() {
     const win::PhysicalDisk* d = currentDisk();
     const bool canPaste = unalloc && copySource_ != 0 && d && copySourceDisk_ == d->path &&
                           findPlanned(q->current(), copySource_) != nullptr;
+    // Mount changes act now, on what is on the disk, so not with a pending plan.
+    const win::VolumeInfo* vol = p && d && !isImageDisk(d) && !pending ? win::volumeForPartition(*d, *p) : nullptr;
+    const bool mountable = vol && !vol->containsWindows && !vol->isPageFileVolume && !vol->isSystemPartition;
+    const bool canMount = mountable && vol->mountPoints.empty();
+    const bool canUnmount = mountable && !vol->mountPoints.empty();
     const struct { int id; bool on; } states[] = {
         {IDM_NEW, unalloc}, {IDM_DELETE, part}, {IDM_RESIZE, part}, {IDM_COPY, data}, {IDM_PASTE, canPaste},
         {IDM_FLAGS, part}, {IDM_CHECK, hasFs}, {IDM_LABEL, hasFs}, {IDM_UUID, hasFs},
         {IDM_NAME, part && q->current().type == TableType::Gpt}, {IDM_PART_INFO, p != nullptr},
         {IDM_CREATE_TABLE, q != nullptr}, {IDM_UNDO, pending}, {IDM_CLEAR_OPS, pending}, {IDM_APPLY_OPS, pending},
         {IDM_SAVE_PLAN, pending},
+        {IDM_MOUNT, canMount}, {IDM_UNMOUNT, canUnmount},
     };
     for (const auto& s : states) {
         EnableMenuItem(menu_, static_cast<UINT>(s.id), MF_BYCOMMAND | (s.on ? MF_ENABLED : MF_GRAYED));
@@ -759,6 +759,31 @@ void MainWindow::planLabel() {
     addOperation(op);
 }
 
+void MainWindow::changeMount(bool mount) {
+    const win::PhysicalDisk* d = currentDisk();
+    const PartitionEntry* p = selectedPartition();
+    const win::VolumeInfo* vol = d && p ? win::volumeForPartition(*d, *p) : nullptr;
+    if (!vol) return;
+    std::string letter;
+    if (mount) {
+        std::vector<FormField> f(1);
+        f[0].kind = FormField::Kind::Choice;
+        f[0].label = tr(S::FieldDriveLetter);
+        const DWORD used = GetLogicalDrives();
+        for (wchar_t c = L'D'; c <= L'Z'; ++c)
+            if (!(used & (1u << (c - L'A')))) f[0].choices.push_back(std::wstring(1, c) + L":");
+        if (f[0].choices.empty() || !runForm(hwnd_, tr(S::DlgMountTitle), L"", f, palette(isDark()), font_, dpi_)) return;
+        letter = win::narrow(f[0].choices[static_cast<std::size_t>(f[0].selected)]) + "\\";
+    } else if (MessageBoxW(hwnd_, tr(S::ConfirmUnmount), tr(S::AppTitle), MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) {
+        return;
+    }
+    const win::HelperRun run = win::mountViaHelper(win::narrow(vol->guidPath), letter);
+    log::info("Mount change: " + (run.result.empty() ? std::string("no result") : run.result) + (run.error.empty() ? "" : " - " + run.error));
+    if (run.result != "success")
+        MessageBoxW(hwnd_, (std::wstring(tr(S::MountFailed)) + L":\n" + w(run.error)).c_str(), tr(S::AppTitle), MB_ICONERROR);
+    startDiscovery();
+}
+
 void MainWindow::planName() {
     const PartitionEntry* p = selectedPartition();
     if (!p) return;
@@ -829,8 +854,8 @@ void MainWindow::showApplySummary() {
     if (!q || q->empty()) return;
     const win::PhysicalDisk* d = currentDisk();
     const bool image = isImageDisk(d);
-    const ValidationResult vr =
-        validatePlan(*q, validationContext(image ? ValidationMode::ImageExecution : ValidationMode::Execution));
+    const bool writable = image || isWritableDisk(d);
+    const ValidationResult vr = validatePlan(*q, validationContext(executionMode(d)));
     std::wstring text;
     const auto descriptions = describeQueue(*q);
     for (std::size_t i = 0; i < descriptions.size(); ++i)
@@ -841,14 +866,16 @@ void MainWindow::showApplySummary() {
         text += std::wstring(diag.severity == Severity::Error ? L"✖ " : L"⚠ ") + diagText(diag) + L"\n";
     std::wstring head = std::wstring(tr(S::ApplyTitle)) + L": " + (d ? w(d->modelName()) : L"") +
                        (d && !d->serial.empty() ? L" (" + w(d->serial) + L")" : L"");
-    const bool canApply = image && vr.ok();
-    TASKDIALOG_BUTTON buttons[] = {{102, tr(S::BtnApplyImage)}, {100, tr(S::BtnExportPlan)}, {101, tr(S::BtnSaveDetails)}};
+    const bool canApply = writable && vr.ok();
+    TASKDIALOG_BUTTON buttons[] = {{102, tr(image ? S::BtnApplyImage : S::BtnApplyDisk)}, {100, tr(S::BtnExportPlan)}, {101, tr(S::BtnSaveDetails)}};
     TASKDIALOGCONFIG cfg{sizeof cfg};
     cfg.hwndParent = hwnd_;
     cfg.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_SIZE_TO_CONTENT;
     cfg.pszWindowTitle = tr(S::ApplyTitle);
     cfg.pszMainInstruction = head.c_str();
-    cfg.pszContent = !image ? tr(S::ApplyNoExec) : canApply ? tr(S::ApplyImageReady) : tr(S::ApplyImageBlocked);
+    cfg.pszContent = !writable ? tr(S::ApplyNoExec)
+                     : image   ? (canApply ? tr(S::ApplyImageReady) : tr(S::ApplyImageBlocked))
+                               : (canApply ? tr(S::ApplyDiskReady) : tr(S::ApplyDiskBlocked));
     cfg.pszExpandedInformation = text.c_str();
     cfg.dwFlags |= TDF_EXPANDED_BY_DEFAULT;
     cfg.pButtons = canApply ? buttons : buttons + 1;
@@ -860,8 +887,9 @@ void MainWindow::showApplySummary() {
     TaskDialogIndirect(&cfg, &pressed, nullptr, nullptr);
     if (pressed == 102) {
         // Second, explicit confirmation naming the file.
-        const std::wstring title = formatText(S::ConfirmImageTitle, {std::to_wstring(q->operations().size())});
-        const std::wstring body = formatText(S::ConfirmImageText, {d->path});
+        const std::wstring title = formatText(image ? S::ConfirmImageTitle : S::ConfirmDiskTitle, {std::to_wstring(q->operations().size())});
+        const std::wstring body = formatText(image ? S::ConfirmImageText : S::ConfirmDiskText,
+                                             {image ? d->path : d->path + L" (" + w(d->modelName()) + L", " + w(d->serial) + L", " + w(formatSize(d->sizeBytes)) + L")"});
         TASKDIALOG_BUTTON yes[] = {{103, tr(S::BtnApplyNow)}};
         TASKDIALOGCONFIG c{sizeof c};
         c.hwndParent = hwnd_;
@@ -893,10 +921,10 @@ void MainWindow::showApplySummary() {
 void MainWindow::startImageApply(bool resume) {
     const win::PhysicalDisk* d = currentDisk();
     OperationQueue* q = currentQueue();
-    if (!isImageDisk(d) || applying_) return;
+    if (!d || !(isImageDisk(d) || isWritableDisk(d)) || applying_) return;
     JournalState journal;
     std::string journalErr;
-    if (resume ? !readJournal(journalPathFor(win::narrow(d->path)), journal, journalErr) : !q || q->empty()) return;
+    if (resume ? !readJournal(journalPathOf(*d), journal, journalErr) : !q || q->empty()) return;
     if (applyWorker_.joinable()) applyWorker_.join();
     applying_ = true;
     applyTotal_ = resume ? journal.operationCount : q->operations().size();
@@ -906,7 +934,7 @@ void MainWindow::startImageApply(bool resume) {
     const std::string name = d->modelName();
     const std::uint32_t ss = d->logicalSectorSize;
     HWND target = hwnd_;
-    log::info("Applying " + std::to_string(applyTotal_) + " operation(s) to image file " + win::narrow(path));
+    log::info("Applying " + std::to_string(applyTotal_) + " operation(s) to " + win::narrow(path));
     const std::string journalPlan = journal.planJson;
     applyWorker_ = std::thread([plan, path, name, ss, target, resume, journalPlan] {
         auto* r = new ImageApplyResult;
@@ -933,6 +961,8 @@ void MainWindow::startImageApply(bool resume) {
             r->result.error = r->result.ok ? "" : (run.error.empty() ? "the helper did not finish" : run.error);
             for (const auto& c : r->result.log.children)
                 if (c.status == LogStep::Status::Success || c.status == LogStep::Status::Warning) ++r->result.completed;
+        } else if (isDevicePath(win::narrow(path))) {
+            r->result.error = "wparted-helper.exe is missing; nothing was written";
         } else if (!dev.open(win::narrow(path), ss, err)) {
             r->result.error = err;
         } else {
@@ -1004,6 +1034,10 @@ void MainWindow::onImageApplyDone(LPARAM lp) {
 void MainWindow::reloadImage(const std::wstring& path) {
     if (!result_) return;
     queues_.erase(path);
+    if (isDevicePath(win::narrow(path))) {  // a disk: ask Windows and the disk again
+        startDiscovery();
+        return;
+    }
     for (std::size_t i = 0; i < result_->disks.size(); ++i) {
         win::PhysicalDisk& d = result_->disks[i];
         if (d.path != path || !isImageDisk(&d)) continue;

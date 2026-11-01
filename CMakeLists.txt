@@ -53,9 +53,9 @@ if(MINGW)
 endif()
 
 if(WIN32)
-    # Target Windows 7 SP1 as the minimum API level. Newer APIs must be
+    # Target Windows 11 (API level 0x0A00) as the minimum. Newer APIs must be
     # resolved at run time (GetProcAddress) and degrade gracefully.
-    add_compile_definitions(_WIN32_WINNT=0x0601 WINVER=0x0601 NTDDI_VERSION=0x06010000
+    add_compile_definitions(_WIN32_WINNT=0x0A00 WINVER=0x0A00 NTDDI_VERSION=0x0A000000
                             UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
 

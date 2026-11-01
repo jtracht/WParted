@@ -3,6 +3,7 @@
 //
 // Helper protocol (ADR-0002, WP-023): strict decoding and the plan hash.
 #include "test_framework.hpp"
+#include "wparted/core/disk_write_gate.hpp"
 #include "wparted/core/helper_protocol.hpp"
 #include "wparted/core/operation_log.hpp"
 
@@ -19,13 +20,15 @@ TEST("helper protocol: SHA-256 matches the FIPS 180-4 test vectors") {
 }
 
 TEST("helper protocol: every message type survives encode and decode") {
-    for (Type t : {Type::Hello, Type::Plan, Type::Resume, Type::Validation, Type::Confirm, Type::Progress, Type::Cancel, Type::Log, Type::Done}) {
+    for (Type t : {Type::Hello, Type::Plan, Type::Resume, Type::Mount, Type::Validation, Type::Confirm, Type::Progress, Type::Cancel, Type::Log, Type::Done}) {
         Message m;
         m.type = t;
         m.protocol = kProtocol;
         m.version = "0.4.0-alpha";
         m.plan = "{\"schema\":\"wparted-plan\"}";
         m.image = "C:\\images\\disk.img";
+        m.volume = "\\\\?\\Volume{00000000-0000-0000-0000-000000000000}\\";
+        m.mountPoint = "E:\\";
         m.sectorSize = 4096;
         m.ok = true;
         m.diagnostics.emplace_back(Severity::Warning, "op.bcd_offset", "text");
@@ -39,6 +42,10 @@ TEST("helper protocol: every message type survives encode and decode") {
         std::string err;
         REQUIRE(decode(encode(m), back, err));
         CHECK(back.type == t);
+        if (t == Type::Mount) {
+            CHECK_EQ(back.volume, m.volume);
+            CHECK_EQ(back.mountPoint, m.mountPoint);
+        }
         if (t == Type::Plan) {
             CHECK_EQ(back.plan, m.plan);
             CHECK_EQ(back.image, m.image);
@@ -90,4 +97,40 @@ TEST("helper protocol: the operation log survives the trip through the pipe") {
     CHECK(back.children[1].status == LogStep::Status::Warning);
     CHECK(back.children[0].messages == a.messages);
     CHECK(!logFromJson("not json", back));
+}
+
+TEST("disk write gate: only attached virtual disks without the running system") {
+    DiskWriteFacts f;
+    f.elevated = true;
+    f.layoutReadable = true;
+    f.virtualDisk = true;
+    CHECK(diskWriteProblem(f).empty());
+    DiskWriteFacts real = f;
+    real.virtualDisk = false;
+    CHECK(!diskWriteProblem(real).empty());  // locked by default
+    real.realDiskWritesEnabled = true;
+    CHECK(diskWriteProblem(real).empty());
+    DiskWriteFacts system = real;
+    system.holdsRunningSystem = true;  // never, whatever the build allows
+    CHECK(!diskWriteProblem(system).empty());
+    DiskWriteFacts protectedDisk = f;
+    protectedDisk.writeProtected = true;
+    CHECK(!diskWriteProblem(protectedDisk).empty());
+    DiskWriteFacts user = f;
+    user.elevated = false;
+    CHECK(!diskWriteProblem(user).empty());
+}
+
+TEST("disk write gate: paths are parsed strictly") {
+    unsigned n = 99;
+    CHECK(parsePhysicalDrivePath(R"(\\.\PhysicalDrive3)", n) && n == 3);
+    for (const char* bad : {R"(\\.\PhysicalDrive)", R"(\\.\PhysicalDrive3x)", R"(\\.\PhysicalDrive3\..\C:)", R"(\\?\PhysicalDrive3)",
+                            R"(\\.\C:)", R"(C:\disk.img)", R"(\\.\PhysicalDrive1000)"})
+        CHECK(!parsePhysicalDrivePath(bad, n));
+    CHECK(isDriveLetterMountPoint(R"(E:\)"));
+    CHECK(!isDriveLetterMountPoint("E:"));
+    CHECK(!isDriveLetterMountPoint(R"(C:\Windows\)"));
+    CHECK(isVolumeGuidPath(R"(\\?\Volume{01234567-89ab-cdef-0123-456789abcdef}\)"));
+    CHECK(!isVolumeGuidPath(R"(\\?\Volume{01234567-89ab-cdef-0123-456789abcdeg}\)"));
+    CHECK(!isVolumeGuidPath(R"(\\.\PhysicalDrive0)"));
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Read-only guard: physical disks are never written (all releases so far).
+"""Write guard: disks and volumes are written in one reviewed module only.
 
 Fails if any production source requests write access to a device, opens a
 file for writing or uses a modifying storage API. A line may opt out only
@@ -8,8 +8,9 @@ with an explicit `readonly-guard: allow` comment - used for user-chosen
 report/plan/log files and for the image-file executor (core/src/executor.cpp,
 which refuses device paths) - and every exemption is printed for reviewers.
 
-This check is a safety net, not a proof. It is removed per API once the
-operation engine with privilege separation (issue WP-020 and later) lands.
+The storage-changing APIs (IOCTLs, volume locks, mount points) may never be
+exempted outside platforms/windows/storage-api/src/disk_writer.cpp, which only
+wparted-helper.exe calls for writing. This check is a safety net, not a proof.
 """
 import re
 import sys
@@ -43,6 +44,8 @@ FORBIDDEN = [
     (r"\b(std::)?ofstream\b", "file opened for writing"),
 ]
 ALLOW = "readonly-guard: allow"
+DISK_WRITER = "platforms/windows/storage-api/src/disk_writer.cpp"
+STORAGE_ONLY = re.compile(r"IOCTL_DISK_|FSCTL_|VolumeMountPoint|SetVolumeLabel")
 # Test helpers legitimately create synthetic image files.
 EXEMPT_PATHS = {"tests"}
 
@@ -60,14 +63,15 @@ def main() -> int:
                 code = line.split("//", 1)[0] if ALLOW not in line else line
                 for pattern, what in FORBIDDEN:
                     if re.search(pattern, code):
-                        (exemptions if ALLOW in line else violations).append(f"{rel}:{no}: {what}: {line.strip()}")
+                        allowed = ALLOW in line and (rel == DISK_WRITER or not STORAGE_ONLY.search(code))
+                        (exemptions if allowed else violations).append(f"{rel}:{no}: {what}: {line.strip()}")
     # The log file is opened for appending by design (application log, not a disk).
     violations = [v for v in violations if not v.startswith("core/src/log.cpp")]
     for e in exemptions:
         print(f"EXEMPT  {e}")
     for v in violations:
         print(f"VIOLATION  {v}")
-    print(f"read-only guard: {len(violations)} violation(s), {len(exemptions)} reviewed exemption(s)")
+    print(f"write guard: {len(violations)} violation(s), {len(exemptions)} reviewed exemption(s)")
     return 1 if violations else 0
 
 

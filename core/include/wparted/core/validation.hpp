@@ -22,6 +22,10 @@ enum class ValidationMode {
     // raw block moves/copies are possible; file-system changes are not. System
     // partitions are warnings only, because an image is not the running system.
     ImageExecution,
+    // Execution on a physical or attached virtual disk by the helper: as
+    // ImageExecution for what can be done, but system partitions are refused and
+    // an unknown BitLocker state on a mounted volume is an error.
+    DeviceExecution,
 };
 
 // Facts about the real device that the core cannot know by itself.

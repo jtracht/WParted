@@ -17,17 +17,19 @@
 
 namespace wparted::helper {
 
-constexpr int kProtocol = 1;
+constexpr int kProtocol = 2;
 constexpr std::size_t kMaxMessage = 1024 * 1024;
 
-enum class Type { Hello, Plan, Resume, Validation, Confirm, Progress, Cancel, Log, Done };
+enum class Type { Hello, Plan, Resume, Mount, Validation, Confirm, Progress, Cancel, Log, Done };
 
 struct Message {
     Type type = Type::Hello;
     int protocol = 0;               // hello
     std::string version;            // hello
     std::string plan;               // plan: the plan text (schema wparted-plan v1)
-    std::string image;              // plan, resume: target image file (the prototype executes on image files only)
+    std::string image;              // plan, resume: image file, or a disk (PhysicalDriveN device path)
+    std::string volume;             // mount: volume GUID path
+    std::string mountPoint;         // mount: drive letter form, empty = remove all mount points of the volume
     std::uint32_t sectorSize = 512; // plan, resume
     bool ok = false;                // validation
     std::vector<Diagnostic> diagnostics;  // validation

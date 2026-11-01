@@ -12,6 +12,7 @@ add_library(wparted_core STATIC
     src/json_value.cpp
     src/operations.cpp
     src/validation.cpp
+    src/disk_write_gate.cpp
     src/layout_writer.cpp
     src/rescue.cpp
     src/operation_log.cpp

@@ -937,11 +937,15 @@ ExecuteResult executePlanOnImage(BlockDevice& dev, const OperationQueue& plan, c
     std::string why;
     if (!sameTable(now, plan.original(), why)) return failed(r, "The image changed since planning: " + why + ".");
 
-    // 2. Validate against the image backend.
+    // 2. Validate against the image backend (or the disk's real state).
     ValidationContext ctx;
-    ctx.mode = ValidationMode::ImageExecution;
-    ctx.haveCurrentIdentity = true;
-    ctx.currentIdentity = identityOf(now, plan.identity().serial, plan.identity().model);
+    if (o.deviceContext) {
+        ctx = o.deviceContext(now);
+    } else {
+        ctx.mode = ValidationMode::ImageExecution;
+        ctx.haveCurrentIdentity = true;
+        ctx.currentIdentity = identityOf(now, plan.identity().serial, plan.identity().model);
+    }
     addImageUsage(dev, plan.original(), ctx);
     r.validation = validatePlan(plan, ctx);
     for (const auto& d : r.validation.diagnostics)
@@ -1034,9 +1038,13 @@ ExecuteResult resumePlanOnImage(BlockDevice& dev, const std::string& deviceName,
 
     // Structural validation again (the usage check ran before the first write).
     ValidationContext ctx;
-    ctx.mode = ValidationMode::ImageExecution;
-    ctx.haveCurrentIdentity = true;
-    ctx.currentIdentity = identityOf(plan.original(), plan.identity().serial, plan.identity().model);
+    if (o.deviceContext) {
+        ctx = o.deviceContext(plan.original());
+    } else {
+        ctx.mode = ValidationMode::ImageExecution;
+        ctx.haveCurrentIdentity = true;
+        ctx.currentIdentity = identityOf(plan.original(), plan.identity().serial, plan.identity().model);
+    }
     r.validation = validatePlan(plan, ctx);
     if (!r.validation.ok()) return failed(r, "The plan in the journal does not pass validation any more.");
 

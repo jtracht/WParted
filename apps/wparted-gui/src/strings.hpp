@@ -54,7 +54,9 @@ enum class S {
     ApplyImageReady, ApplyImageBlocked, BtnApplyImage, ConfirmImageTitle, ConfirmImageText, BtnApplyNow,
     ApplyRunning, ApplyDoneOk, ApplyDoneFailed, ApplyResultTitle, ApplyBusy, JournalTitle, JournalFound,
     JournalCopy, JournalWork, JournalResumable, JournalNotResumable, BtnResume, BtnDiscardJournal, BtnLater,
-    JournalDiscarded, BtnRecreate, RecreatePlanned, OpRecreate, Count_
+    JournalDiscarded, BtnRecreate, RecreatePlanned, OpRecreate,
+    ApplyDiskReady, ApplyDiskBlocked, BtnApplyDisk, ConfirmDiskTitle, ConfirmDiskText, MenuMount, MenuUnmount, DlgMountTitle,
+    FieldDriveLetter, ConfirmUnmount, MountFailed, Count_
 };
 
 void initLanguage();             // Selects the language from the Windows UI language.
