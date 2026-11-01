@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Technology decision (ADR-0001)
 
-Status: **Accepted** (2026-10-27). Revisit when Windows 7/8.1 support is dropped.
+Status: **Accepted** (2026-10-27). Windows 7–10 were dropped on 2026-11-01; passages about them are kept as the history of this decision.
 
 ## Context
 

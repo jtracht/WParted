@@ -1,5 +1,5 @@
 {
-  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue. WP-090 (website) was moved out of this repository on 2026-10-28 (maintainer decision) and is no longer counted.",
+  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue. Windows 7-10 were removed from the requirements on 2026-11-01 (maintainer decision). WP-090 (website) was moved out of this repository on 2026-10-28 (maintainer decision) and is no longer counted.",
   "updated": "2026-11-01",
   "milestone": "v0.5.0-alpha",
   "packages": [
@@ -28,8 +28,8 @@
 
     {"key": "WP-012", "area": "Windows Core", "weight": 4, "state": "released", "title": "Read-only disk discovery"},
     {"key": "WP-014", "area": "Windows Core", "weight": 2, "state": "released", "title": "Elevated verification on real hardware"},
-    {"key": "WP-015", "area": "Windows Core", "weight": 3, "state": "in_progress", "title": "Windows 7-10 / ARM64 verification"},
-    {"key": "WP-044", "area": "Windows Core", "weight": 2, "state": "planned", "title": "Mount/unmount"},
+    {"key": "WP-015", "area": "Windows Core", "weight": 3, "state": "in_progress", "title": "Windows 11 ARM64 runtime verification (Windows 7-10 dropped 2026-11-01)"},
+    {"key": "WP-044", "area": "Windows Core", "weight": 2, "state": "implemented", "title": "Mount/unmount"},
     {"key": "WP-071", "area": "Windows Core", "weight": 4, "state": "implemented", "title": "BitLocker/EFI/BCD safety"},
     {"key": "WP-072", "area": "Windows Core", "weight": 3, "state": "released", "title": "Dynamic disks and Storage Spaces"},
 

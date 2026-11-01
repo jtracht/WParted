@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # ADR-0003: Recovery and offline mode
 
-- Status: Accepted (concept). Nothing in this ADR is implemented yet; the support matrix keeps
-  offline mode as *Planned*.
+- Status: Accepted. `tools/offline/make-media.ps1` builds the medium from the user's ADK (**never run yet**).
+  Real disks stay locked in the binaries, so a medium can inspect and plan, but cannot change them yet.
 - Date: 2026-10-27
 - Context packages: WP-070, WP-071 (BitLocker/EFI/BCD safety), WP-041 (resize/move)
 
@@ -30,7 +30,7 @@ later without new risks.
 2. **Offline mode = WParted running in Windows PE / Windows RE**, started from media that the user
    builds. Releases do not ship Microsoft binaries (WinPE is part of the Windows ADK under Microsoft's
    licence terms, not redistributable by this project). WParted provides:
-   - a script `tools/offline/make-media.ps1` (future) that uses the user's installed ADK
+   - a script `tools/offline/make-media.ps1` that uses the user's installed ADK
      (`copype`, `MakeWinPEMedia`) and copies the portable WParted files into the image;
    - documentation for adding WParted to an existing Windows RE (`reagentc` is **not** run
      automatically; the user decides).

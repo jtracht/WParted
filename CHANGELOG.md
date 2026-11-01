@@ -6,6 +6,20 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Writing to attached virtual disks (VHD/VHDX)** through the helper, started with UAC. Real disks stay
+  locked by a build option until the human security review is done; the disk of the running Windows is
+  never written. New CLI forms: `apply-plan \\.\PhysicalDriveN ...`, `resume \\.\PhysicalDriveN ...`.
+- **Mount and unmount** (GUI *Partition* menu, CLI `mount`, `unmount`), not for volumes of the running Windows.
+- **Shrinking moves data** behind the new end on NTFS, exFAT and ext2/3/4. Limits: ext inodes behind the new
+  end are not moved; ext extents move in one piece; a fragmented `$MFT` with an attribute list stops the shrink.
+- `tools/offline/make-media.ps1` builds a WinPE medium from the user's ADK (not run yet).
+- `docs/verification/WParted-Pruefcheckliste.pdf`, the maintainer's manual check.
+
+### Changed
+- **Windows 11 is the only target**; Windows 7–10 were removed. Packages are named `win11-x64`, `win11-x86`.
+- The helper protocol is version 2. The CI guard allows disk-changing APIs in `disk_writer.cpp` only.
+
 ## [0.5.0-alpha] – 2026-11-01
 
 Fifth pre-release: fixed-size VHD files, and all execution through the separate helper process.

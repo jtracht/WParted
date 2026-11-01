@@ -30,4 +30,4 @@ start (`wparted-cli version` smoke test), checksums present, platforms stated co
 release notes written.
 
 Pre-release naming: `-alpha`, `-beta.N`, `-rc.N`. Artefact names state the platform range,
-e.g. `WParted-v0.1.0-alpha-win7plus-x64-portable.zip`.
+e.g. `WParted-v0.1.0-alpha-win11-x64-portable.zip`.

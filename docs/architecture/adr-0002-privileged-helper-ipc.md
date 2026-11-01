@@ -6,11 +6,12 @@
   process checks and the full message flow as described below, used by
   `wparted-cli apply-plan --execute --helper` and by the GUI's *Apply to image file* (the GUI no longer
   writes image files itself when `wparted-helper.exe` is next to it). A `resume` message continues
-  an interrupted execution from its journal, after the same hash confirmation. Deviations of the prototype, on purpose:
-  it executes on **disk image files only** (the `plan` message carries the image path; physical disks
-  are refused), its manifest is `asInvoker` and it is started with `CreateProcess`, not with UAC.
-  Before the helper gets its first physical-disk write step, this design and the code need a human
-  security review (see [security architecture](security-architecture.md), rule 2).
+  an interrupted execution from its journal, after the same hash confirmation. Since 2026-11-01 the helper
+  also writes to **attached virtual disks**: for a `\\.\PhysicalDriveN` target (and the `mount` message) the
+  client starts it through UAC, it rediscovers the disk itself, and `disk_write_gate` decides. The manifest
+  stays `asInvoker` because image files need no rights. **Real disks stay refused** unless the build sets
+  `WPARTED_ENABLE_REAL_DISK_WRITES`; that needs the human security review first (see
+  [security architecture](security-architecture.md), rule 2).
 - Date: 2026-10-27
 - Context packages: WP-023, WP-021 (validation), WP-031 (image write harness)
 
@@ -23,7 +24,7 @@ plan import) full system rights, and every UI bug would become a privileged bug.
 
 Constraints:
 
-- Windows 7 SP1 to Windows 11, x86/x64/ARM64, no installer required (portable ZIP).
+- Windows 11, x64/x86/ARM64, no installer required (portable ZIP).
 - No services and no scheduled tasks: nothing may stay resident or start without the user.
 - No telemetry, no network.
 - The same core library (parser, validation, serializer) must decide in both processes.
@@ -56,7 +57,6 @@ cannot elevate, apply is not available; the GUI says so.
   `ShellExecuteExW`. The helper checks `GetNamedPipeServerProcessId` against its parent PID and
   that the server image path equals `wparted.exe`/`wparted-cli.exe` next to its own image.
   Mismatch → the helper exits without doing anything.
-- `GetNamedPipeClientProcessId` exists since Windows Vista, so Windows 7 is covered.
 
 ### Messages
 
@@ -66,10 +66,11 @@ rejected rather than ignored.
 
 | Direction | `type` | Content |
 |---|---|---|
-| GUI → helper | `hello` | `protocol` (integer, currently 1), GUI version |
+| GUI → helper | `hello` | `protocol` (integer, currently 2), GUI version |
 | helper → GUI | `hello` | `protocol`, helper version; on a mismatch, `error` and exit |
 | GUI → helper | `plan` | the plan in exactly the format of *Save plan* (schema `wparted-plan` v1) |
 | helper → GUI | `validation` | the helper's own validation result (diagnostics with rule codes) |
+| GUI → helper | `mount` | `volume`, `mountPoint` (a drive letter; empty = remove all); answered with `done` |
 | GUI → helper | `confirm` | `planHash` (SHA-256 of the plan text the helper echoed in `validation`) |
 | helper → GUI | `progress` | step index, step status, bytes done/total, message |
 | GUI → helper | `cancel` | request to stop at the next safe point |
@@ -127,5 +128,5 @@ itself.
 - Unit: protocol message parsing (malformed, oversized, unknown fields, wrong order).
 - Integration (CI, Wine + images): GUI-less driver runs helper against image files with fault
   injection (pipe closed mid-plan, cancel at every step, identity mismatch).
-- Manual gate (maintainer, VM): UAC flow on Windows 7 SP1, 10 and 11, standard user without
+- Manual gate (maintainer, VM): UAC flow on Windows 11, standard user without
   elevation rights, two concurrent instances.

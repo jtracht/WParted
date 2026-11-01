@@ -3,6 +3,9 @@
 
 Only results that were actually observed are marked as verified. Everything else is an open check.
 
+**Windows 11 is the only target since 2026-11-01 (maintainer decision).** Windows 7, 8.x and 10 were removed
+from the requirements and are not tested; the older tables below are history.
+
 ## v0.3.0-alpha to v0.5.0-alpha (execution on image files only)
 
 | Windows | Arch | Builds | Tests | GUI | Writes | Evidence / open check |
@@ -13,7 +16,6 @@ Only results that were actually observed are marked as verified. Everything else
 | Wine 9 (Ubuntu 24.04, CI) | x64 / x86 | ✔ MinGW | ✔ unit + CLI E2E | ✔ start-up smoke | image files only ✔ | Every CI run; Wine is not Windows |
 | Linux CI (reference tools) | – | ✔ GCC (core) | ✔ e2fsck, dumpe2fs, debugfs, ntfsfix, ntfsls, ntfsresize, ntfs-3g, fsck.exfat, fsck.fat, mtools, sgdisk, sfdisk, blkid; fault injection | – | image files | Every CI run |
 | Windows 11 | ARM64 | ✔ llvm-mingw cross build (warnings as errors, machine type and imports checked) | ☐ not run | ☐ | ☐ | No ARM64 Windows or emulator — WP-015 |
-| Windows 10 / 8.x / 7 SP1 | x64 / x86 | expected | – | ☐ | ☐ | VM test — WP-015 |
 
 **Elevated, real hardware (2026-10-28, Windows 11 Pro x64, administrator, read-only, run by the
 maintainer with `tools/verify/elevated-readonly.ps1`):** NVMe SSD with GPT (ESP, MSR, Windows, WinRE)
@@ -67,10 +69,3 @@ are tested under Wine only before publication (maintainer decision for alphas).
 | Task dialogs | `TaskDialogIndirect` (comctl32 v6) | Vista | – |
 | DLL search hardening | `SetDefaultDllDirectories` | 8 / 7 + KB2533623 | skipped |
 
-## Windows 7 / 8.x legacy notice
-
-Windows 7 and 8.x no longer receive security updates. WParted keeps them as build targets because
-partition tools are often used on old machines, but:
-- support is best effort and limited to read-only functionality until verified,
-- no modifying operation will be enabled for legacy systems without dedicated VM test evidence,
-- users should prefer running WParted from a supported Windows or the recovery medium.

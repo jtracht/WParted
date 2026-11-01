@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ["LICENSE", "README.md", "CHANGELOG.md", "THIRD_PARTY_NOTICES.md", "SECURITY.md"]
 # File names state the targeted platform range; verification status is in
 # docs/compatibility/windows-support-matrix.md.
-PLATFORM = {"x64": "win7plus-x64", "x86": "win7plus-x86", "arm64": "win11-arm64"}
+PLATFORM = {"x64": "win11-x64", "x86": "win11-x86", "arm64": "win11-arm64"}
 
 
 def main() -> int:

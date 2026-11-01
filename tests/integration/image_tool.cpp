@@ -335,7 +335,7 @@ int exfatInject(const std::string& file, const std::string& payload) {
         take(chain[i]);
         x.setFat(chain[i], i + 1 < chain.size() ? chain[i + 1] : 0xFFFFFFFFu);
         const std::size_t len = static_cast<std::size_t>(std::min<std::uint64_t>(x.cb, data.size() - i * x.cb));
-        dev.write(x.at(chain[i]), &data[i * x.cb], len);
+        dev.write(x.at(chain[i]), &data[static_cast<std::size_t>(i * x.cb)], len);
     }
     std::vector<std::uint8_t> sub(static_cast<std::size_t>(x.cb), 0);
     x.entrySet(sub, 0, "b.bin", false, chain.front(), data.size(), false);

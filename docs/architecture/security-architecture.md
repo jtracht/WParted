@@ -58,8 +58,28 @@
   the chunk in flight at a crash is safe; see [failure modes](failure-modes.md).
 
 The results are verified independently in CI (`tools/ci/image-apply-check.sh`: `sgdisk -v`, `sfdisk`,
-`e2fsck`, `debugfs`, `blkid`, including a process killed in the middle of a move and resumed). This path does not reach physical disks; that needs the helper of
-ADR-0002 and a human security review.
+`e2fsck`, `debugfs`, `blkid`, including a process killed in the middle of a move and resumed).
+
+## Writing to disks (since 2026-11-01)
+
+`platforms/windows/storage-api/src/disk_writer.cpp` is the only module with write access to disks and
+volumes (the guard allows those APIs nowhere else). Only `wparted-helper.exe`, started through UAC, uses it
+for writing, and in this order:
+
+1. strict target parsing (`\\.\PhysicalDriveN` only), then its own discovery;
+2. the gate (`disk_write_gate`): never the disk of the running Windows, its page file or its boot manager;
+   **real disks are refused unless the build sets `WPARTED_ENABLE_REAL_DISK_WRITES` (default off)**, so only
+   attached virtual disks can be written;
+3. validation in `DeviceExecution` mode: identity, mounted volumes and an unknown BitLocker state are errors;
+4. confirmation with the plan hash; the GUI asks twice, the CLI needs `--yes-write-to-disk`;
+5. lock and dismount **all** volumes of the disk; if one is in use, nothing is written;
+6. execution as on an image file, then `IOCTL_DISK_UPDATE_PROPERTIES`.
+
+The journal lies in `%ProgramData%\WParted\journal`, owned by Administrators, writable by administrators and
+SYSTEM only; reparse points are refused. Agents never run these writes: the maintainer checks them on a test
+VHDX with `docs/verification/WParted-Pruefcheckliste.pdf`. Known points for the review: a portable helper in a
+user-writable folder can be replaced before the UAC prompt (unsigned binaries), and a journal file already in
+the folder is not checked for its owner.
 
 ## Rules for future write paths
 

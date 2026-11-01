@@ -695,6 +695,7 @@ void MainWindow::selectDisk(int index) {
     refreshView();
     layout();  // the info bar depends on the device (hidden for disk images)
     selectRow(-1, false);
+    PostMessageW(hwnd_, WM_APP + 54, 0, 0);  // after the window has settled
 }
 
 void MainWindow::fillPartitionList() {
@@ -1248,6 +1249,9 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_APP_DISCOVERED:
             onDiscovered(reinterpret_cast<win::DiscoveryResult*>(lp));
+            return 0;
+        case WM_APP + 54:  // a disk was selected
+            checkDiskJournal();
             return 0;
         case WM_APP + 51:  // rescue scan finished
             onRescueDone(lp);

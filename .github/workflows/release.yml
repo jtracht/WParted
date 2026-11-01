@@ -52,7 +52,7 @@ jobs:
           sum="dist/WParted-v$v-checksums.sha256"
           rm -f "$sum"
           (cd dist && sha256sum $(ls | grep -v checksums.sha256)) > "$sum"
-          for f in "WParted-v$v-win7plus-x64-portable.zip" "WParted-v$v-win7plus-x86-portable.zip" \
+          for f in "WParted-v$v-win11-x64-portable.zip" "WParted-v$v-win11-x86-portable.zip" \
                    "WParted-v$v-source.zip" "WParted-v$v-sbom.json" "WParted-v$v-checksums.sha256"; do
             [ -s "dist/$f" ] || { echo "missing artefact $f"; exit 1; }
           done

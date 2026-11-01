@@ -618,6 +618,16 @@ TEST("validation: BitLocker states reported by Windows and boot configuration of
     CHECK(!hasCode(validatePlan(grow, boot), "op.bcd_offset", Severity::Error));
     CHECK(std::string(bitLockerStateName(BitLockerState::ProtectionOn)) == "protection on");
 
+    // Writing to a disk: a mounted volume and an unknown BitLocker state stop the plan.
+    ValidationContext onDisk;
+    onDisk.mode = ValidationMode::DeviceExecution;
+    onDisk.state[1].mounted = true;
+    CHECK(hasCode(validatePlan(mq, onDisk), "op.busy", Severity::Error));
+    CHECK(hasCode(validatePlan(mq, onDisk), "op.bitlocker_unknown", Severity::Error));
+    onDisk.state[1].mounted = false;
+    onDisk.state[1].containsWindows = true;
+    CHECK(hasCode(validatePlan(mq, onDisk), "op.system_critical", Severity::Error));
+
     // Unknown BitLocker state of a mounted NTFS volume on a physical disk: a warning.
     OperationQueue fq = queueFor(mbr);
     Operation fmt = onTarget(OpType::Format, 1);

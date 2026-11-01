@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Copyright (C) 2026 The WParted contributors
 //
-// NTFS on image files: used space and resizing without moving data. Written
+// NTFS on image files and virtual disks: used space and resizing. Written
 // from the NTFS on-disk documentation of the Linux-NTFS project; verified in
 // CI with ntfs-3g (ntfsresize --check, ntfsinfo).
 //

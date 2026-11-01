@@ -376,8 +376,8 @@ FsDetection detectFilesystem(BlockReader& reader) {
 
 const FsCapabilities& capabilitiesFor(FsType t) {
     // What this build can do on disk *image files* (core/src/executor.cpp,
-    // fs_tools.cpp). Physical disks are never written; validation refuses
-    // execution on them (execution.unavailable). Move/copy are raw block
+    // fs_tools.cpp), and through the helper on attached virtual disks. Real
+    // disks stay locked (disk_write_gate.hpp). Move/copy are raw block
     // operations of the same size ("Limited"); copies are not offered where a
     // duplicate identity confuses the system (LUKS, LVM, RAID, ZFS, ...).
     using S = Support;

@@ -9,6 +9,7 @@
 #include <initializer_list>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -96,6 +97,8 @@ private:
     void onRescueDone(LPARAM lp);
     void startImageApply(bool resume = false);
     void offerResume(const std::wstring& path);
+    void checkDiskJournal();
+    std::set<std::wstring> journalAsked_;
     void onImageApplyProgress(WPARAM op, LPARAM percent);
     void onImageApplyDone(LPARAM lp);
     void reloadImage(const std::wstring& path);

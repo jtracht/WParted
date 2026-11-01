@@ -1058,6 +1058,13 @@ void MainWindow::reloadImage(const std::wstring& path) {
     }
 }
 
+// A writable disk with an interrupted execution: ask once per run of WParted.
+void MainWindow::checkDiskJournal() {
+    const win::PhysicalDisk* d = currentDisk();
+    if (!isWritableDisk(d) || applying_ || !journalExists(win::journalPathForDisk(*d)) || !journalAsked_.insert(d->path).second) return;
+    offerResume(d->path);
+}
+
 void MainWindow::startRescue() {
     const win::PhysicalDisk* d = currentDisk();
     if (!d || rescuing_) return;
@@ -1226,7 +1233,10 @@ void MainWindow::openImage(const std::wstring& path) {
 // An image with an execution journal was interrupted (crash, power loss or
 // cancel during a move): offer to continue it, or to discard the journal.
 void MainWindow::offerResume(const std::wstring& path) {
-    const std::string journalPath = journalPathFor(win::narrow(path));
+    const win::PhysicalDisk* current = currentDisk();
+    const bool onDisk = isDevicePath(win::narrow(path));
+    if (onDisk && (!current || current->path != path)) return;
+    const std::string journalPath = onDisk ? win::journalPathForDisk(*current) : journalPathFor(win::narrow(path));
     if (!journalExists(journalPath)) return;
     JournalState s;
     std::string err;

@@ -490,7 +490,7 @@ int cmdFsSupport(bool json) {
                     actions.empty() ? "-" : actions.c_str());
     }
     std::printf("\n* with limitations (moves and copies are raw and keep the size; see the user guide).\n"
-                "Physical disks are never written by this version.\n");
+                "This table shows image files; attached virtual disks work the same through the helper. Real disks stay locked.\n");
     return 0;
 }
 

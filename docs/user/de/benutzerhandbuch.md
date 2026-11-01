@@ -5,11 +5,12 @@
 
 WParted ist ein freier Open-Source-Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Er zeigt
 Datenträger, Partitionstabellen, Dateisysteme und Volumes, plant Änderungen für jeden Datenträger und
-**führt Pläne nur auf Image-Dateien aus**. **Physische Datenträger werden nur gelesen, nie beschrieben.**
+**führt Pläne auf Image-Dateien und angehängten virtuellen Datenträgern (VHD/VHDX) aus**. **Echte Datenträger
+bleiben vorerst gesperrt**, und der Datenträger des laufenden Windows wird nie beschrieben.
 
 ## Installation und erster Start
 
-1. Laden Sie `WParted-v<Version>-win7plus-x64-portable.zip` (bzw. `-x86` für 32-Bit-Windows) von der
+1. Laden Sie `WParted-v<Version>-win11-x64-portable.zip` (bzw. `-x86` für 32-Bit-Windows) von der
    GitHub-Release-Seite herunter und prüfen Sie die SHA-256-Prüfsumme aus `…-checksums.sha256`.
 2. Entpacken Sie das ZIP in einen beliebigen Ordner. Keine Installation und keine Laufzeitumgebung nötig.
 3. Starten Sie `wparted.exe`.
@@ -84,8 +85,14 @@ Auf Images möglich:
 Außerdem: neue Partitionstabellen, neue oder gelöschte Partitionen, Flags und Namen. Verschieben und
 Kopieren arbeiten blockweise bei gleicher Größe; eine Kopie in eine größere FAT-Partition wird
 vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, bevor etwas geschrieben
-wird – ebenso das Verkleinern von NTFS mit Daten hinter dem neuen Ende und Dateisysteme mit Fehlern.
-Physische Datenträger beschreibt diese Version nie.
+wird – ebenso Verkleinerungen, in die die Daten nicht passen, und Dateisysteme mit Fehlern. Beim Verkleinern
+werden Daten hinter dem neuen Ende verschoben; ein ext-Inode dahinter oder ein ext-Extent ohne genug
+zusammenhängenden freien Platz bricht vor jeder Änderung ab. Echte Datenträger bleiben in diesem Build gesperrt.
+
+**Virtuelle Datenträger.** Hängen Sie eine VHD/VHDX in Windows an, starten Sie WParted als Administrator neu,
+damit es die Tabelle lesen kann, und planen Sie wie gewohnt. *Anwenden* fragt nach Administratorrechten (UAC),
+sperrt und hängt alle Volumes dieses Datenträgers aus und arbeitet dann wie auf einer Image-Datei.
+**Einbinden** und **Aushängen** im Menü *Partition* wirken sofort.
 
 ¹ Mit ntfs-3g geprüft; chkdsk von Windows hat es noch nicht geprüft und ergänzt ggf. `$Secure`, `$Extend`
 und die Großbuchstabentabelle. ² Von WParted erstellte exFAT-Volumes lassen Platz zum Wachsen.
@@ -159,8 +166,7 @@ Für Partitionstabellen aus einer Administrator-Eingabeaufforderung starten.
 **Kann WParted Partitionen verkleinern oder löschen?** Auf Image-Dateien ja. Auf physischen Datenträgern
 plant und prüft es, führt aber nicht aus: Dafür fehlen ein Helfer mit Adminrechten und ein menschliches
 Sicherheitsreview.
-**Unterstützt WParted Windows 7?** Windows 7 SP1 ist Build-Ziel, wurde aber noch nicht auf einem echten
-Windows-7-System geprüft.
+**Welche Windows-Version unterstützt WParted?** Windows 11. Windows 7–10 werden nicht mehr unterstützt.
 **Kann WParted Linux-Partitionen lesen?** Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM u. a. und zeigt
 Bezeichnungen. Auf Image-Dateien kann es ext2/3/4 ändern sowie Bezeichnung und UUID von XFS, btrfs und Swap.
 **Gehört WParted zu GParted?** Nein. WParted folgt dem GParted-Bedienkonzept, ist aber ein unabhängiges Projekt.

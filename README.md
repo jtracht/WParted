@@ -1,15 +1,16 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # WParted – Windows Partition Editor
 
-**WParted** is a free, open-source, native partition manager for Microsoft Windows (target: Windows 7 SP1
+**WParted** is a free, open-source, native partition manager for Microsoft Windows (target: Windows 11; older: Windows 7 SP1
 to Windows 11). Its long-term goal is functional parity with [GParted](https://gparted.org) where this is
 technically safe on Windows, with a familiar layout, a modern Windows UI and strict data-safety rules.
 
-> **Status: v0.5.0-alpha (pre-release).** WParted shows disks, partition tables, file systems and
-> volumes, plans changes GParted-style for every disk and **executes plans on disk image files only**:
-> partitions, FAT/exFAT/NTFS/ext2-4 file systems, data rescue, resuming after an interruption, and a
-> prototype of the separate execution process (helper).
-> **Physical disks are never written** by this version (see [Roadmap](ROADMAP.md)).
+> **Status: alpha (pre-release).** WParted shows disks, partition tables, file systems and volumes,
+> plans changes GParted-style for every disk and **executes plans on disk image files and attached
+> virtual disks (VHD/VHDX)**: partitions, FAT/exFAT/NTFS/ext2-4 file systems including moving data when
+> shrinking, data rescue, resuming after an interruption.
+> **Real disks stay locked** until the human security review is done; the disk of the running Windows
+> is never written (see [project status](docs/PROJECT-STATUS.md)).
 
 WParted is an independent project. It is not affiliated with or endorsed by the GParted or GNOME projects.
 
@@ -38,7 +39,7 @@ What is finished and what is not: [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.m
 ## Compatibility
 
 See [docs/compatibility/windows-support-matrix.md](docs/compatibility/windows-support-matrix.md). Only
-Windows 11 x64 has been run so far (x86 builds on x64 too); Windows 7–10 and ARM64 are build targets that have not been run.
+Windows 11 is the only target (Windows 7–10 were dropped on 2026-11-01). x64 has been run; x86 runs on x64; ARM64 is built but has not been run.
 
 ## Installation
 
@@ -75,7 +76,7 @@ Details: [docs/developer/building.md](docs/developer/building.md).
 
 WParted ist ein freier, nativer Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Die
 aktuelle Alpha zeigt Datenträger, Partitionstabellen (GPT/MBR), Dateisysteme und Volumes, plant Änderungen
-und **führt sie nur auf Image-Dateien aus; physische Datenträger werden nie beschrieben**. Fehler und Wünsche bitte auf
+und **führt sie auf Image-Dateien und angehängten virtuellen Datenträgern aus; echte Datenträger bleiben bis zum Sicherheitsreview gesperrt**. Fehler und Wünsche bitte auf
 [Gitea](https://git.tracht-digital.de/jtracht/WParted-PM/issues) melden (Projektverwaltung); Code und Releases liegen auf [GitHub](https://github.com/jtracht/WParted).
 
 ## License

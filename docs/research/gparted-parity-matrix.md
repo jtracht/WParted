@@ -4,8 +4,8 @@
 Binding scope definition for WParted. Every GParted function verified in
 `gparted-feature-inventory.md` has a row. Status values: `Done` (implemented and tested in the
 stated environment), `Implemented` (code + automated tests, platform verification pending),
-`Images` (executed and verified on disk image files; planned and validated, not executed, on physical
-disks), `In progress`, `Planned`, `Offline only` (planned for the recovery environment), `Won't do` (with reason).
+`Images` (executed and verified on disk image files; also on attached virtual disks through the helper,
+checked by hand; real disks stay locked), `In progress`, `Planned`, `Offline only` (planned for the recovery environment), `Won't do` (with reason).
 
 Issue keys (`WP-nnn`) appear in the title of the matching Gitea issue (project management) at
 https://git.tracht-digital.de/jtracht/WParted-PM/issues. Risk: L/M/H/C = Low/Medium/High/Critical.
@@ -69,10 +69,10 @@ Last updated: 2026-11-01 (v0.5.0-alpha).
 
 | ID | FS | GParted actions | Windows strategy | Risk | Prio | Status (this build) | Issue | Release |
 |---|---|---|---|---|---|---|---|---|
-| F-100 | ntfs | all | Native: format (VDS/Storage API), shrink/extend (FSCTL), check (chkdsk API), label | C | P0 | Images: create (simplified), grow, shrink (free tail), check (read-only), label, UUID, move, copy | WP-040 | 0.4.0 |
+| F-100 | ntfs | all | Native: format (VDS/Storage API), shrink/extend (FSCTL), check (chkdsk API), label | C | P0 | Images: create (simplified), grow, shrink (moves data), check (read-only), label, UUID, move, copy | WP-040 | 0.4.0 |
 | F-101 | fat16/fat32 | all (resize via libparted) | Native format/label/check; resize needs own implementation or offline | H | P0 | Images: create, grow, shrink, check (read-only), label, serial, move, copy | WP-040 | 0.4.0 |
-| F-102 | exfat | create, check, label, uuid, move, copy | Native format/label/check | H | P1 | Images: create, grow, shrink (free tail), label, serial, move, copy | WP-040 | 0.4.0 |
-| F-103 | ext2/3/4 | all | Offline (e2fsprogs); detection + label/UUID read native | H | P1 | Images: create (no metadata checksums), grow, shrink (free tail), check (read-only), label, UUID, move, copy | WP-060 | 0.6.0 |
+| F-102 | exfat | create, check, label, uuid, move, copy | Native format/label/check | H | P1 | Images: create, grow, shrink (moves data), label, serial, move, copy | WP-040 | 0.4.0 |
+| F-103 | ext2/3/4 | all | Offline (e2fsprogs); detection + label/UUID read native | H | P1 | Images: create (no metadata checksums), grow, shrink (moves data; not inodes), check (read-only), label, UUID, move, copy | WP-060 | 0.6.0 |
 | F-104 | btrfs | all | Offline | H | P2 | Images: label, UUID, move, copy | WP-060 | 0.6.0 |
 | F-105 | xfs | create, grow, check, label, uuid, copy | Offline | H | P2 | Images: label, UUID, move, copy | WP-060 | 0.6.0 |
 | F-106 | f2fs, jfs, reiserfs, reiser4, nilfs2, minix | per inventory | Offline | H | P3 | Detect: Experimental | WP-060 | 0.6.0 |

@@ -5,11 +5,12 @@
 
 WParted is a free, open-source partition manager for Windows with a GParted-style workflow. It shows
 your disks, partition tables, file systems and volumes, plans changes for every disk, and **executes
-plans on disk image files only**. **Physical disks are only read, never written.**
+plans on disk image files and attached virtual disks (VHD/VHDX)**. **Real disks stay locked for now**, and
+the disk of the running Windows is never written.
 
 ## Installation and first start
 
-1. Download `WParted-v<version>-win7plus-x64-portable.zip` (or `-x86` for 32-bit Windows) from the
+1. Download `WParted-v<version>-win11-x64-portable.zip` (or `-x86` for 32-bit Windows) from the
    GitHub releases page and verify the SHA-256 checksum from `…-checksums.sha256`.
 2. Extract the ZIP to any folder. No installation or runtime is required.
 3. Run `wparted.exe`.
@@ -81,8 +82,13 @@ Possible on images:
 Also: new partition tables, new or deleted partitions, flags and names. Moves and copies are raw block
 operations of the same size; a copy into a larger FAT partition grows the copied file system. Plans
 with steps WParted cannot do are refused before anything is written, as are shrinks of NTFS volumes
-with data behind the new end and file systems with errors. Physical disks are never written by this
-version.
+that do not fit and file systems with errors. Shrinking moves data from behind the new end; an ext inode
+behind it, or an ext extent without enough connected free space, stops the shrink before anything changes.
+Real disks stay locked in this build.
+
+**Virtual disks.** Attach a VHD/VHDX in Windows, restart WParted as administrator so it can read the table,
+and plan as usual. *Apply* asks for administrator rights (UAC), locks and dismounts all volumes of that
+disk, and works like on an image file. **Mount** and **Unmount** in the *Partition* menu act at once.
 
 ¹ Verified with ntfs-3g; Windows' chkdsk has not checked it yet and may complete `$Secure`, `$Extend`
 and the up-case table. ² exFAT volumes WParted creates leave room to grow.
@@ -154,8 +160,7 @@ table has errors.
 **Is WParted free?** Yes, GPL-2.0-or-later.
 **Can WParted resize or delete partitions?** On disk image files, yes. On physical disks it plans and
 validates, but does not execute: that needs an elevated helper and a human security review first.
-**Does WParted support Windows 7?** Windows 7 SP1 is a build target; it has not yet been verified on a
-real Windows 7 system.
+**Which Windows does WParted support?** Windows 11. Windows 7–10 are no longer supported.
 **Can WParted read Linux partitions?** It detects ext2/3/4, btrfs, XFS, swap, LUKS, LVM and more, and
 shows their labels. On image files it can change ext2/3/4 and the labels and UUIDs of XFS, btrfs and swap.
 **Is it related to GParted?** No. WParted follows GParted's workflow but is an independent project.

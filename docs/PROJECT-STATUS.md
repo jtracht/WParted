@@ -1,30 +1,37 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Project status
 
-State of WParted as of v0.5.0-alpha (2026-11-01). The percentage in `status/progress.json` counts work
-packages; it says nothing about GParted parity on real disks.
+State of the `main` branch on 2026-11-01. Windows 11 is the only target. The percentage in
+`status/progress.json` counts work packages; it says nothing about GParted parity on real disks.
 
-## Finished and released
+## Finished
 
 - **Read:** disks, GPT/MBR, 31 file-system signatures, volumes; checked with administrator rights on real
-  hardware (read-only) against Windows' own view.
+  hardware against Windows' own view.
 - **Plan:** every GParted-style operation, future layout, undo, validation, plan files.
-- **Execute on disk image files** (raw and fixed-size VHD), through a separate helper process: tables,
-  partitions, moves, copies, FAT, exFAT, NTFS, ext2/3/4 as listed in the user guide; resume after an
-  interruption; recreating lost partitions. Results are checked in CI with independent tools.
-- **Project:** CI and releases on GitHub, documentation in English and German, SBOM and checksums.
+- **Execute on disk image files** (raw, fixed-size VHD) through the helper: tables, partitions, moves, copies,
+  FAT, exFAT, NTFS, ext2/3/4 including moving data when shrinking; resume; recreating lost partitions. Results
+  are checked in CI with independent tools.
+
+## Built, not yet checked by a person
+
+| What | Check |
+|---|---|
+| Writing to attached virtual disks (UAC, volume locks) | `docs/verification/WParted-Pruefcheckliste.pdf`; no agent runs these writes |
+| Mount and unmount | same |
+| High contrast | same |
+| `chkdsk` on NTFS that WParted created, shrank or moved | same |
 
 ## Not finished
 
 | What | Why it is open | What it needs |
 |---|---|---|
-| **Writing to physical disks** | Deliberately not implemented; the most dangerous path of a partition manager | Elevated helper (UAC), VHDX gate on attached disks, **human security review** (ADR-0002) |
-| Recovery/offline mode (WP-070) | Concept only (ADR-0003) | Building and testing a recovery medium; needed to change the running Windows |
-| Mount/unmount (WP-044) | Changes the live system, so it belongs to the physical write path | As above |
-| Windows 7–10, ARM64 runtime (WP-015) | Only build targets; never run | VMs or devices |
-| High-contrast mode (WP-017) | Implemented, not checked visually | A short manual check |
-| BitLocker states (WP-071) | Only "not encrypted" observed | Test machine with BitLocker |
+| **Writing to real disks** | Locked by a build option (`WPARTED_ENABLE_REAL_DISK_WRITES`) | The checklist passed, a **human security review**, then a build with the option |
+| Recovery medium (WP-070) | Script exists, never run | Windows ADK, a test machine; needs real disks unlocked to be useful |
+| ARM64 runtime (WP-015) | Built, never run | An ARM64 device |
+| BitLocker states (WP-071) | Only "not encrypted" observed | A test machine with BitLocker |
 | Code signing (WP-009) | Binaries are unsigned | A certificate |
-| File systems | No data relocation when shrinking NTFS/exFAT/ext; NTFS repair; XFS/btrfs resize; other GParted file systems; Windows' chkdsk has not checked NTFS created by WParted | Further development, chkdsk run |
+| ext shrink | Inodes behind the new end are not moved; an extent needs connected free space | Further development |
+| Other file systems | NTFS repair, XFS/btrfs resize, the remaining GParted file systems | Further development |
 
 Open work is tracked in https://git.tracht-digital.de/jtracht/WParted-PM/issues.
