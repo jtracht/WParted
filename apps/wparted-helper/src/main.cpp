@@ -63,7 +63,9 @@ int run(const std::wstring& pipeName) {
     if (m.protocol != helper::kProtocol) return finish(pipe, "failed", "protocol version mismatch");
 
     helper::Message plan;
-    if (!receive(pipe, plan, kTimeout, err) || plan.type != helper::Type::Plan) return finish(pipe, "failed", "expected plan: " + err);
+    if (!receive(pipe, plan, kTimeout, err) || (plan.type != helper::Type::Plan && plan.type != helper::Type::Resume))
+        return finish(pipe, "failed", "expected plan or resume: " + err);
+    const bool resume = plan.type == helper::Type::Resume;
     if (plan.image.empty() || isDevicePath(plan.image))
         return finish(pipe, "failed", "execution.unavailable: this helper executes on disk image files only");
     if (plan.sectorSize != 512 && plan.sectorSize != 4096) return finish(pipe, "failed", "unsupported sector size");
@@ -73,7 +75,14 @@ int run(const std::wstring& pipeName) {
     verdict.type = helper::Type::Validation;
     verdict.planHash = helper::sha256Hex(plan.plan);
     OperationQueue q;
-    {
+    if (resume) {
+        // resumePlanOnImage checks the image against the journal before it writes.
+        JournalState journal;
+        if (!readJournal(journalPathFor(plan.image), journal, err)) return finish(pipe, "failed", err);
+        verdict.planHash = helper::sha256Hex(journal.planJson);
+        verdict.ok = journal.resumable();
+        if (!verdict.ok) verdict.diagnostics.emplace_back(Severity::Error, "journal.not_resumable", "the interrupted step cannot be resumed");
+    } else {
         FileBlockReader r;
         if (!r.open(plan.image, plan.sectorSize)) return finish(pipe, "failed", "the image file cannot be read");
         const DiskLayout now = parseDiskLayout(r, true);
@@ -115,7 +124,7 @@ int run(const std::wstring& pipeName) {
             if (receive(pipe, c, 1000, e) && c.type == helper::Type::Cancel) cancel = true;
         }
     };
-    const ExecuteResult res = executePlanOnImage(dev, q, plan.image, opt);
+    const ExecuteResult res = resume ? resumePlanOnImage(dev, plan.image, opt) : executePlanOnImage(dev, q, plan.image, opt);
     helper::Message log;
     log.type = helper::Type::Log;
     log.log = logToJson(res.log);

@@ -19,7 +19,7 @@ TEST("helper protocol: SHA-256 matches the FIPS 180-4 test vectors") {
 }
 
 TEST("helper protocol: every message type survives encode and decode") {
-    for (Type t : {Type::Hello, Type::Plan, Type::Validation, Type::Confirm, Type::Progress, Type::Cancel, Type::Log, Type::Done}) {
+    for (Type t : {Type::Hello, Type::Plan, Type::Resume, Type::Validation, Type::Confirm, Type::Progress, Type::Cancel, Type::Log, Type::Done}) {
         Message m;
         m.type = t;
         m.protocol = kProtocol;

@@ -12,8 +12,10 @@ namespace wparted::win {
 
 bool helperAvailable() { return GetFileAttributesW((ownDirectory() + L"wparted-helper.exe").c_str()) != INVALID_FILE_ATTRIBUTES; }
 
-HelperRun applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
-                         const HelperCallbacks& cb) {
+namespace {
+
+HelperRun runHelper(helper::Type request, const std::string& image, const std::string& planText, std::uint32_t sectorSize,
+                    const HelperCallbacks& cb) {
     HelperRun run;
     const std::wstring helperPath = ownDirectory() + L"wparted-helper.exe";
     const std::wstring pipeName = randomPipeName();
@@ -51,7 +53,7 @@ HelperRun applyViaHelper(const std::string& image, const std::string& planText, 
     run.started = true;
     run.helperVersion = m.version;
     helper::Message plan;
-    plan.type = helper::Type::Plan;
+    plan.type = request;
     plan.plan = planText;
     plan.image = image;
     plan.sectorSize = sectorSize;
@@ -112,6 +114,18 @@ HelperRun applyViaHelper(const std::string& image, const std::string& planText, 
     }
     if (run.result.empty() && run.error.empty()) run.error = "the helper stopped without a result: " + err;
     return finish();
+}
+
+}  // namespace
+
+HelperRun applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
+                         const HelperCallbacks& cb) {
+    return runHelper(helper::Type::Plan, image, planText, sectorSize, cb);
+}
+
+HelperRun resumeViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
+                          const HelperCallbacks& cb) {
+    return runHelper(helper::Type::Resume, image, planText, sectorSize, cb);
 }
 
 }  // namespace wparted::win

@@ -949,7 +949,7 @@ void MainWindow::showAbout() {
     cfg.pszWindowTitle = tr(S::AboutTitle);
     cfg.pszMainInstruction = head.c_str();
     cfg.pszContent = tr(S::AboutText);
-    cfg.pszFooter = L"<a href=\"https://git.tracht-digital.de/jtracht/WParted\">git.tracht-digital.de/jtracht/WParted</a>";
+    cfg.pszFooter = L"<a href=\"https://github.com/jtracht/WParted\">github.com/jtracht/WParted</a>";
     cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     cfg.pfCallback = aboutDialogCallback;
     TaskDialogIndirect(&cfg, nullptr, nullptr, nullptr);
@@ -1003,8 +1003,8 @@ void MainWindow::openLogFolder() {
 
 void MainWindow::openHelp() {
     const bool german = PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_GERMAN;
-    const wchar_t* url = german ? L"https://git.tracht-digital.de/jtracht/WParted/src/branch/main/docs/user/de/benutzerhandbuch.md"
-                                : L"https://git.tracht-digital.de/jtracht/WParted/src/branch/main/docs/user/en/user-guide.md";
+    const wchar_t* url = german ? L"https://github.com/jtracht/WParted/blob/main/docs/user/de/benutzerhandbuch.md"
+                                : L"https://github.com/jtracht/WParted/blob/main/docs/user/en/user-guide.md";
     ShellExecuteW(hwnd_, L"open", url, nullptr, nullptr, SW_SHOWNORMAL);
 }
 

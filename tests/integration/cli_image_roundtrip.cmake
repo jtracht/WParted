@@ -135,5 +135,20 @@ execute_process(COMMAND ${EMULATOR} "${CLI}" inspect-image "${HIMG}" --json RESU
 if(NOT out MATCHES "\"label\": *\"WPFAT\"")
     message(FATAL_ERROR "the helper did not create the FAT32 partition: ${out}")
 endif()
+file(REMOVE "${HIMG}" "${HPLAN}" "${HIMG}.wparted-journal")
+
+# An execution killed in the middle of a move, continued through the helper.
+execute_process(COMMAND ${EMULATOR} "${MAKE_IMAGE}" "${HIMG}" --demo RESULT_VARIABLE rc)
+execute_process(COMMAND ${EMULATOR} "${IMAGE_TOOL}" plan "${HIMG}" gpt-demo "${HPLAN}" RESULT_VARIABLE rc2)
+execute_process(COMMAND ${EMULATOR} "${IMAGE_TOOL}" apply "${HIMG}" "${HPLAN}" --journal --chunk 1048576 --crash-after-chunks 5
+    RESULT_VARIABLE rc3 OUTPUT_QUIET ERROR_QUIET)
+if(NOT rc EQUAL 0 OR NOT rc2 EQUAL 0 OR NOT rc3 EQUAL 75 OR NOT EXISTS "${HIMG}.wparted-journal")
+    message(FATAL_ERROR "the interrupted execution could not be prepared (${rc} ${rc2} ${rc3})")
+endif()
+execute_process(COMMAND ${EMULATOR} "${CLI}" resume "${HIMG}" --execute --helper
+    RESULT_VARIABLE rc OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT rc EQUAL 0 OR NOT out MATCHES "by the helper and verified" OR EXISTS "${HIMG}.wparted-journal")
+    message(FATAL_ERROR "resume --helper failed (${rc}): ${out} ${err}")
+endif()
 file(REMOVE "${HIMG}" "${HPLAN}")
 message(STATUS "cli_image_roundtrip OK")

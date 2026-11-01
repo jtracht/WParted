@@ -20,15 +20,15 @@ namespace wparted::helper {
 constexpr int kProtocol = 1;
 constexpr std::size_t kMaxMessage = 1024 * 1024;
 
-enum class Type { Hello, Plan, Validation, Confirm, Progress, Cancel, Log, Done };
+enum class Type { Hello, Plan, Resume, Validation, Confirm, Progress, Cancel, Log, Done };
 
 struct Message {
     Type type = Type::Hello;
     int protocol = 0;               // hello
     std::string version;            // hello
     std::string plan;               // plan: the plan text (schema wparted-plan v1)
-    std::string image;              // plan: target image file (the prototype executes on image files only)
-    std::uint32_t sectorSize = 512; // plan
+    std::string image;              // plan, resume: target image file (the prototype executes on image files only)
+    std::uint32_t sectorSize = 512; // plan, resume
     bool ok = false;                // validation
     std::vector<Diagnostic> diagnostics;  // validation
     std::string planHash;           // validation, confirm: SHA-256 (hex) of `plan`

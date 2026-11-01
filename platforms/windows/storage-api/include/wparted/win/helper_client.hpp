@@ -37,5 +37,9 @@ bool helperAvailable();  // wparted-helper.exe exists next to the running execut
 
 HelperRun applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
                          const HelperCallbacks& callbacks = {});
+// Continues the execution recorded in the image's journal; `planText` is the
+// plan stored there, which the helper must have read as well.
+HelperRun resumeViaHelper(const std::string& image, const std::string& planText, std::uint32_t sectorSize,
+                          const HelperCallbacks& callbacks = {});
 
 }  // namespace wparted::win

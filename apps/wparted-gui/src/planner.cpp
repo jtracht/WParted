@@ -907,13 +907,14 @@ void MainWindow::startImageApply(bool resume) {
     const std::uint32_t ss = d->logicalSectorSize;
     HWND target = hwnd_;
     log::info("Applying " + std::to_string(applyTotal_) + " operation(s) to image file " + win::narrow(path));
-    applyWorker_ = std::thread([plan, path, name, ss, target, resume] {
+    const std::string journalPlan = journal.planJson;
+    applyWorker_ = std::thread([plan, path, name, ss, target, resume, journalPlan] {
         auto* r = new ImageApplyResult;
         r->path = path;
         r->name = name;
         ImageFileDevice dev;
         std::string err;
-        if (!resume && win::helperAvailable()) {
+        if (win::helperAvailable()) {
             // ADR-0002: wparted-helper.exe validates and executes; the GUI does not write.
             win::HelperCallbacks cb;
             int lastPct = -1;
@@ -923,7 +924,8 @@ void MainWindow::startImageApply(bool resume) {
                 lastPct = pct;
                 PostMessageW(target, WM_APP + 52, static_cast<WPARAM>(op), static_cast<LPARAM>(pct));
             };
-            const win::HelperRun run = win::applyViaHelper(win::narrow(path), plan.toJson(), ss, cb);
+            const win::HelperRun run = resume ? win::resumeViaHelper(win::narrow(path), journalPlan, ss, cb)
+                                              : win::applyViaHelper(win::narrow(path), plan.toJson(), ss, cb);
             log::info("Helper run: " + (run.result.empty() ? std::string("no result") : run.result) +
                       (run.error.empty() ? "" : " - " + run.error));
             if (!run.logJson.empty()) logFromJson(run.logJson, r->result.log);

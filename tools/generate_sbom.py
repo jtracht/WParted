@@ -49,7 +49,7 @@ def main() -> int:
                 "name": "WParted",
                 "version": version,
                 "licenses": [{"license": {"id": "GPL-2.0-or-later"}}],
-                "externalReferences": [{"type": "vcs", "url": "https://git.tracht-digital.de/jtracht/WParted"}],
+                "externalReferences": [{"type": "vcs", "url": "https://github.com/jtracht/WParted"}],
             },
         },
         "components": [

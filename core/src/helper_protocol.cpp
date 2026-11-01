@@ -12,7 +12,7 @@
 namespace wparted::helper {
 namespace {
 
-const std::pair<Type, const char*> kTypes[] = {{Type::Hello, "hello"},       {Type::Plan, "plan"},
+const std::pair<Type, const char*> kTypes[] = {{Type::Hello, "hello"},       {Type::Plan, "plan"}, {Type::Resume, "resume"},
                                               {Type::Validation, "validation"}, {Type::Confirm, "confirm"},
                                               {Type::Progress, "progress"}, {Type::Cancel, "cancel"},
                                               {Type::Log, "log"},           {Type::Done, "done"}};
@@ -22,6 +22,7 @@ std::set<std::string> fieldsOf(Type t) {
     switch (t) {
         case Type::Hello: return {"protocol", "version"};
         case Type::Plan: return {"plan", "image", "sectorSize"};
+        case Type::Resume: return {"image", "sectorSize"};
         case Type::Validation: return {"ok", "diagnostics", "planHash"};
         case Type::Confirm: return {"planHash"};
         case Type::Progress: return {"step", "done", "total"};
@@ -111,6 +112,10 @@ std::string encode(const Message& m) {
             break;
         case Type::Plan:
             w.key("plan").value(m.plan);
+            w.key("image").value(m.image);
+            w.key("sectorSize").value(m.sectorSize);
+            break;
+        case Type::Resume:
             w.key("image").value(m.image);
             w.key("sectorSize").value(m.sectorSize);
             break;

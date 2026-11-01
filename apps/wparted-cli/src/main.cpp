@@ -43,7 +43,7 @@ void usage() {
         "  wparted-cli apply-plan <image> <plan.json> [--sector-size N] [--execute [--helper]] [--log file.html]\n"
         "                                                 Check a saved plan against a disk image file;\n"
         "                                                 with --execute, apply it to that image file\n"
-        "  wparted-cli resume <image> [--execute | --discard] [--log file.html]\n"
+        "  wparted-cli resume <image> [--execute [--helper] | --discard] [--log file.html]\n"
         "                                                 Show an interrupted execution; continue it with\n"
         "                                                 --execute, or delete its journal with --discard\n"
         "  wparted-cli version                            Print version\n\n"
@@ -207,14 +207,14 @@ ExecuteOptions executeOptions(const std::string& journal) {
 
 // Executes through wparted-helper.exe (ADR-0002): the helper validates the
 // plan itself and only executes after a confirmation with the plan's hash.
-int applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t ss) {
+int applyViaHelper(const std::string& image, const std::string& planText, std::uint32_t ss, bool resume = false) {
     win::HelperCallbacks cb;
     cb.progress = [](std::uint64_t step, std::uint64_t done, std::uint64_t total) {
         std::fprintf(stderr, "\r  operation %llu: %3u %%", static_cast<unsigned long long>(step + 1),
                      static_cast<unsigned>(total ? done * 100 / total : 100));
         if (done == total) std::fprintf(stderr, "\n");
     };
-    const win::HelperRun run = win::applyViaHelper(image, planText, ss, cb);
+    const win::HelperRun run = resume ? win::resumeViaHelper(image, planText, ss, cb) : win::applyViaHelper(image, planText, ss, cb);
     if (!run.started) {
         std::fprintf(stderr, "error: %s\n", run.error.c_str());
         return 2;
@@ -309,7 +309,7 @@ int cmdApplyPlan(const std::string& image, const std::string& planPath, std::uin
     return printResult(executePlanOnImage(dev, q, image, executeOptions(journal)), image, logPath);
 }
 
-int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool discard, const std::string& logPath) {
+int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool discard, const std::string& logPath, bool viaHelper) {
     if (isDevicePath(image)) {
         std::fprintf(stderr, "error: resume works on disk image files only; '%s' is a device\n", image.c_str());
         return 2;
@@ -348,6 +348,7 @@ int cmdResume(const std::string& image, std::uint32_t ss, bool execute, bool dis
         std::printf("It can be resumed: run again with --execute to continue, or --discard to delete the journal.\n");
         return 0;
     }
+    if (viaHelper) return applyViaHelper(image, s.planJson, ss, true);
     ImageFileDevice dev;
     if (!dev.open(image, ss, err)) {
         std::fprintf(stderr, "error: %s\n", err.c_str());
@@ -480,7 +481,7 @@ int wmain(int argc, wchar_t** argv) {
             if (args[i] == "--sector-size") ss = static_cast<std::uint32_t>(std::strtoul(args[i + 1].c_str(), nullptr, 10));
             if (args[i] == "--log") logPath = args[i + 1];
         }
-        return cmdResume(args[1], ss, has("--execute"), has("--discard"), logPath);
+        return cmdResume(args[1], ss, has("--execute"), has("--discard"), logPath, has("--helper"));
     }
     if (args[0] == "inspect-image") {
         if (args.size() < 2) {
