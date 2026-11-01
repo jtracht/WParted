@@ -12,7 +12,8 @@ sync (`Tracht-Digital-Solutions/tds-ops`, `scripts/sync-repos.mjs`) for public r
 
 ## 1. CI - GitHub Actions
 
-`.github/workflows/ci.yml` runs on GitHub-hosted Ubuntu runners (`ubuntu-latest`); the jobs are the
+`.github/workflows/ci.yml` runs on GitHub-hosted runners pinned to `ubuntu-24.04` (on Ubuntu 26.04 Wine runs
+in WoW64 mode and refuses the `WINEARCH=win32` prefix of the x86 job); the jobs are the
 same as on the former Gitea runner:
 
 | Job | What it does |
