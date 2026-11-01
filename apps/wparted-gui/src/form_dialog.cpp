@@ -193,7 +193,7 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_ERASEBKGND: {
             if (!s) break;
-            // Fluent dialog: content on the card layer, buttons in a footer band.
+            // Dialog: content on the card layer, buttons in a footer band.
             RECT rc;
             GetClientRect(h, &rc);
             FillRect(reinterpret_cast<HDC>(wp), &rc, s->bg);

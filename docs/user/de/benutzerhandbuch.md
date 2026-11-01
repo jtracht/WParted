@@ -48,7 +48,7 @@ starten*).
 |---|---|
 | Werkzeugleiste | Aktualisieren sowie die aus GParted bekannten Partitionsaktionen. Noch nicht verfügbare Aktionen sind ausgegraut; der Tooltip erklärt den Grund. |
 | Geräteauswahl | Datenträger wählen. `[Windows]` kennzeichnet den Datenträger mit dem laufenden Windows. |
-| Datenträgergrafik | Jedes Feld ist eine Partition in proportionaler Größe. Randfarbe = Dateisystem, gelbe Füllung = belegter Platz, grau = nicht zugeordnet, schraffiert = unbekannt. ←/→ wechselt, Eingabe zeigt Details. |
+| Datenträgergrafik | Jedes Feld ist eine Partition in proportionaler Größe. Farbe = Dateisystem, kräftig = belegter Platz, heller = freier Platz im Dateisystem, gestreift = nicht zugeordnet, schraffiert = unbekannt. ←/→ wechselt, Eingabe zeigt Details. |
 | Partitionsliste | Partition, Name, Dateisystem, Einhängepunkt, Bezeichnung, Größe, belegt, frei, Flags und Status. Doppelklick/Eingabe zeigt Details, Rechtsklick öffnet das Partitionsmenü. |
 | Detailbereich | Eigenschaften der gewählten Partition bzw. des freien Bereichs und warum eine Aktion nicht verfügbar ist. |
 | Ausstehende Operationen | Die geplanten Änderungen in Reihenfolge mit Risiko und Prüfstatus. |

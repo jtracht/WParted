@@ -4,7 +4,7 @@
 // Disk card: device header (icon, model, key facts, chips) and the graphical
 // disk map with proportional, rounded segments for partitions and free space,
 // nested logical partitions, usage bars, hover and selection. Plain GDI with
-// double buffering so it renders the same on Windows 7 to 11.
+// double buffering so it renders the same on every system.
 #include <windowsx.h>
 #include <oleacc.h>
 

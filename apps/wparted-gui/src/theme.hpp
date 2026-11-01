@@ -61,7 +61,7 @@ COLORREF fsColor(FsType t);
 COLORREF readableOn(COLORREF bg);
 COLORREF blend(COLORREF a, COLORREF b, int percentB);
 
-// DPI helpers that work from Windows 7 (system DPI) to Windows 11 (per monitor).
+// DPI helpers (per monitor).
 UINT dpiForWindow(HWND hwnd);
 inline int scale(int px, UINT dpi) { return MulDiv(px, static_cast<int>(dpi), 96); }
 
@@ -69,7 +69,7 @@ enum class FontRole { Body, BodyStrong, Caption, Section, Subtitle, Title };
 // Segoe UI Variable (Windows 11) or Segoe UI, sized per role.
 HFONT createUiFont(UINT dpi, FontRole role = FontRole::Body);
 inline HFONT createUiFont(UINT dpi, bool bold) { return createUiFont(dpi, bold ? FontRole::BodyStrong : FontRole::Body); }
-// Segoe Fluent Icons / Segoe MDL2 Assets, or nullptr on Windows 7/8 (no icon font).
+// Segoe Fluent Icons / Segoe MDL2 Assets, or nullptr without an icon font.
 HFONT createIconFont(UINT dpi, int sizePx);
 bool hasIconFont();
 

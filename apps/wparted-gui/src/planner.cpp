@@ -431,7 +431,7 @@ void MainWindow::refreshView() {
     } else {
         SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tr(d && !q ? S::ErrNeedsTable : S::PendingNone)));
     }
-    const bool showParti = d && !(q && !q->empty());  // before that the disk card has its own Parti
+    const bool showParti = q && q->empty();  // only when truly nothing is planned, never beside a notice
     if (showParti != partiShown_) {
         partiShown_ = showParti;
         layout();

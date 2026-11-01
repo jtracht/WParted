@@ -47,7 +47,7 @@ between them as **unknown (hatched)**. To read the real partition tables, click
 |---|---|
 | Toolbar | Refresh, and the partition actions known from GParted. Actions that are not available yet are greyed out; hover for an explanation. |
 | Device selector | Choose the disk to display. `[Windows]` marks the disk containing the running Windows. |
-| Disk map | Each box is a partition, sized proportionally. Border colour = file system, yellow fill = used space. Grey = unallocated, hatched = unknown. Use ←/→ to move, Enter for details. |
+| Disk map | Each box is a partition, sized proportionally. Colour = file system, solid = used space, lighter = free space in the file system. Striped = unallocated, hatched = unknown. Use ←/→ to move, Enter for details. |
 | Partition list | Partition, name, file system, mount point, label, size, used, unused, flags and status. Double-click or Enter shows details; right-click opens the partition menu. |
 | Details pane | Properties of the selected partition or free space, and why an action is not available. |
 | Pending operations | The planned changes in order, with risk and validation status. |

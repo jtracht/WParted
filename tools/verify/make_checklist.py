@@ -137,6 +137,10 @@ Get-FileHash T:\probe.bin | Format-List Hash'''))
     s.append(checks([
         ("Einstellungen &gt; Barrierefreiheit &gt; Kontrastdesigns: Design aktivieren, WParted ansehen, wieder ausschalten.",
          "Alles lesbar: Datenträgerkarte, Liste, Menüs, Dialoge. Kein Text in Hintergrundfarbe."),
+        ("Neues Design: Einstellungen &gt; Anzeige &gt; Skalierung auf 150 % stellen, WParted neu starten, danach wieder zurückstellen.",
+         "Runde Ecken sauber, nichts abgeschnitten, Parti nicht verpixelt."),
+        ("Neues Design: helles und dunkles Design (Menü <i>Ansicht</i>) ansehen, Partition auswählen, Dialog <i>Neu</i> öffnen und abbrechen.",
+         "Gut lesbar und freundlich; Warnungen bleiben klar erkennbar."),
         ("Windows-Sprache prüfen: Menü <i>Partition</i> zeigt <i>Einbinden</i>/<i>Aushängen</i> auf Deutsch.", "Deutsche Texte, nichts abgeschnitten."),
     ]))
 

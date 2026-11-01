@@ -29,7 +29,7 @@ void openLog() {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
-    // Harden DLL search order (KB2533623 on Windows 7; no-op where unsupported).
+    // Harden DLL search order.
     using SetDefaultDllDirs = BOOL(WINAPI*)(DWORD);
     if (auto fn = reinterpret_cast<SetDefaultDllDirs>(
             reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "SetDefaultDllDirectories"))))

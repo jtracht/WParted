@@ -105,7 +105,7 @@ LRESULT CALLBACK listSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, 
                 line.top = line.bottom - 1;
                 fillRect(cd->hdc, line, p.border);
                 RECT t = cd->rc;
-                InflateRect(&t, -8, 0);
+                InflateRect(&t, -scale(8, dpiForWindow(h)), 0);
                 SetBkMode(cd->hdc, TRANSPARENT);
                 const UINT align = (item.fmt & HDF_RIGHT) ? DT_RIGHT : DT_LEFT;
                 DrawTextW(cd->hdc, text, -1, &t, align | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
@@ -250,7 +250,7 @@ void MainWindow::recreateFonts() {
     for (HWND c : {combo_, list_, pending_, status_, statusRight_, banner_, bannerBtn_}) setFont(c);
     SendMessageW(status_, WM_SETFONT, reinterpret_cast<WPARAM>(captionFont_), TRUE);
     SendMessageW(statusRight_, WM_SETFONT, reinterpret_cast<WPARAM>(captionFont_), TRUE);
-    // The image list only sets a comfortable row height (Fluent list rows are 32-40 px).
+    // The image list only sets a comfortable row height (32-40 px).
     if (fsImages_) ImageList_Destroy(fsImages_);
     fsImages_ = ImageList_Create(1, scale(34, dpi_), ILC_COLOR24, 1, 0);
     if (list_) ListView_SetImageList(list_, fsImages_, LVSIL_SMALL);
@@ -432,7 +432,7 @@ void MainWindow::layout() {
     if (!list_) return;
     RECT rc;
     GetClientRect(hwnd_, &rc);
-    // Fluent spacing: 4 px grid, 16 px page margins, 8/12 px between blocks.
+    // Spacing: 4 px grid, 16 px page margins, 8/12 px between blocks.
     const int pad = scale(16, dpi_), gap = scale(8, dpi_), tight = scale(4, dpi_);
     const int btnH = scale(36, dpi_);
     int x = pad, y = scale(10, dpi_);
@@ -594,7 +594,7 @@ LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
             cd->nmcd.uItemState &= ~static_cast<UINT>(CDIS_SELECTED | CDIS_FOCUS | CDIS_HOT);
             return CDRF_NOTIFYPOSTPAINT | CDRF_NOTIFYSUBITEMDRAW;
         case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
-            // Selection is drawn as a subtle accent tint (Fluent list style)
+            // Selection is drawn as a subtle violet tint
             // instead of the theme's grey/blue highlight.
             const Palette& p = palette(isDark());
             const int item = static_cast<int>(cd->nmcd.dwItemSpec);
@@ -615,12 +615,14 @@ LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
             RECT cell{};
             ListView_GetSubItemRect(list_, item, ColFs, LVIR_BOUNDS, &cell);
             const bool selected = ListView_GetItemState(list_, item, LVIS_SELECTED) != 0;
-            if (selected && !p.highContrast) {
-                // The themes draw their own blue selection whatever the custom draw says,
-                // so the selected row is painted over in the violet tint.
+            const bool hotRow = !selected && ListView_GetHotItem(list_) == item;
+            const COLORREF rowFill = selected ? p.selection : hotRow ? p.subtle : p.card;
+            if ((selected || hotRow) && !p.highContrast) {
+                // The themes draw their own blue selection and hover whatever the custom
+                // draw says, so these rows are painted over in the violet tints.
                 RECT rowRect{};
                 ListView_GetItemRect(list_, item, &rowRect, LVIR_BOUNDS);
-                fillRect(cd->nmcd.hdc, rowRect, p.selection);
+                fillRect(cd->nmcd.hdc, rowRect, rowFill);
                 SetBkMode(cd->nmcd.hdc, TRANSPARENT);
                 HGDIOBJ oldFont = SelectObject(cd->nmcd.hdc, font_);
                 for (int col = 0; col < ColCount; ++col) {
@@ -635,10 +637,10 @@ LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
                     DrawTextW(cd->nmcd.hdc, text, -1, &c, align | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 }
                 SelectObject(cd->nmcd.hdc, oldFont);
-                if (GetFocus() == list_) DrawFocusRect(cd->nmcd.hdc, &rowRect);
+                if (selected && GetFocus() == list_) DrawFocusRect(cd->nmcd.hdc, &rowRect);
             }
             RECT bg = cell;
-            fillRect(cd->nmcd.hdc, bg, selected ? p.selection : p.card);
+            fillRect(cd->nmcd.hdc, bg, p.highContrast ? (selected ? p.selection : p.card) : rowFill);
             std::wstring label;
             COLORREF color = p.unallocated;
             if (row.kind == Segment::Kind::Unallocated) {
@@ -1201,7 +1203,7 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 return TRUE;
             }
             if (di->CtlType == ODT_STATIC && di->hwndItem == banner_) {
-                // Fluent InfoBar (caution): rounded, icon, message.
+                // Info bar (caution): rounded, icon, message.
                 const Palette& p = palette(isDark());
                 fillRect(di->hDC, di->rcItem, p.window);
                 fillRounded(di->hDC, di->rcItem, scale(14, dpi_), p.warning, blend(p.warning, p.caution, 30));

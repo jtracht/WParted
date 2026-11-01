@@ -19,7 +19,7 @@ State of the `main` branch on 2026-11-01, version 0.8.0-beta.1 (beta by maintain
 |---|---|
 | Writing to attached virtual disks (UAC, volume locks) | `docs/verification/WParted-Pruefcheckliste.pdf`; no agent runs these writes |
 | Mount and unmount | same |
-| High contrast | same |
+| High contrast and other display scaling with the new design | same |
 | `chkdsk` on NTFS that WParted created, shrank or moved | same |
 
 ## Not finished

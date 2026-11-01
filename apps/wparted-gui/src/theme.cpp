@@ -19,7 +19,7 @@ template <typename Fn>
 Fn loadProc(const wchar_t* dll, const char* name) {
     HMODULE m = GetModuleHandleW(dll);
     if (!m) {
-        // Full System32 path: LOAD_LIBRARY_SEARCH_SYSTEM32 needs KB2533623 on Windows 7.
+        // Full System32 path, never the search order.
         wchar_t path[MAX_PATH];
         UINT n = GetSystemDirectoryW(path, MAX_PATH);
         if (n == 0 || n + wcslen(dll) + 2 > MAX_PATH) return nullptr;
@@ -85,7 +85,7 @@ bool systemPrefersDark() {
     if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
                      L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &v, &size) == ERROR_SUCCESS)
         return v == 0;
-    return false;  // Windows 7/8 have no app dark mode
+    return false;
 }
 
 void refreshHighContrast() {
