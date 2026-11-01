@@ -100,8 +100,9 @@ Possible on images:
 Also: new partition tables, new or deleted partitions, flags and names. Moves and copies are raw block
 operations of the same size; a copy into a larger FAT partition grows the copied file system. Plans
 with steps WParted cannot do are refused before anything is written, as are shrinks of NTFS volumes
-that do not fit and file systems with errors. Shrinking moves data from behind the new end; an ext inode
-behind it, or an ext extent without enough connected free space, stops the shrink before anything changes.
+that do not fit and file systems with errors. Shrinking moves data from behind the new end. A heavily fragmented `$MFT` or ext extent tree stops the
+shrink before anything changes. btrfs can grow, not shrink; XFS keeps its size. Repairs are left to the file
+system's own tools (`chkdsk`, `e2fsck`).
 Real disks stay locked in this build.
 
 **Virtual disks.** Attach a VHD/VHDX in Windows, restart WParted as administrator so it can read the table,

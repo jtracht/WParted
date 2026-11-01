@@ -307,6 +307,20 @@ mkfs.btrfs -q -f -L old "$img"
 uuid=$("$TOOL" fs "$img" uuid btrfs) && same "btrfs uuid: blkid" "$(blk "$img" UUID)" "$uuid" || bad "btrfs: uuid"
 if btrfs check --readonly "$img" >"$W/br.txt" 2>&1; then pass "btrfs: btrfs check --readonly clean (metadata_uuid)"; else bad "btrfs: btrfs check"; cat "$W/br.txt"; fi
 
+# btrfs grow: the device size in the superblocks and in the chunk tree.
+img=$W/btrfs-grow.img
+truncate -s 256M "$img"
+mkfs.btrfs -q -f -L grow "$img"
+truncate -s 700M "$img"
+"$TOOL" fs "$img" resize btrfs $((700 * 1048576)) && pass "btrfs: grow 256 -> 700 MiB" || bad "btrfs: grow"
+if btrfs check --readonly "$img" >"$W/br.txt" 2>&1; then pass "btrfs grow: btrfs check --readonly clean"; else bad "btrfs grow: check"; cat "$W/br.txt"; fi
+same "btrfs grow: superblock size" "$(btrfs inspect-internal dump-super "$img" | sed -n 's/^total_bytes[[:space:]]*//p')" "$((700 * 1048576))"
+same "btrfs grow: device item size" "$(btrfs inspect-internal dump-super "$img" | sed -n 's/^dev_item.total_bytes[[:space:]]*//p')" "$((700 * 1048576))"
+btrfs inspect-internal dump-tree -t chunk "$img" 2>/dev/null | grep -q "total_bytes $((700 * 1048576))" && pass "btrfs grow: chunk tree size" || bad "btrfs grow: chunk tree size"
+same "btrfs grow: blkid label" "$(blk "$img" LABEL)" "grow"
+set +e; "$TOOL" fs "$img" resize btrfs $((300 * 1048576)) >/dev/null 2>&1; rc=$?; set -e
+[[ $rc != 0 ]] && pass "btrfs: shrink refused" || bad "btrfs: shrink not refused"
+
 # --- Linux swap ----------------------------------------------------------------
 img=$W/swap.img
 truncate -s 16M "$img"

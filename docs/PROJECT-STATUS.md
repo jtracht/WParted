@@ -31,7 +31,10 @@ State of the `main` branch on 2026-11-01, version 0.8.0-beta.1 (beta by maintain
 | ARM64 runtime (WP-015) | Built, never run | An ARM64 device |
 | BitLocker states (WP-071) | Only "not encrypted" observed | A test machine with BitLocker |
 | Code signing (WP-009) | Binaries are unsigned | A certificate |
-| ext shrink | Inodes behind the new end are not moved; an extent needs connected free space | Further development |
-| Other file systems | NTFS repair, XFS/btrfs resize, the remaining GParted file systems | Further development |
+| XFS grow, btrfs shrink | New allocation groups with all their B-tree roots; relocating btrfs chunks. Refused today. | Further development (agent can do it, low priority) |
+| Other GParted file systems | f2fs, jfs, reiser, nilfs2, UDF and others: detection only | Further development (agent can do it, low priority) |
+
+**Decision: no own file-system repair.** A repair written here could destroy data that `chkdsk` or `e2fsck` would
+save, so WParted only checks read-only and points to those tools.
 
 Open work is tracked in https://git.tracht-digital.de/jtracht/WParted-PM/issues.

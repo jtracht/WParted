@@ -11,8 +11,17 @@ versions follow [Semantic Versioning](https://semver.org/).
   locked by a build option until the human security review is done; the disk of the running Windows is
   never written. New CLI forms: `apply-plan \\.\PhysicalDriveN ...`, `resume \\.\PhysicalDriveN ...`.
 - **Mount and unmount** (GUI *Partition* menu, CLI `mount`, `unmount`), not for volumes of the running Windows.
-- **Shrinking moves data** behind the new end on NTFS, exFAT and ext2/3/4. Limits: ext inodes behind the new
-  end are not moved; ext extents move in one piece; a fragmented `$MFT` with an attribute list stops the shrink.
+- **Shrinking moves data** behind the new end on NTFS, exFAT and ext2/3/4, including ext inodes (they get new
+  numbers) and extents split over free areas. Limits: a `$MFT` with an attribute list, an ext extent tree without
+  room for more entries, ext with inline data or EA inodes when inodes must move: these stop the shrink before
+  anything changes.
+- **Growing btrfs** on one device (superblocks and chunk tree). Shrinking btrfs stays refused.
+- Screenshots in the user guides, made from a synthetic image by `tools/verify/make_screenshots.ps1`.
+
+### Fixed
+- ext: a shrink that freed a group descriptor block left an invalid resize inode (e2fsck complained).
+- GUI: with long labels the device list covered the *Undo* button; it now gets its own row. The status bar no
+  longer says that disks are only read.
 - `tools/offline/make-media.ps1` builds a WinPE medium from the user's ADK (not run yet).
 - `docs/verification/WParted-Pruefcheckliste.pdf`, the maintainer's manual check.
 

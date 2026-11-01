@@ -104,8 +104,9 @@ Außerdem: neue Partitionstabellen, neue oder gelöschte Partitionen, Flags und 
 Kopieren arbeiten blockweise bei gleicher Größe; eine Kopie in eine größere FAT-Partition wird
 vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, bevor etwas geschrieben
 wird – ebenso Verkleinerungen, in die die Daten nicht passen, und Dateisysteme mit Fehlern. Beim Verkleinern
-werden Daten hinter dem neuen Ende verschoben; ein ext-Inode dahinter oder ein ext-Extent ohne genug
-zusammenhängenden freien Platz bricht vor jeder Änderung ab. Echte Datenträger bleiben in diesem Build gesperrt.
+werden Daten hinter dem neuen Ende verschoben. Eine stark fragmentierte `$MFT` oder ein voller ext-Extent-Baum
+bricht vor jeder Änderung ab. btrfs lässt sich vergrößern, nicht verkleinern; XFS behält seine Größe. Reparaturen
+bleiben den Werkzeugen des Dateisystems überlassen (`chkdsk`, `e2fsck`). Echte Datenträger bleiben in diesem Build gesperrt.
 
 **Virtuelle Datenträger.** Hängen Sie eine VHD/VHDX in Windows an, starten Sie WParted als Administrator neu,
 damit es die Tabelle lesen kann, und planen Sie wie gewohnt. *Anwenden* fragt nach Administratorrechten (UAC),

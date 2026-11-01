@@ -1006,6 +1006,125 @@ bool btrfsUpdate(BlockDevice& d, F change, std::string& err) {
     return d.flush() || (err = "flush failed", false);
 }
 
+// Growing btrfs: the new space simply is not allocated yet, so only the device
+// size changes, in the superblocks and in the DEV_ITEM of the chunk tree. The
+// bootstrap chunk array in the superblock says where the chunk tree lies.
+struct BtrfsGrower {
+    BlockDevice& d;
+    std::vector<std::uint8_t> sb;
+    std::uint32_t nodeSize = 0;
+    std::uint64_t devId = 0, newBytes = 0;
+
+    bool physical(std::uint64_t logical, std::vector<std::uint64_t>& out) const {
+        const std::uint32_t size = le32(&sb[0xA0]);
+        for (std::size_t o = 0x32B; o + 17 + 48 <= 0x32B + std::size_t{size};) {
+            const std::uint64_t start = le64(&sb[o + 9]);
+            const std::uint8_t* c = &sb[o + 17];
+            const std::uint64_t length = le64(c);
+            const std::uint32_t stripes = le16(c + 44);
+            if (o + 17 + 48 + std::size_t{stripes} * 32 > 0x32B + std::size_t{size}) return false;
+            if (logical >= start && logical - start < length) {
+                for (std::uint32_t s = 0; s < stripes; ++s) out.push_back(le64(c + 48 + s * 32 + 8) + (logical - start));
+                return !out.empty();
+            }
+            o += 17 + 48 + std::size_t{stripes} * 32;
+        }
+        return false;
+    }
+    bool walk(std::uint64_t logical, int depth, std::string& err) {
+        std::vector<std::uint64_t> where;
+        if (depth > 8 || !physical(logical, where)) {
+            err = "the btrfs chunk tree lies outside the bootstrap chunks";
+            return false;
+        }
+        std::vector<std::uint8_t> n(nodeSize);
+        if (!d.read(where[0], n.data(), n.size()) || le64(&n[0x30]) != logical) {
+            err = "a btrfs chunk tree block cannot be read";
+            return false;
+        }
+        const std::uint32_t items = le32(&n[0x60]);
+        const std::uint8_t level = n[0x64];
+        // The DEV_ITEM key: (1, 216, device id).
+        auto before = [&](const std::uint8_t* k) {  // key <= target
+            const std::uint64_t obj = le64(k), off = le64(k + 9);
+            const std::uint8_t type = k[8];
+            if (obj != 1) return obj < 1;
+            if (type != 216) return type < 216;
+            return off <= devId;
+        };
+        if (level) {
+            std::uint64_t child = 0;
+            for (std::uint32_t i = 0; i < items && 0x65 + (i + 1) * 33ull <= n.size(); ++i) {
+                const std::uint8_t* e = &n[0x65 + i * 33];
+                if (!before(e)) break;
+                child = le64(e + 17);
+            }
+            if (!child) {
+                err = "the btrfs device item was not found";
+                return false;
+            }
+            return walk(child, depth + 1, err);
+        }
+        for (std::uint32_t i = 0; i < items && 0x65 + (i + 1) * 25ull <= n.size(); ++i) {
+            const std::uint8_t* e = &n[0x65 + i * 25];
+            if (le64(e) != 1 || e[8] != 216 || le64(e + 9) != devId) continue;
+            const std::size_t at = 0x65 + std::size_t{le32(e + 17)};
+            if (at + 16 > n.size() || le64(&n[at]) != devId) break;
+            put64le(&n[at + 8], newBytes);
+            std::memset(n.data(), 0, 32);
+            put32(n.data(), ~crc32c(0xFFFFFFFFu, &n[0x20], n.size() - 0x20));
+            for (std::uint64_t w : where)
+                if (!d.write(w, n.data(), n.size())) {
+                    err = "writing the btrfs chunk tree failed";
+                    return false;
+                }
+            return true;
+        }
+        err = "the btrfs device item was not found";
+        return false;
+    }
+};
+
+std::string btrfsGrowProblem(BlockReader& r, std::uint64_t newBytes) {
+    std::vector<std::uint8_t> sb(4096);
+    if (r.size() < 0x10000 + 4096 || !r.read(0x10000, sb.data(), sb.size()) || std::memcmp(&sb[0x40], "_BHRfS_M", 8) != 0) return "no btrfs superblock";
+    if (le16(&sb[0xC4]) != 0) return "only crc32c checksums are supported for btrfs";
+    if (le64(&sb[0x88]) != 1) return "btrfs on several devices is not supported";
+    if (le64(&sb[0x60]) != 0) return "the btrfs log must be replayed first; mount the file system once";
+    if (newBytes < le64(&sb[0x70])) return "shrinking btrfs is not supported";
+    return {};
+}
+
+bool btrfsGrow(BlockDevice& d, std::uint64_t newBytes, std::string& err) {
+    if (const std::string p = btrfsGrowProblem(d, newBytes); !p.empty()) {
+        err = p;
+        return false;
+    }
+    BtrfsGrower g{d, std::vector<std::uint8_t>(4096), 0, 0, 0};
+    if (!d.read(0x10000, g.sb.data(), g.sb.size())) {
+        err = "no btrfs superblock";
+        return false;
+    }
+    const std::uint32_t sector = le32(&g.sb[0x90]);
+    g.nodeSize = le32(&g.sb[0x94]);
+    if (!sector || g.nodeSize < 4096 || g.nodeSize > 65536) {
+        err = "invalid btrfs superblock";
+        return false;
+    }
+    g.devId = le64(&g.sb[0xC9]);
+    g.newBytes = newBytes / sector * sector;
+    if (g.newBytes == le64(&g.sb[0x70])) return true;
+    if (!g.walk(le64(&g.sb[0x58]), 0, err) || !d.flush()) {
+        if (err.empty()) err = "flush failed";
+        return false;
+    }
+    const std::uint64_t target = g.newBytes;
+    return btrfsUpdate(d, [target](std::vector<std::uint8_t>& sb) {
+        put64le(&sb[0x70], target);
+        put64le(&sb[0xC9 + 8], target);
+    }, err);
+}
+
 bool btrfsSetLabel(BlockDevice& d, const std::string& label, std::string& err) {
     return btrfsUpdate(d, [&](std::vector<std::uint8_t>& sb) {
         std::memset(&sb[0x12B], 0, 256);
@@ -1078,7 +1197,7 @@ bool canLabel(FsType t) noexcept {
 bool canSetUuid(FsType t) noexcept { return canLabel(t); }
 bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || isExt(t); }
 bool canResize(FsType t) noexcept {
-    return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || t == FsType::ExFat || isExt(t);
+    return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || t == FsType::ExFat || t == FsType::Btrfs || isExt(t);
 }
 
 std::string labelProblem(FsType t, const std::string& label) {
@@ -1189,12 +1308,14 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
         return false;
     }
     if (isExt(t)) return ext::resize(part, newBytes, error);
+    if (t == FsType::Btrfs) return btrfsGrow(part, newBytes, error);
     if (t == FsType::ExFat) return exfatResize(part, newBytes, error);
     return t == FsType::Ntfs ? ntfs::resize(part, newBytes, error) : fat::resize(part, newBytes, error);
 }
 
 std::string resizeProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
     if (!canResize(t)) return std::string("resizing ") + fsTypeName(t) + " is not supported";
+    if (t == FsType::Btrfs) return btrfsGrowProblem(part, newBytes);
     if (newBytes < part.size()) return shrinkProblem(part, t, newBytes);
     if (t == FsType::ExFat) return exfatResizeProblem(part, newBytes);
     return isExt(t) ? ext::growProblem(part, newBytes) : std::string();
