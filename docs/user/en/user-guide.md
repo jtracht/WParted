@@ -1,5 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted user guide (v0.8.0-beta.1)
+# WParted user guide: partition manager for Windows 11 (v0.8.0-beta.1)
+
+**This guide explains how to install WParted, inspect disks, plan partition changes and apply them.** WParted applies
+changes to image files and attached virtual disks; real disks can be inspected and planned for, but stay locked.
+Short answers: [FAQ](../../FAQ.md).
 
 ## Screenshots
 
@@ -164,7 +168,11 @@ wparted-cli inspect-image disk.img [--sector-size 4096] [--json]
 wparted-cli fs-support [--json]
 wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
 wparted-cli apply-plan disk.img plan.json [--execute] [--log details.html]   check, or apply to the image
-wparted-cli apply-plan disk.img plan.json --execute --helper  the same through wparted-helper.exe (prototype)
+wparted-cli apply-plan disk.img plan.json --execute --helper  the same through wparted-helper.exe
+wparted-cli apply-plan \\.\PhysicalDriveN plan.json --execute --yes-write-to-disk   attached virtual disk (UAC)
+wparted-cli resume \\.\PhysicalDriveN --execute --yes-write-to-disk                 continue on a virtual disk
+wparted-cli mount \\?\Volume{...}\ E:\                       assign a drive letter (UAC)
+wparted-cli unmount E:\                                       remove the mount points of that volume (UAC)
 wparted-cli resume disk.img [--execute [--helper] | --discard]  show or continue an interrupted execution
 wparted-cli rescue-scan-image disk.img --plan rescue.json      plan recreating the partitions found
 wparted-cli rescue-scan 0                                      read-only rescue scan of disk 0 (administrator)
@@ -177,13 +185,13 @@ table has errors.
 ## Frequently asked questions
 
 **Is WParted free?** Yes, GPL-2.0-or-later.
-**Can WParted resize or delete partitions?** On disk image files, yes. On physical disks it plans and
-validates, but does not execute: that needs an elevated helper and a human security review first.
+**Can WParted resize or delete partitions?** On image files and attached virtual disks, yes. On real disks it plans and
+validates, but does not execute: that needs a human security review first.
 **Which Windows does WParted support?** Windows 11. Windows 7–10 are no longer supported.
 **Can WParted read Linux partitions?** It detects ext2/3/4, btrfs, XFS, swap, LUKS, LVM and more, and
-shows their labels. On image files it can change ext2/3/4 and the labels and UUIDs of XFS, btrfs and swap.
+shows their labels. On image files and virtual disks it can change ext2/3/4, grow btrfs and change the labels and UUIDs of XFS, btrfs and swap.
 **Is it related to GParted?** No. WParted follows GParted's workflow but is an independent project.
-**Where do I report bugs?** https://git.tracht-digital.de/jtracht/WParted-PM/issues (project management, account needed) — attach the
+**Where do I report bugs?** https://github.com/jtracht/WParted/issues — attach the
 exported report if possible. Security problems: see `SECURITY.md`.
 
 ## Troubleshooting

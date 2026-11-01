@@ -3,7 +3,7 @@
 
 ## Supported versions
 
-WParted is in alpha. Only the latest pre-release receives fixes.
+WParted is in beta. Only the latest pre-release receives fixes.
 
 ## Reporting a vulnerability
 

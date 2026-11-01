@@ -1,85 +1,100 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted – Windows Partition Editor
+# WParted: free, open-source partition manager for Windows 11
 
-**WParted** is a free, open-source, native partition manager for Microsoft Windows (target: Windows 11; older: Windows 7 SP1
-to Windows 11). Its long-term goal is functional parity with [GParted](https://gparted.org) where this is
-technically safe on Windows, with a familiar layout, a modern Windows UI and strict data-safety rules.
+**WParted is a free, open-source partition manager for Windows 11 with a GParted-style workflow.** It shows disks,
+partition tables and file systems, plans changes without touching anything, and then applies them to disk image files
+and attached virtual disks (VHD/VHDX). It runs natively on Windows, without a Linux live system or an installer.
 
-> **Status: beta (0.8.0-beta.1, pre-release).** WParted shows disks, partition tables, file systems and volumes,
-> plans changes GParted-style for every disk and **executes plans on disk image files and attached
-> virtual disks (VHD/VHDX)**: partitions, FAT/exFAT/NTFS/ext2-4 file systems including moving data when
-> shrinking, data rescue, resuming after an interruption.
-> **Real disks stay locked** until the human security review is done; the disk of the running Windows
-> is never written (see [project status](docs/PROJECT-STATUS.md)).
+> **Status: beta (0.8.0-beta.1).** Writing to real disks is locked until a human security review is done, and the
+> disk of the running Windows is never written. Real disks can be inspected and plans can be made for them.
+> Details: [project status](docs/PROJECT-STATUS.md).
 
-WParted is an independent project. It is not affiliated with or endorsed by the GParted or GNOME projects.
+![WParted showing a disk map, a partition list and one planned operation](docs/images/planned-en.png)
 
-> **Where things live:** code, pull requests, CI and releases are on GitHub:
-> https://github.com/jtracht/WParted (open source, GPL-2.0-or-later). Project management - issues, milestones and the
-> board - is on Gitea: https://git.tracht-digital.de/jtracht/WParted-PM. The Gitea repository `jtracht/WParted` is a read-only mirror of GitHub.
+## Quick facts
 
-![WParted with a planned operation](docs/images/planned-en.png)
+| | |
+|---|---|
+| **What it is** | Native Windows partition manager and GParted-style alternative for Windows |
+| **Platform** | Windows 11; x64, x86 build for 64-bit Windows, ARM64 built but not yet run |
+| **Licence** | GNU GPL v2.0 or later, free of charge |
+| **Partition tables** | GPT and MBR, including extended and logical partitions |
+| **File systems changed** | NTFS, FAT16/32, exFAT, ext2/3/4; btrfs can grow; XFS, btrfs and swap labels and UUIDs |
+| **File systems detected** | 31 types, including ReFS, BitLocker, F2FS, LUKS, LVM, HFS+, APFS and ZFS |
+| **Interfaces** | Desktop app (English and German, light and dark) and command line (`wparted-cli`) |
+| **Privacy** | No telemetry, no automatic update checks, no network use |
 
-## Features in this build
+## What can WParted do?
 
 | Area | What works today |
 |---|---|
-| Disk discovery | All physical disks: model, serial, bus (NVMe, SATA, USB, SD, …), size, logical/physical sector size, SSD, removable, write protection |
-| Partition tables | GPT (header + entry CRC, backup header fallback, sector-size mismatch detection) and MBR including extended/logical partitions; whole-device file systems |
-| File systems | Signature detection for 31 types incl. NTFS, FAT12/16/32, exFAT, ReFS, BitLocker, ext2/3/4, btrfs, XFS, F2FS, LUKS, LVM, Linux RAID, swap, HFS+, APFS, ZFS, UDF |
-| Windows integration | Drive letters / mount points, used/free space, volume containing Windows, cross-check with Windows' own partition view |
-| Planning | New, delete, resize/move, copy/paste, format, label, name, flags, new table; future layout, undo, validation with safety rules, plan export/import |
-| Image files | Apply plans to raw images and fixed-size VHD files: tables, partitions, raw move/copy, FAT16/32 create/grow/shrink/check, exFAT create/grow/shrink, NTFS create/grow/shrink/check, ext2/3/4 create/grow/shrink/check, labels and UUIDs (also XFS, btrfs, swap); resume after an interruption; recreate lost partitions; every step read back and verified |
-| Safety | Physical disks are only read (CI-enforced); writes go to user-chosen image files after two confirmations; unknown regions are never shown as free space |
-| UI | GParted-style disk map and partition list, light/dark/system theme, per-monitor DPI, English/German |
-| CLI | `wparted-cli list [--json]`, `inspect-image`, `rescue-scan-image`, `rescue-scan`, `apply-plan` (dry run unless `--execute`), `resume`, `fs-support` |
-| Accessibility | Keyboard operation, MSAA for the disk map, high-contrast colours, screen-reader names in EN/DE |
+| Inspect disks | Model, serial, bus (NVMe, SATA, USB, SD), size, sector sizes, SSD, write protection, drive letters, used and free space, BitLocker state |
+| Plan changes | Create, delete, resize, move, copy, format, label, name, set flags, new partition table; future layout, undo, safety checks, saved plans |
+| Apply changes | On raw images, fixed-size VHD files and attached VHD/VHDX disks, each step read back and verified |
+| Resize file systems | NTFS, exFAT, FAT16/32 and ext2/3/4 grow and shrink, and shrinking moves the data behind the new end; btrfs grows |
+| Create and check | NTFS, FAT16/32, exFAT and ext2/3/4; read-only checks for NTFS, FAT and ext |
+| Recover | Search free space for lost partitions and plan recreating them; resume an interrupted move |
+| Drive letters | Mount and unmount volumes, except those of the running Windows |
+| Automate | `wparted-cli` with JSON output and dry runs |
+| Accessibility | Keyboard operation, screen-reader names, high-contrast colours (not yet checked by hand) |
 
-Full capability status per file system and action: [docs/research/gparted-parity-matrix.md](docs/research/gparted-parity-matrix.md).
-What is finished and what is not: [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.md).
+Full status per file system and action: [capability matrix](docs/research/gparted-parity-matrix.md).
 
-## Compatibility
+## How does WParted compare?
 
-See [docs/compatibility/windows-support-matrix.md](docs/compatibility/windows-support-matrix.md). Only
-Windows 11 is the only target (Windows 7–10 were dropped on 2026-11-01). x64 has been run; x86 runs on x64; ARM64 is built but has not been run.
+| | WParted | Windows Disk Management | GParted |
+|---|---|---|---|
+| Runs inside Windows | Yes | Yes | No, needs Linux or a live system |
+| Plan first, apply later | Yes | No | Yes |
+| Move a partition's start | Images and virtual disks | No | Yes |
+| Handles ext2/3/4 | Images and virtual disks | No | Yes |
+| Writes to real disks | **Not yet (locked)** | Yes | Yes |
+| Maturity | Beta | Part of Windows | Mature, long established |
 
-## Installation
+For work on real disks today, use the mature tools. WParted is an independent project, not affiliated with or
+endorsed by the GParted or GNOME projects.
 
-No installer yet. Download the portable ZIP from the
-[GitHub releases](https://github.com/jtracht/WParted/releases),
-extract it and run `wparted.exe`. To read partition tables, choose **WParted → Restart as Administrator**.
+## How do I install WParted?
 
-## Building
+1. Download the portable ZIP from [GitHub releases](https://github.com/jtracht/WParted/releases). No installer is needed.
+2. Extract it and start `wparted.exe`.
+3. To read the partition tables of real disks, choose **WParted → Restart as Administrator**.
 
-Release binaries are cross-compiled on Linux (MinGW-w64) and tested under Wine, exactly as in CI:
+The newest published build can be older than this page. Binaries are not code-signed yet, so Windows may show a
+warning. To build from source, see [building](docs/developer/building.md).
 
-```sh
-tools/ci/build-mingw.sh x64 --package          # Ubuntu 24.04 or the runner image via Docker
-```
+## Frequently asked questions
 
-Local Windows development with Visual Studio 2022, CMake ≥ 3.20, Ninja, Python 3:
+**Is WParted a GParted alternative for Windows?** Yes, in its workflow: it follows GParted's disk map, operation queue
+and apply step, and runs natively on Windows. It does not yet reach GParted's scope, because writing to real disks is locked.
 
-```powershell
-python -m pip install --user cmake ninja
-.\tools\build.ps1 -Arch x64        # builds, runs unit + end-to-end tests
-```
+**Is WParted safe to use on my disks?** Yes for reading: in this version it does not write to real disks. Plans for
+them can only be checked and saved. Back up your data before relying on any partition tool.
 
-Details: [docs/developer/building.md](docs/developer/building.md).
+**Does WParted work on Windows 10?** It is not supported or tested. Windows 11 is the only target.
+
+More answers: [FAQ](docs/FAQ.md) · [FAQ auf Deutsch](docs/FAQ.de.md)
 
 ## Documentation
 
-- User guide: [English](docs/user/en/user-guide.md) · [Deutsch](docs/user/de/benutzerhandbuch.md)
-- Architecture: [technology decision](docs/architecture/technology-decision.md), [security](docs/architecture/security-architecture.md)
-- Research: [GParted architecture](docs/research/gparted-architecture.md), [feature inventory](docs/research/gparted-feature-inventory.md), [UI analysis](docs/research/gparted-ui-analysis.md), [Windows portability](docs/research/windows-portability-analysis.md)
-- Design: [design system](docs/design/wparted-design-system.md)
-- Process: [contributing](CONTRIBUTING.md), [testing](docs/developer/testing.md), [release process](docs/developer/release-process.md), [CI/infrastructure setup](docs/developer/infrastructure-setup.md)
+- **Users:** [user guide](docs/user/en/user-guide.md) · [Benutzerhandbuch](docs/user/de/benutzerhandbuch.md) · [FAQ](docs/FAQ.md) · [changelog](CHANGELOG.md)
+- **Status:** [project status](docs/PROJECT-STATUS.md) · [Windows support matrix](docs/compatibility/windows-support-matrix.md) · [roadmap](ROADMAP.md)
+- **Architecture:** [technology decision](docs/architecture/technology-decision.md) · [security](docs/architecture/security-architecture.md) · [validation rules](docs/architecture/validation-rules.md) · [failure modes](docs/architecture/failure-modes.md)
+- **Research:** [GParted architecture](docs/research/gparted-architecture.md) · [feature inventory](docs/research/gparted-feature-inventory.md) · [UI analysis](docs/research/gparted-ui-analysis.md) · [Windows portability](docs/research/windows-portability-analysis.md)
+- **Contributors:** [contributing](CONTRIBUTING.md) · [building](docs/developer/building.md) · [testing](docs/developer/testing.md) · [release process](docs/developer/release-process.md) · [CI setup](docs/developer/infrastructure-setup.md) · [design system](docs/design/wparted-design-system.md)
 
-## Kurzfassung (Deutsch)
+## Kurzfassung auf Deutsch
 
-WParted ist ein freier, nativer Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Die
-aktuelle Beta zeigt Datenträger, Partitionstabellen (GPT/MBR), Dateisysteme und Volumes, plant Änderungen
-und **führt sie auf Image-Dateien und angehängten virtuellen Datenträgern aus; echte Datenträger bleiben bis zum Sicherheitsreview gesperrt**. Fehler und Wünsche bitte auf
-[Gitea](https://git.tracht-digital.de/jtracht/WParted-PM/issues) melden (Projektverwaltung); Code und Releases liegen auf [GitHub](https://github.com/jtracht/WParted).
+**WParted ist ein freier Open-Source-Partitionsmanager für Windows 11 mit GParted-ähnlicher Bedienung.** Er zeigt
+Datenträger, Partitionstabellen und Dateisysteme, plant Änderungen und führt sie auf Image-Dateien und angehängten
+virtuellen Datenträgern (VHD/VHDX) aus. **Echte Datenträger bleiben bis zum Sicherheitsreview gesperrt.**
+Mehr dazu im [Benutzerhandbuch](docs/user/de/benutzerhandbuch.md) und in den [häufigen Fragen](docs/FAQ.de.md).
+Fehler und Wünsche bitte über [GitHub Issues](https://github.com/jtracht/WParted/issues) melden.
+
+## Support and security
+
+Report bugs through [GitHub Issues](https://github.com/jtracht/WParted/issues), and attach the exported report if
+possible. Report security problems privately: see [SECURITY.md](SECURITY.md).
 
 ## License
 

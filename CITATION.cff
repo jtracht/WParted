@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+cff-version: 1.2.0
+message: "If you refer to this software, please cite it like this."
+title: "WParted"
+type: software
+abstract: "Free, open-source partition manager for Windows 11 with a GParted-style workflow."
+authors:
+  - name: "The WParted contributors"
+license: GPL-2.0-or-later
+repository-code: "https://github.com/jtracht/WParted"
+version: "0.8.0-beta.1"
+keywords:
+  - partition manager
+  - partition editor
+  - windows 11
+  - gparted alternative
+  - disk management
+  - ntfs
+  - exfat
+  - ext4
+  - gpt
+  - vhdx

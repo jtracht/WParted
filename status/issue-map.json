@@ -1,7 +1,5 @@
 {
-  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Stable work-package key -> Gitea issue number in the project-management repository jtracht/WParted-PM (code lives on GitHub). Used to avoid duplicate tickets: always search by key before creating an issue.",
-  "repository": "https://git.tracht-digital.de/jtracht/WParted-PM",
-  "project_board": "https://git.tracht-digital.de/jtracht/WParted-PM/projects/33",
+  "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Stable work-package key -> internal issue number. Search by key before creating a ticket.",
   "issues": {
     "WP-001": 1, "WP-002": 2, "WP-003": 3, "WP-004": 4, "WP-005": 5, "WP-006": 6, "WP-007": 7, "WP-008": 8,
     "WP-009": 9, "WP-010": 10, "WP-011": 11, "WP-012": 12, "WP-013": 13, "WP-014": 14, "WP-015": 15,

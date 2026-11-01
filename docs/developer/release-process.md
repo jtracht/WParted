@@ -17,13 +17,12 @@
    checksums verified, `wparted.exe` started and `wparted-cli version`, `list --json` and
    `inspect-image` run. Only then the draft is published. Results go into
    `docs/compatibility/windows-support-matrix.md`.
-   - Alpha releases: unelevated verification is mandatory; elevated (administrator) verification is
+   - Earlier alpha releases: unelevated verification is mandatory; elevated (administrator) verification is
      recommended and, if missing, listed under *Known limitations* in the changelog.
    - From v0.8.0-beta.1: elevated verification on real hardware is mandatory (WP-014).
 6. Signing: only when `SIGNING_CERT_*` secrets exist (see `infrastructure-setup.md`). Unsigned
    releases say so in the release notes.
-7. The TDS-Ops sync updates the Gitea pull mirror (code, tags and releases). The milestone and the
-   issues are closed on Gitea (`jtracht/WParted-PM`) with links to the GitHub release.
+7. The matching milestone and issues are closed with links to the GitHub release.
 
 Release gates (all required): build OK, tests OK, read-only/security checks OK, artefacts complete and
 start (`wparted-cli version` smoke test), checksums present, platforms stated correctly, docs updated,

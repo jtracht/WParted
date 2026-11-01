@@ -48,8 +48,8 @@ comparison.
 7. **Linux file system modification** only in an optional offline/recovery environment
    (see [ADR-0003](adr-0003-recovery-offline-mode.md)).
 
-8. **Two compilers, one code base** (amended 2026-10-27, ADR-0001a). The Gitea instance has exactly
-   one Actions runner - a Linux Docker runner (`ubuntu-latest`) - and no Windows runner will be added.
+8. **Two compilers, one code base** (amended 2026-10-27, ADR-0001a). The project had exactly
+   one CI runner - a Linux Docker runner (`ubuntu-latest`) - and no Windows runner will be added.
    Therefore:
    - **Release binaries** are cross-compiled on that runner with **MinGW-w64 GCC** (posix threads),
      linked fully static against `msvcrt.dll`, which exists on every Windows version (keeps Windows 7

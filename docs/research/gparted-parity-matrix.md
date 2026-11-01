@@ -7,12 +7,11 @@ stated environment), `Implemented` (code + automated tests, platform verificatio
 `Images` (executed and verified on disk image files; also on attached virtual disks through the helper,
 checked by hand; real disks stay locked), `In progress`, `Planned`, `Offline only` (planned for the recovery environment), `Won't do` (with reason).
 
-Issue keys (`WP-nnn`) appear in the title of the matching Gitea issue (project management) at
-https://git.tracht-digital.de/jtracht/WParted-PM/issues. Risk: L/M/H/C = Low/Medium/High/Critical.
+Keys (`WP-nnn`) name internal work packages. Risk: L/M/H/C = Low/Medium/High/Critical.
 Priority: P0 (blocking) … P3 (nice to have). Windows compatibility lists the *target*; verified
 versions are tracked in `docs/compatibility/windows-support-matrix.md`.
 
-Last updated: 2026-11-01 (v0.5.0-alpha).
+Last updated: 2026-11-01 (v0.8.0-beta.1).
 
 ## Devices and tables
 

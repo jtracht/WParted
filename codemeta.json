@@ -1,0 +1,16 @@
+{
+  "@context": "https://doi.org/10.5063/schema/codemeta-2.0",
+  "@type": "SoftwareSourceCode",
+  "name": "WParted",
+  "description": "Free, open-source partition manager for Windows 11 with a GParted-style workflow. Beta: applies changes to disk image files and attached VHD/VHDX disks; writing to real disks is locked.",
+  "version": "0.8.0-beta.1",
+  "developmentStatus": "active",
+  "license": "https://spdx.org/licenses/GPL-2.0-or-later",
+  "codeRepository": "https://github.com/jtracht/WParted",
+  "issueTracker": "https://github.com/jtracht/WParted/issues",
+  "programmingLanguage": "C++",
+  "operatingSystem": "Windows 11",
+  "applicationCategory": "Disk utility",
+  "isAccessibleForFree": true,
+  "keywords": ["partition manager", "partition editor", "Windows 11", "GParted alternative", "NTFS", "exFAT", "ext4", "GPT", "VHDX"]
+}

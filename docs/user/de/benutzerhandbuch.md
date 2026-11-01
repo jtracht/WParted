@@ -1,5 +1,9 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted Benutzerhandbuch (v0.8.0-beta.1)
+# WParted Benutzerhandbuch: Partitionsmanager für Windows 11 (v0.8.0-beta.1)
+
+**Dieses Handbuch erklärt, wie Sie WParted installieren, Datenträger prüfen, Partitionsänderungen planen und anwenden.**
+WParted wendet Änderungen auf Image-Dateien und angehängte virtuelle Datenträger an; echte Datenträger lassen sich
+prüfen und verplanen, bleiben aber gesperrt. Kurze Antworten: [Häufige Fragen](../../FAQ.de.md).
 
 ## Bildschirmfotos
 
@@ -174,6 +178,10 @@ wparted-cli apply-plan disk.img plan.json --execute --helper  dasselbe über wpa
 wparted-cli resume disk.img [--execute [--helper] | --discard]  unterbrochene Ausführung anzeigen bzw. fortsetzen
 wparted-cli rescue-scan-image disk.img --plan rettung.json     Plan, der die gefundenen Partitionen neu anlegt
 wparted-cli rescue-scan 0                                      nur lesender Rettungs-Scan von Datenträger 0 (Administrator)
+wparted-cli apply-plan \\.\PhysicalDriveN plan.json --execute --yes-write-to-disk   angehängter virtueller Datenträger (UAC)
+wparted-cli resume \\.\PhysicalDriveN --execute --yes-write-to-disk                 auf einem virtuellen Datenträger fortsetzen
+wparted-cli mount \\?\Volume{...}\ E:\                       Laufwerksbuchstaben zuweisen (UAC)
+wparted-cli unmount E:\                                       Einhängepunkte dieses Volumes entfernen (UAC)
 wparted-cli version
 ```
 
@@ -182,11 +190,10 @@ Für Partitionstabellen aus einer Administrator-Eingabeaufforderung starten.
 ## Häufige Fragen
 
 **Ist WParted kostenlos?** Ja, GPL-2.0-or-later.
-**Kann WParted Partitionen verkleinern oder löschen?** Auf Image-Dateien ja. Auf physischen Datenträgern
-plant und prüft es, führt aber nicht aus: Dafür fehlen ein Helfer mit Adminrechten und ein menschliches
-Sicherheitsreview.
+**Kann WParted Partitionen verkleinern oder löschen?** Auf Image-Dateien und angehängten virtuellen Datenträgern ja. Auf
+echten Datenträgern plant und prüft es, führt aber nicht aus: Dafür fehlt ein menschliches Sicherheitsreview.
 **Welche Windows-Version unterstützt WParted?** Windows 11. Windows 7–10 werden nicht mehr unterstützt.
 **Kann WParted Linux-Partitionen lesen?** Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM u. a. und zeigt
-Bezeichnungen. Auf Image-Dateien kann es ext2/3/4 ändern sowie Bezeichnung und UUID von XFS, btrfs und Swap.
+Bezeichnungen. Auf Image-Dateien und virtuellen Datenträgern kann es ext2/3/4 ändern, btrfs vergrößern sowie Bezeichnung und UUID von XFS, btrfs und Swap.
 **Gehört WParted zu GParted?** Nein. WParted folgt dem GParted-Bedienkonzept, ist aber ein unabhängiges Projekt.
-**Wo melde ich Fehler?** https://git.tracht-digital.de/jtracht/WParted-PM/issues (Projektverwaltung, Konto nötig) – möglichst mit exportiertem Bericht. Sicherheitsprobleme: siehe `SECURITY.md`.
+**Wo melde ich Fehler?** https://github.com/jtracht/WParted/issues – möglichst mit exportiertem Bericht. Sicherheitsprobleme: siehe `SECURITY.md`.

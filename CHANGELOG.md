@@ -76,9 +76,7 @@ ADR-0002 as a prototype, and the first verification on real hardware with admini
 
 ### Changed
 - **WParted is developed on GitHub** (https://github.com/jtracht/WParted): code, pull requests, CI
-  (GitHub Actions, same jobs as before) and releases. Project management - issues, milestones and
-  the board - stays on Gitea in `jtracht/WParted-PM`; the Gitea repository `jtracht/WParted` becomes
-  a read-only pull mirror, as for every public repository in the TDS-Ops sync.
+  (GitHub Actions, same jobs as before) and releases.
 
 ### Removed
 - The project website (sources and generator) moved out of this repository; it will be maintained

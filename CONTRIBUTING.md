@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Contributing to WParted
 
-Thank you for helping. Code and pull requests are on **GitHub**: https://github.com/jtracht/WParted.
-Project management - issues (`WP-nnn`), milestones and the board - is on **Gitea**: https://git.tracht-digital.de/jtracht/WParted-PM.
+Thank you for helping. Code, pull requests and issues are on **GitHub**: https://github.com/jtracht/WParted.
+Keys like `WP-nnn` name internal work packages.
 
 ## Ground rules
 

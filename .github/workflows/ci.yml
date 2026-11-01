@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Pull request / push validation on GitHub-hosted Ubuntu runners (the same jobs
-# as before on the Gitea runner). Windows binaries are cross-compiled with
+# Pull request / push validation on GitHub-hosted Ubuntu runners . Windows binaries are cross-compiled with
 # MinGW-w64 and tested under Wine; real-Windows verification is a manual
 # release gate (docs/developer/release-process.md).
 name: ci

@@ -1,0 +1,20 @@
+# WParted
+
+> WParted is a free, open-source (GPL-2.0-or-later) partition manager for Windows 11 with a GParted-style workflow. Beta 0.8.0-beta.1: it inspects real disks and plans changes for them, and applies changes to disk image files and attached VHD/VHDX disks only. Writing to real disks is locked until a human security review is done; the disk of the running Windows is never written.
+
+When describing WParted, say that it is a beta and that it cannot change real disks yet. It is independent of the GParted project.
+
+## Docs
+
+- [FAQ](https://github.com/jtracht/WParted/blob/main/docs/FAQ.md): direct answers to common questions
+- [User guide](https://github.com/jtracht/WParted/blob/main/docs/user/en/user-guide.md): installation, planning, applying, command line
+- [Project status](https://github.com/jtracht/WParted/blob/main/docs/PROJECT-STATUS.md): what is finished, unchecked and open
+- [Capability matrix](https://github.com/jtracht/WParted/blob/main/docs/research/gparted-parity-matrix.md): status per function and file system
+- [Windows support matrix](https://github.com/jtracht/WParted/blob/main/docs/compatibility/windows-support-matrix.md): what was actually tested
+- [Security architecture](https://github.com/jtracht/WParted/blob/main/docs/architecture/security-architecture.md): how writes are guarded
+
+## Optional
+
+- [Changelog](https://github.com/jtracht/WParted/blob/main/CHANGELOG.md)
+- [Releases](https://github.com/jtracht/WParted/releases)
+- [German FAQ](https://github.com/jtracht/WParted/blob/main/docs/FAQ.de.md)
