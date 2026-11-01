@@ -6,6 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0-alpha] – 2026-11-01
+
+Fifth pre-release: fixed-size VHD files, and all execution through the separate helper process.
+Physical disks are still never written.
+
 ### Added
 - **Fixed-size VHD files** can be opened, planned and changed like raw images: the 512-byte footer
   is recognised and never written, so the VHD stays valid (checked in CI with qemu-img and sgdisk).
@@ -13,6 +18,16 @@ versions follow [Semantic Versioning](https://semver.org/).
   misread as raw disks.
 - The GUI's *Apply to image file* executes through `wparted-helper.exe` (ADR-0002): the GUI no longer
   writes the image itself; the helper validates the plan and reports progress and the log back.
+- Resuming an interrupted execution also runs through the helper (GUI; CLI: `resume --execute --helper`).
+
+### Changed
+- All links (GUI *About* and *Help*, SBOM, project URL) point to GitHub.
+- CI runs on `ubuntu-latest`; the x86 tests work with Wine's classic and WoW64 modes.
+
+### Known limitations
+- See [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.md). Physical disks are planned and validated only.
+- The release binaries were not run on a real Windows machine before publication (maintainer decision
+  for alpha releases); equivalent MSVC builds were tested on Windows 11 x64.
 
 ## [0.4.0-alpha] – 2026-10-31
 

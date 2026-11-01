@@ -1,15 +1,15 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted user guide (v0.4.0-alpha)
+# WParted user guide (v0.5.0-alpha)
 
 ## What is WParted?
 
-WParted is a free, open-source partition manager for Windows. Version 0.1 is a **read-only disk
-explorer**: it shows your disks, partition tables, file systems and volumes in a GParted-style view.
-It **does not change anything** on your disks.
+WParted is a free, open-source partition manager for Windows with a GParted-style workflow. It shows
+your disks, partition tables, file systems and volumes, plans changes for every disk, and **executes
+plans on disk image files only**. **Physical disks are only read, never written.**
 
 ## Installation and first start
 
-1. Download `WParted-v0.1.0-alpha-win7plus-x64-portable.zip` (or `-x86` for 32-bit Windows) from the
+1. Download `WParted-v<version>-win7plus-x64-portable.zip` (or `-x86` for 32-bit Windows) from the
    GitHub releases page and verify the SHA-256 checksum from `…-checksums.sha256`.
 2. Extract the ZIP to any folder. No installation or runtime is required.
 3. Run `wparted.exe`.
@@ -27,14 +27,13 @@ between them as **unknown (hatched)**. To read the real partition tables, click
 | Disk map | Each box is a partition, sized proportionally. Border colour = file system, yellow fill = used space. Grey = unallocated, hatched = unknown. Use ←/→ to move, Enter for details. |
 | Partition list | Partition, name, file system, mount point, label, size, used, unused, flags and status. Double-click or Enter shows details; right-click opens the partition menu. |
 | Details pane | Properties of the selected partition or free space, and why an action is not available. |
-| Pending operations | The planned changes in order, with risk and validation status (development builds). |
+| Pending operations | The planned changes in order, with risk and validation status. |
 | Status line | Scan result, warnings found in the partition table, and whether WParted runs with administrator rights. |
 
 ## Planning operations
 
-Development builds can **plan** changes the GParted way. Nothing is written: this version cannot
-execute operations on physical disks, and *Apply* only shows the checks. On **disk image files**
-plans can be applied (see below).
+WParted **plans** changes the GParted way. On physical disks nothing is written: *Apply* only shows the
+checks. On **disk image files** plans can be applied (see below).
 
 1. Select a partition or unallocated space in the disk map or the list.
 2. Choose an action: *New*, *Delete*, *Resize/Move*, *Copy*/*Paste*, *Format to*, *Name Partition*,
@@ -118,7 +117,8 @@ The result lists start sector, file system, size and label, and whether the star
 starts). Nothing inside them is written; after the table is written each file system is detected and
 checked again. Review the plan, keep a copy, then apply it (image files) – the command line does the
 same with `wparted-cli rescue-scan-image <image> --plan rescue.json` and `apply-plan`. Scanning a
-physical disk needs administrator rights and has not been tried on real hardware yet.
+physical disk needs administrator rights (`wparted-cli rescue-scan <disk>`); recreating partitions is
+only executed on image files.
 
 ## Useful functions
 
@@ -140,7 +140,7 @@ wparted-cli fs-support [--json]
 wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
 wparted-cli apply-plan disk.img plan.json [--execute] [--log details.html]   check, or apply to the image
 wparted-cli apply-plan disk.img plan.json --execute --helper  the same through wparted-helper.exe (prototype)
-wparted-cli resume disk.img [--execute | --discard]          show or continue an interrupted execution
+wparted-cli resume disk.img [--execute [--helper] | --discard]  show or continue an interrupted execution
 wparted-cli rescue-scan-image disk.img --plan rescue.json      plan recreating the partitions found
 wparted-cli rescue-scan 0                                      read-only rescue scan of disk 0 (administrator)
 wparted-cli version
@@ -152,15 +152,15 @@ table has errors.
 ## Frequently asked questions
 
 **Is WParted free?** Yes, GPL-2.0-or-later.
-**Can WParted resize or delete partitions?** Not yet. Development builds can plan and validate these
-operations, but not execute them. Execution will be enabled only after it passes tests on virtual disks.
+**Can WParted resize or delete partitions?** On disk image files, yes. On physical disks it plans and
+validates, but does not execute: that needs an elevated helper and a human security review first.
 **Does WParted support Windows 7?** Windows 7 SP1 is a build target; it has not yet been verified on a
 real Windows 7 system.
 **Can WParted read Linux partitions?** It detects ext2/3/4, btrfs, XFS, swap, LUKS, LVM and more, and
-shows their labels where possible. Changing them will require the planned offline mode.
+shows their labels. On image files it can change ext2/3/4 and the labels and UUIDs of XFS, btrfs and swap.
 **Is it related to GParted?** No. WParted follows GParted's workflow but is an independent project.
-**Where do I report bugs?** https://git.tracht-digital.de/jtracht/WParted/issues — attach the exported
-report if possible.
+**Where do I report bugs?** https://git.tracht-digital.de/jtracht/WParted-PM/issues (project management, account needed) — attach the
+exported report if possible. Security problems: see `SECURITY.md`.
 
 ## Troubleshooting
 

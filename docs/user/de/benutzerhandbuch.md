@@ -1,15 +1,15 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted Benutzerhandbuch (v0.4.0-alpha)
+# WParted Benutzerhandbuch (v0.5.0-alpha)
 
 ## Was ist WParted?
 
-WParted ist ein freier Open-Source-Partitionsmanager für Windows. Version 0.1 ist ein **rein lesender
-Datenträger-Explorer**: Er zeigt Datenträger, Partitionstabellen, Dateisysteme und Volumes in einer
-GParted-ähnlichen Ansicht an und **verändert nichts** auf Ihren Datenträgern.
+WParted ist ein freier Open-Source-Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Er zeigt
+Datenträger, Partitionstabellen, Dateisysteme und Volumes, plant Änderungen für jeden Datenträger und
+**führt Pläne nur auf Image-Dateien aus**. **Physische Datenträger werden nur gelesen, nie beschrieben.**
 
 ## Installation und erster Start
 
-1. Laden Sie `WParted-v0.1.0-alpha-win7plus-x64-portable.zip` (bzw. `-x86` für 32-Bit-Windows) von der
+1. Laden Sie `WParted-v<Version>-win7plus-x64-portable.zip` (bzw. `-x86` für 32-Bit-Windows) von der
    GitHub-Release-Seite herunter und prüfen Sie die SHA-256-Prüfsumme aus `…-checksums.sha256`.
 2. Entpacken Sie das ZIP in einen beliebigen Ordner. Keine Installation und keine Laufzeitumgebung nötig.
 3. Starten Sie `wparted.exe`.
@@ -28,13 +28,13 @@ starten*).
 | Datenträgergrafik | Jedes Feld ist eine Partition in proportionaler Größe. Randfarbe = Dateisystem, gelbe Füllung = belegter Platz, grau = nicht zugeordnet, schraffiert = unbekannt. ←/→ wechselt, Eingabe zeigt Details. |
 | Partitionsliste | Partition, Name, Dateisystem, Einhängepunkt, Bezeichnung, Größe, belegt, frei, Flags und Status. Doppelklick/Eingabe zeigt Details, Rechtsklick öffnet das Partitionsmenü. |
 | Detailbereich | Eigenschaften der gewählten Partition bzw. des freien Bereichs und warum eine Aktion nicht verfügbar ist. |
-| Ausstehende Operationen | Die geplanten Änderungen in Reihenfolge mit Risiko und Prüfstatus (Entwicklungs-Builds). |
+| Ausstehende Operationen | Die geplanten Änderungen in Reihenfolge mit Risiko und Prüfstatus. |
 | Statuszeile | Suchergebnis, gefundene Tabellenwarnungen und ob WParted mit Administratorrechten läuft. |
 
 ## Operationen planen
 
-Entwicklungs-Builds können Änderungen wie in GParted **planen**. Es wird nichts geschrieben: Diese
-Version kann Operationen nicht ausführen, *Anwenden* zeigt nur die Prüfungen.
+WParted **plant** Änderungen wie GParted. Auf physischen Datenträgern wird nichts geschrieben: *Anwenden*
+zeigt dort nur die Prüfungen. Auf **Image-Dateien** lassen sich Pläne anwenden (siehe unten).
 
 1. Partition oder nicht zugeordneten Bereich in der Datenträgergrafik oder Liste wählen.
 2. Aktion wählen: *Neu*, *Löschen*, *Größe ändern/Verschieben*, *Kopieren*/*Einfügen*, *Formatieren als*,
@@ -122,8 +122,8 @@ Das Ergebnis nennt Startsektor, Dateisystem, Größe, Bezeichnung und ob der Beg
 nicht MiB-ausgerichtetem Beginn). In ihnen wird nichts geschrieben; nach dem Schreiben der Tabelle wird
 jedes Dateisystem erneut erkannt und geprüft. Prüfen Sie den Plan, behalten Sie eine Kopie und wenden Sie
 ihn dann an (Image-Dateien) – auf der Kommandozeile mit `wparted-cli rescue-scan-image <Image> --plan
-rettung.json` und `apply-plan`. Für physische Datenträger sind Administratorrechte nötig; auf echter
-Hardware wurde der Scan noch nicht ausprobiert.
+rettung.json` und `apply-plan`. Der Scan physischer Datenträger braucht Administratorrechte (`wparted-cli rescue-scan <Datenträger>`);
+das Neuanlegen wird nur auf Image-Dateien ausgeführt.
 
 ## Nützliche Funktionen
 
@@ -145,7 +145,7 @@ wparted-cli fs-support [--json]
 wparted-cli rescue-scan-image disk.img [--sector-size 4096] [--json]
 wparted-cli apply-plan disk.img plan.json [--execute] [--log details.html]   prüfen bzw. auf das Image anwenden
 wparted-cli apply-plan disk.img plan.json --execute --helper  dasselbe über wparted-helper.exe (Prototyp)
-wparted-cli resume disk.img [--execute | --discard]          unterbrochene Ausführung anzeigen bzw. fortsetzen
+wparted-cli resume disk.img [--execute [--helper] | --discard]  unterbrochene Ausführung anzeigen bzw. fortsetzen
 wparted-cli rescue-scan-image disk.img --plan rettung.json     Plan, der die gefundenen Partitionen neu anlegt
 wparted-cli rescue-scan 0                                      nur lesender Rettungs-Scan von Datenträger 0 (Administrator)
 wparted-cli version
@@ -156,12 +156,12 @@ Für Partitionstabellen aus einer Administrator-Eingabeaufforderung starten.
 ## Häufige Fragen
 
 **Ist WParted kostenlos?** Ja, GPL-2.0-or-later.
-**Kann WParted Partitionen verkleinern oder löschen?** Noch nicht. Entwicklungs-Builds können diese
-Operationen planen und prüfen, aber nicht ausführen. Die Ausführung wird erst freigeschaltet, wenn sie
-Tests auf virtuellen Datenträgern bestanden hat.
+**Kann WParted Partitionen verkleinern oder löschen?** Auf Image-Dateien ja. Auf physischen Datenträgern
+plant und prüft es, führt aber nicht aus: Dafür fehlen ein Helfer mit Adminrechten und ein menschliches
+Sicherheitsreview.
 **Unterstützt WParted Windows 7?** Windows 7 SP1 ist Build-Ziel, wurde aber noch nicht auf einem echten
 Windows-7-System geprüft.
 **Kann WParted Linux-Partitionen lesen?** Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM u. a. und zeigt
-Bezeichnungen, wo möglich. Änderungen erfordern den geplanten Offline-Modus.
+Bezeichnungen. Auf Image-Dateien kann es ext2/3/4 ändern sowie Bezeichnung und UUID von XFS, btrfs und Swap.
 **Gehört WParted zu GParted?** Nein. WParted folgt dem GParted-Bedienkonzept, ist aber ein unabhängiges Projekt.
-**Wo melde ich Fehler?** https://git.tracht-digital.de/jtracht/WParted/issues – möglichst mit exportiertem Bericht.
+**Wo melde ich Fehler?** https://git.tracht-digital.de/jtracht/WParted-PM/issues (Projektverwaltung, Konto nötig) – möglichst mit exportiertem Bericht. Sicherheitsprobleme: siehe `SECURITY.md`.

@@ -5,7 +5,7 @@
 to Windows 11). Its long-term goal is functional parity with [GParted](https://gparted.org) where this is
 technically safe on Windows, with a familiar layout, a modern Windows UI and strict data-safety rules.
 
-> **Status: v0.4.0-alpha (pre-release).** WParted shows disks, partition tables, file systems and
+> **Status: v0.5.0-alpha (pre-release).** WParted shows disks, partition tables, file systems and
 > volumes, plans changes GParted-style for every disk and **executes plans on disk image files only**:
 > partitions, FAT/exFAT/NTFS/ext2-4 file systems, data rescue, resuming after an interruption, and a
 > prototype of the separate execution process (helper).
@@ -26,18 +26,19 @@ WParted is an independent project. It is not affiliated with or endorsed by the 
 | File systems | Signature detection for 31 types incl. NTFS, FAT12/16/32, exFAT, ReFS, BitLocker, ext2/3/4, btrfs, XFS, F2FS, LUKS, LVM, Linux RAID, swap, HFS+, APFS, ZFS, UDF |
 | Windows integration | Drive letters / mount points, used/free space, volume containing Windows, cross-check with Windows' own partition view |
 | Planning | New, delete, resize/move, copy/paste, format, label, name, flags, new table; future layout, undo, validation with safety rules, plan export/import |
-| Image files | Apply plans to `.img` files: tables, partitions, raw move/copy, FAT16/32 create/grow/shrink/check, exFAT create, NTFS grow/shrink, labels and UUIDs for FAT, exFAT, NTFS, ext2/3/4, XFS, btrfs, swap; every step read back and verified |
+| Image files | Apply plans to raw images and fixed-size VHD files: tables, partitions, raw move/copy, FAT16/32 create/grow/shrink/check, exFAT create/grow/shrink, NTFS create/grow/shrink/check, ext2/3/4 create/grow/shrink/check, labels and UUIDs (also XFS, btrfs, swap); resume after an interruption; recreate lost partitions; every step read back and verified |
 | Safety | Physical disks are only read (CI-enforced); writes go to user-chosen image files after two confirmations; unknown regions are never shown as free space |
 | UI | GParted-style disk map and partition list, light/dark/system theme, per-monitor DPI, English/German |
-| CLI | `wparted-cli list [--json]`, `inspect-image`, `rescue-scan-image`, `apply-plan` (dry run unless `--execute`), `fs-support` |
+| CLI | `wparted-cli list [--json]`, `inspect-image`, `rescue-scan-image`, `rescue-scan`, `apply-plan` (dry run unless `--execute`), `resume`, `fs-support` |
 | Accessibility | Keyboard operation, MSAA for the disk map, high-contrast colours, screen-reader names in EN/DE |
 
 Full capability status per file system and action: [docs/research/gparted-parity-matrix.md](docs/research/gparted-parity-matrix.md).
+What is finished and what is not: [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.md).
 
 ## Compatibility
 
 See [docs/compatibility/windows-support-matrix.md](docs/compatibility/windows-support-matrix.md). Only
-Windows 11 x64 has been run so far; Windows 7–10 are build targets awaiting VM verification.
+Windows 11 x64 has been run so far (x86 builds on x64 too); Windows 7–10 and ARM64 are build targets that have not been run.
 
 ## Installation
 
@@ -73,8 +74,8 @@ Details: [docs/developer/building.md](docs/developer/building.md).
 ## Kurzfassung (Deutsch)
 
 WParted ist ein freier, nativer Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Die
-aktuelle Alpha ist **ausschließlich lesend**: Sie zeigt Datenträger, Partitionstabellen (GPT/MBR),
-Dateisysteme und Volumes an, verändert aber nichts. Fehler und Wünsche bitte auf
+aktuelle Alpha zeigt Datenträger, Partitionstabellen (GPT/MBR), Dateisysteme und Volumes, plant Änderungen
+und **führt sie nur auf Image-Dateien aus; physische Datenträger werden nie beschrieben**. Fehler und Wünsche bitte auf
 [Gitea](https://git.tracht-digital.de/jtracht/WParted-PM/issues) melden (Projektverwaltung); Code und Releases liegen auf [GitHub](https://github.com/jtracht/WParted).
 
 ## License

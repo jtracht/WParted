@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Read-only guard for the v0.1/v0.2 release line.
+"""Read-only guard: physical disks are never written (all releases so far).
 
 Fails if any production source requests write access to a device, opens a
 file for writing or uses a modifying storage API. A line may opt out only

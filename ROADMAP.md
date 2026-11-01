@@ -1,8 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Roadmap
 
-Milestones are planning hypotheses and are tracked on Gitea (https://git.tracht-digital.de/jtracht/WParted-PM)
-(https://git.tracht-digital.de/jtracht/WParted/milestones). Scope per feature: [parity matrix](docs/research/gparted-parity-matrix.md).
+Milestones are planning hypotheses and are tracked on Gitea (https://git.tracht-digital.de/jtracht/WParted-PM/milestones). Scope per feature: [parity matrix](docs/research/gparted-parity-matrix.md).
 
 | Phase | Version | Milestone | Content | State |
 |---|---|---|---|---|

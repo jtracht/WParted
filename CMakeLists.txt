@@ -2,9 +2,9 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(WParted
-    VERSION 0.4.0
+    VERSION 0.5.0
     DESCRIPTION "WParted - Windows Partition Editor"
-    HOMEPAGE_URL "https://git.tracht-digital.de/jtracht/WParted"
+    HOMEPAGE_URL "https://github.com/jtracht/WParted"
     LANGUAGES CXX)
 
 set(WPARTED_VERSION_SUFFIX "alpha" CACHE STRING "Pre-release suffix (alpha, beta.1, rc.1 or empty)")
