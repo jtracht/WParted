@@ -1,5 +1,23 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted Benutzerhandbuch (v0.5.0-alpha)
+# WParted Benutzerhandbuch (v0.8.0-beta.1)
+
+## Bildschirmfotos
+
+![Hauptfenster: Datenträgerkarte, Partitionsliste und Details eines Beispiel-Images](../../images/main-de.png)
+
+*Hauptfenster mit einem Beispiel-Image: oben die Datenträgerkarte, darunter die Partitionen.*
+
+![Eine geplante Operation; die Karte zeigt das künftige Layout](../../images/planned-de.png)
+
+*Eine geplante Löschung. Die Karte zeigt das künftige Layout; es wurde nichts geschrieben.*
+
+![Zusammenfassung vor dem Anwenden mit Risiken und Prüfergebnis](../../images/apply-de.png)
+
+*Zusammenfassung vor dem Anwenden: jeder Schritt mit Risiko und Prüfergebnis. Schreiben ist nie die Standardschaltfläche.*
+
+![Dieselbe Ansicht im dunklen Design](../../images/dark-de.png)
+
+*Dunkles Design.*
 
 ## Was ist WParted?
 

@@ -1,7 +1,7 @@
 {
   "_comment": "SPDX-License-Identifier: GPL-2.0-or-later. Source for tools/project-management/progress.py. States: planned=0, in_progress=0.25, implemented=0.5 (code+tests exist), tested=0.8 (verified on target platform), released=1.0. Update together with the matching Gitea issue. Windows 7-10 were removed from the requirements on 2026-11-01 (maintainer decision). WP-090 (website) was moved out of this repository on 2026-10-28 (maintainer decision) and is no longer counted.",
   "updated": "2026-11-01",
-  "milestone": "v0.5.0-alpha",
+  "milestone": "v0.8.0-beta.1",
   "packages": [
     {"key": "WP-001", "area": "Architecture", "weight": 3, "state": "released", "title": "GParted analysis and parity matrix"},
     {"key": "WP-002", "area": "Architecture", "weight": 1, "state": "released", "title": "Licence and third-party baseline"},

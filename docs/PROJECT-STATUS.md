@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Project status
 
-State of the `main` branch on 2026-11-01. Windows 11 is the only target. The percentage in
+State of the `main` branch on 2026-11-01, version 0.8.0-beta.1 (beta by maintainer decision; it does not mean every item below has passed). Windows 11 is the only target. The percentage in
 `status/progress.json` counts work packages; it says nothing about GParted parity on real disks.
 
 ## Finished

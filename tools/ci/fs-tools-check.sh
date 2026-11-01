@@ -265,6 +265,34 @@ for fs in ext2 ext3 ext4; do
   e2payload "$img" "$fs move, after"
 done
 
+# ext shrink that must renumber inodes: few inodes per group, so files reach late
+# groups; the early ones are deleted, a directory and its file stay behind the new end.
+for fs in ext2 ext4; do
+  img=$W/inodes-$fs.img
+  truncate -s 400M "$img"
+  "mkfs.$fs" -q -F -b 1024 -N 256 "$img"
+  : >"$W/cmds"
+  for n in $(seq 1 130); do echo "write $W/payload.small f$n" >>"$W/cmds"; done
+  head -c 4096 "$W/payload.bin" >"$W/payload.small"
+  debugfs -w -f "$W/cmds" "$img" >/dev/null 2>&1
+  : >"$W/cmds"
+  for n in $(seq 1 110); do echo "rm f$n" >>"$W/cmds"; done
+  echo "mkdir sub" >>"$W/cmds"
+  echo "cd sub" >>"$W/cmds"
+  echo "write $W/payload.bin payload.bin" >>"$W/cmds"
+  echo "cd /" >>"$W/cmds"
+  echo "write $W/payload.bin payload.bin" >>"$W/cmds"
+  debugfs -w -f "$W/cmds" "$img" >/dev/null 2>&1
+  e2clean "$img" "$fs inodes, before"
+  if "$TOOL" fs "$img" resize "$fs" $((64 * 1048576)); then pass "$fs inodes: shrink 400 -> 64 MiB renumbers inodes"; else bad "$fs inodes: shrink"; fi
+  truncate -s 64M "$img"
+  e2clean "$img" "$fs inodes, after"
+  e2payload "$img" "$fs inodes, after"
+  rm -f "$W/out.bin"; debugfs -R "dump /sub/payload.bin $W/out.bin" "$img" >/dev/null 2>&1 || true
+  [[ -f "$W/out.bin" && "$(sha256sum "$W/out.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "$fs inodes: file in the moved directory intact" || bad "$fs inodes: sub/payload"
+  same "$fs inodes: f111 still there" "$(debugfs -R 'stat /f111' "$img" 2>/dev/null | sed -n 's/^User: .*Size: \([0-9]*\).*/\1/p')" "4096"
+done
+
 # --- XFS / btrfs ----------------------------------------------------------------
 img=$W/xfs.img
 truncate -s 320M "$img"

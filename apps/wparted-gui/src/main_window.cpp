@@ -445,8 +445,15 @@ void MainWindow::layout() {
     placeTool(kApplyIndex, rc.right - pad - applyW, applyW);
     SelectObject(dc, old);
     ReleaseDC(hwnd_, dc);
-    const int comboW = std::min<int>(scale(380, dpi_), std::max<int>(scale(200, dpi_), rc.right - pad - applyW - gap - x - gap));
-    MoveWindow(combo_, rc.right - pad - applyW - gap - comboW, y + scale(4, dpi_), comboW, scale(300, dpi_), TRUE);
+    const int comboRoom = rc.right - pad - applyW - gap - x - gap;
+    if (comboRoom >= scale(240, dpi_)) {
+        const int comboW = std::min<int>(scale(380, dpi_), comboRoom);
+        MoveWindow(combo_, rc.right - pad - applyW - gap - comboW, y + scale(4, dpi_), comboW, scale(300, dpi_), TRUE);
+    } else {  // long labels (German) or a narrow window: the device list gets its own row
+        y += btnH + tight;
+        MoveWindow(combo_, pad, y, rc.right - 2 * pad, scale(300, dpi_), TRUE);
+        y += scale(32, dpi_) - btnH;
+    }
     y += btnH + scale(10, dpi_);
 
     const bool banner = showBanner();

@@ -5,7 +5,7 @@
 to Windows 11). Its long-term goal is functional parity with [GParted](https://gparted.org) where this is
 technically safe on Windows, with a familiar layout, a modern Windows UI and strict data-safety rules.
 
-> **Status: alpha (pre-release).** WParted shows disks, partition tables, file systems and volumes,
+> **Status: beta (0.8.0-beta.1, pre-release).** WParted shows disks, partition tables, file systems and volumes,
 > plans changes GParted-style for every disk and **executes plans on disk image files and attached
 > virtual disks (VHD/VHDX)**: partitions, FAT/exFAT/NTFS/ext2-4 file systems including moving data when
 > shrinking, data rescue, resuming after an interruption.
@@ -17,6 +17,8 @@ WParted is an independent project. It is not affiliated with or endorsed by the 
 > **Where things live:** code, pull requests, CI and releases are on GitHub:
 > https://github.com/jtracht/WParted (open source, GPL-2.0-or-later). Project management - issues, milestones and the
 > board - is on Gitea: https://git.tracht-digital.de/jtracht/WParted-PM. The Gitea repository `jtracht/WParted` is a read-only mirror of GitHub.
+
+![WParted with a planned operation](docs/images/planned-en.png)
 
 ## Features in this build
 
@@ -75,7 +77,7 @@ Details: [docs/developer/building.md](docs/developer/building.md).
 ## Kurzfassung (Deutsch)
 
 WParted ist ein freier, nativer Partitionsmanager für Windows mit GParted-ähnlicher Bedienung. Die
-aktuelle Alpha zeigt Datenträger, Partitionstabellen (GPT/MBR), Dateisysteme und Volumes, plant Änderungen
+aktuelle Beta zeigt Datenträger, Partitionstabellen (GPT/MBR), Dateisysteme und Volumes, plant Änderungen
 und **führt sie auf Image-Dateien und angehängten virtuellen Datenträgern aus; echte Datenträger bleiben bis zum Sicherheitsreview gesperrt**. Fehler und Wünsche bitte auf
 [Gitea](https://git.tracht-digital.de/jtracht/WParted-PM/issues) melden (Projektverwaltung); Code und Releases liegen auf [GitHub](https://github.com/jtracht/WParted).
 

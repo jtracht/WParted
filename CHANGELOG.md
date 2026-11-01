@@ -17,6 +17,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `docs/verification/WParted-Pruefcheckliste.pdf`, the maintainer's manual check.
 
 ### Changed
+- **Version 0.8.0-beta.1** (maintainer decision): this line is a beta now. See docs/PROJECT-STATUS.md for what is checked.
 - **Windows 11 is the only target**; Windows 7–10 were removed. Packages are named `win11-x64`, `win11-x86`.
 - The helper protocol is version 2. The CI guard allows disk-changing APIs in `disk_writer.cpp` only.
 

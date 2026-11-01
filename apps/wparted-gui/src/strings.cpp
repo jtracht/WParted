@@ -76,16 +76,16 @@ const Entry kStrings[] = {
     {S::UnknownRegion, L"unknown (table not read)", L"unbekannt (Tabelle nicht gelesen)"},
     {S::VolumeOnly, L"volume", L"Volume"},
     {S::Scanning, L"Scanning all devices...", L"Alle Geräte werden durchsucht..."},
-    {S::ScanDoneFmt, L"%d device(s) found in %d ms. Disks are only read.",
-                     L"%d Gerät(e) in %d ms gefunden. Datenträger werden nur gelesen."},
+    {S::ScanDoneFmt, L"%d device(s) found in %d ms. Nothing is written until you apply.",
+                     L"%d Gerät(e) in %d ms gefunden. Geschrieben wird erst beim Anwenden."},
     {S::NoDisks, L"No devices found.", L"Keine Geräte gefunden."},
-    {S::ReadOnlyBuild, L"Alpha - writes to image files and attached virtual disks only", L"Alpha - schreibt nur auf Image-Dateien und angehängte virtuelle Datenträger"},
-    {S::PlannedFeature, L"Planned - not available in this alpha (see roadmap).",
-                        L"Geplant - in dieser Nur-Lese-Alpha nicht verfügbar (siehe Roadmap)."},
+    {S::ReadOnlyBuild, L"Beta - writes to image files and attached virtual disks only", L"Beta - schreibt nur auf Image-Dateien und angehängte virtuelle Datenträger"},
+    {S::PlannedFeature, L"Planned - not available in this beta (see roadmap).",
+                        L"Geplant - in dieser Beta nicht verfügbar (siehe Roadmap)."},
     {S::NotElevatedBanner, L"WParted is running without administrator rights. Partition tables cannot be read; only volumes mounted by Windows are shown.",
                            L"WParted läuft ohne Administratorrechte. Partitionstabellen können nicht gelesen werden; es werden nur von Windows eingebundene Volumes angezeigt."},
     {S::NotElevatedStatus, L"Not elevated", L"Ohne Adminrechte"},
-    {S::ElevatedStatus, L"Administrator (read-only)", L"Administrator (nur lesend)"},
+    {S::ElevatedStatus, L"Administrator", L"Administrator"},
     {S::PendingNone, L"No operations pending. Planned changes appear here; this build writes only to opened image files and attached virtual disks.",
                      L"Keine Operationen ausstehend. Geplante Änderungen erscheinen hier; dieser Build schreibt nur in geöffnete Image-Dateien und auf angehängte virtuelle Datenträger."},
     {S::StatusWindows, L"Windows", L"Windows"},
@@ -466,8 +466,10 @@ const wchar_t* g_lookup[static_cast<int>(S::Count_)] = {};
 }  // namespace
 
 void initLanguage() {
-    LANGID lang = GetUserDefaultUILanguage();
-    const bool german = PRIMARYLANGID(lang) == LANG_GERMAN;
+    // WPARTED_LANG=en|de overrides the Windows UI language (screenshots, support).
+    wchar_t forced[8] = L"";
+    GetEnvironmentVariableW(L"WPARTED_LANG", forced, 8);
+    const bool german = forced[0] ? (forced[0] == L'd' && forced[1] == L'e') : PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_GERMAN;
     for (const auto& e : kStrings) g_lookup[static_cast<int>(e.id)] = german ? e.de : e.en;
 }
 

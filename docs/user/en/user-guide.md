@@ -1,5 +1,23 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# WParted user guide (v0.5.0-alpha)
+# WParted user guide (v0.8.0-beta.1)
+
+## Screenshots
+
+![Main window: disk map, partition list and details of an example image](../../images/main-en.png)
+
+*Main window with an example disk image: disk map on top, partitions below.*
+
+![One planned operation; the disk map shows the future layout](../../images/planned-en.png)
+
+*A planned deletion. The map shows the future layout; nothing has been written.*
+
+![Apply summary with risks and the result of the checks](../../images/apply-en.png)
+
+*Apply summary: every step with its risk and the result of the checks. Writing is never the default button.*
+
+![The same view in the dark theme](../../images/dark-en.png)
+
+*Dark theme.*
 
 ## What is WParted?
 
