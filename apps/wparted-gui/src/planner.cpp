@@ -431,6 +431,11 @@ void MainWindow::refreshView() {
     } else {
         SendMessageW(pending_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(tr(d && !q ? S::ErrNeedsTable : S::PendingNone)));
     }
+    const bool showParti = d && !(q && !q->empty());  // before that the disk card has its own Parti
+    if (showParti != partiShown_) {
+        partiShown_ = showParti;
+        layout();
+    }
     updateStatus();
     if (q && !q->empty()) {
         wchar_t buf[256];

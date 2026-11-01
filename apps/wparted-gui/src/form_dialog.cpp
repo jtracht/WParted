@@ -126,9 +126,7 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 const bool disabled = (di->itemState & ODS_DISABLED) != 0;
                 const bool pressed = (di->itemState & ODS_SELECTED) != 0;
                 fillRect(di->hDC, di->rcItem, pal.window);
-                const COLORREF fill = disabled ? blend(pal.window, pal.border, 70)
-                                      : pressed ? blend(pal.accent, pal.window, 25) : pal.accent;
-                fillRounded(di->hDC, di->rcItem, scale(8, dpi), fill, fill);
+                drawPrimaryFill(di->hDC, di->rcItem, pal, dpi, disabled, pressed, false);
                 SetBkMode(di->hDC, TRANSPARENT);
                 SetTextColor(di->hDC, disabled ? pal.disabledText : pal.onAccent);
                 HGDIOBJ old = SelectObject(di->hDC, s->font);
@@ -149,7 +147,7 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 fillRect(di->hDC, r, pal.card);
                 RECT track = r;
                 track.right -= 1;
-                fillRounded(di->hDC, track, scale(6, dpi), blend(pal.card, pal.unallocated, pal.dark ? 30 : 40), pal.border);
+                fillStripes(di->hDC, track, scale(10, dpi), pal.unallocated, pal.unused, dpi);
                 if (f.previewTotal > 0 && f.previewSize > 0) {
                     const double w = static_cast<double>(track.right - track.left - 2);
                     RECT part = track;
@@ -159,17 +157,12 @@ LRESULT CALLBACK formProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                                  static_cast<int>(w * static_cast<double>(f.previewStart + f.previewSize) / static_cast<double>(f.previewTotal));
                     part.right = std::max<LONG>(part.right, part.left + scale(6, dpi));
                     part.right = std::min<LONG>(part.right, track.right - 1);
-                    fillRounded(di->hDC, part, scale(5, dpi), blend(pal.card, f.previewColor, pal.dark ? 30 : 18), pal.accent);
-                    RECT bar = part;
-                    InflateRect(&bar, -1, 0);
-                    bar.top += 1;
-                    bar.bottom = bar.top + scale(4, dpi);
-                    fillRounded(di->hDC, bar, scale(3, dpi), f.previewColor, f.previewColor);
+                    const COLORREF partFill = pal.highContrast ? pal.card : f.previewColor;
+                    fillRounded(di->hDC, part, scale(9, dpi), partFill, pal.accent);
                     SetBkMode(di->hDC, TRANSPARENT);
-                    SetTextColor(di->hDC, pal.text);
+                    SetTextColor(di->hDC, pal.highContrast ? pal.text : readableOn(partFill));
                     HGDIOBJ old = SelectObject(di->hDC, s->font);
                     RECT tr2 = part;
-                    tr2.top += scale(4, dpi);
                     DrawTextW(di->hDC, f.previewLabel.c_str(), -1, &tr2,
                               DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                     SelectObject(di->hDC, old);

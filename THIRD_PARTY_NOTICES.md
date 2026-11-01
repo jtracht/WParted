@@ -13,6 +13,11 @@ GCC and statically include the following runtime code:
 | Windows system DLLs (kernel32, user32, gdi32, comctl32, comdlg32, shell32, ole32, advapi32, msvcrt, dwmapi, uxtheme) | Loaded at run time from the OS | Part of Windows | No |
 | GNU General Public License v2 text | `LICENSE` | Verbatim copying permitted | Yes |
 
+## Project artwork
+
+Parti, the mascot (`docs/images/parti.svg`, `docs/images/parti.png`, the application icon), and the colour palette
+come from the project's own website, https://wparted.tracht-digital.de/. They are not third-party material.
+
 ## References (no code reused)
 
 - **GParted** (https://gitlab.gnome.org/GNOME/gparted, GPL-2.0-or-later; manual GFDL-1.2) is used as

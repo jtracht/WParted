@@ -1,4 +1,6 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<p align="center"><img src="docs/images/parti.png" width="128" height="128" alt="Parti, the WParted mascot: a small, smiling hard disk"></p>
+
 # WParted: free, open-source partition manager for Windows 11
 
 **WParted is a free, open-source partition manager for Windows 11 with a GParted-style workflow.** It shows disks,
@@ -23,6 +25,7 @@ and attached virtual disks (VHD/VHDX). It runs natively on Windows, without a Li
 | **File systems detected** | 31 types, including ReFS, BitLocker, F2FS, LUKS, LVM, HFS+, APFS and ZFS |
 | **Interfaces** | Desktop app (English and German, light and dark) and command line (`wparted-cli`) |
 | **Privacy** | No telemetry, no automatic update checks, no network use |
+| **Website** | [wparted.tracht-digital.de](https://wparted.tracht-digital.de/) |
 
 ## What can WParted do?
 

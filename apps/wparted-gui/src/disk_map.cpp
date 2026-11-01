@@ -106,7 +106,7 @@ void layoutRects(HWND h, MapState& s) {
     GetClientRect(h, &rc);
     const UINT dpi = dpiForWindow(h);
     const int pad = scale(12, dpi), gap = scale(3, dpi);
-    RECT area{rc.left + pad, rc.top + headerHeight(dpi), rc.right - pad, rc.bottom - pad};
+    RECT area{rc.left + pad, rc.top + headerHeight(dpi), rc.right - pad, rc.bottom - pad - scale(4, dpi)};
     const auto& rows = s.view->rows;
 
     std::vector<std::size_t> top;
@@ -214,10 +214,10 @@ void paint(HWND h, MapState& s) {
     RECT card = rc;
     card.right -= 1;
     card.bottom -= 1;
-    fillRounded(dc, card, scale(8, dpi), pal.card, pal.border);
+    drawCard(dc, card, scale(18, dpi), pal, dpi);
     SetBkMode(dc, TRANSPARENT);
-    const int radius = scale(6, dpi);
-    const int bar = scale(4, dpi);
+    const int radius = scale(12, dpi);
+    const int lip = scale(5, dpi);
 
     if (s.view && s.view->disk) {
         drawHeader(dc, s, card, dpi);
@@ -229,10 +229,11 @@ void paint(HWND h, MapState& s) {
                 RECT box = s.rects[i];
                 if (box.right - box.left < 3) continue;
                 const bool hot = static_cast<int>(i) == s.hot;
+                COLORREF textColor = pal.text, subColor = pal.mutedText;
                 if (row.kind == Segment::Kind::Unallocated) {
                     if (s.view->tableRead) {
-                        fillRounded(dc, box, radius, blend(pal.card, pal.unallocated, pal.dark ? 35 : 45),
-                                    hot ? pal.accent : pal.border);
+                        fillStripes(dc, box, radius, pal.unallocated, pal.unused, dpi);
+                        if (hot) strokeRounded(dc, box, radius, 1, pal.accent);
                     } else {
                         fillRounded(dc, box, radius, pal.card, pal.border);
                         HBRUSH hatch = CreateHatchBrush(HS_BDIAGONAL, pal.border);
@@ -255,57 +256,67 @@ void paint(HWND h, MapState& s) {
                 } else {
                     const auto& p = s.view->layout->partitions[static_cast<std::size_t>(row.partitionIndex)];
                     const COLORREF fc = fsColor(p.fs.type);
-                    fillRounded(dc, box, radius, blend(pal.card, fc, pal.dark ? 18 : 10), hot ? pal.accent : pal.border);
-                    // Usage: filled part in the file system colour.
+                    // A pastel block on a darker lower edge. High contrast: system colours, outline only.
+                    const COLORREF solid = pal.highContrast ? pal.card : fc;
+                    const COLORREF edge = pal.highContrast ? pal.text : hot ? pal.accent : blend(fc, RGB(0x2B, 0x25, 0x47), 22);
+                    fillRounded(dc, box, radius, edge, edge);
+                    RECT face = box;
+                    face.bottom -= lip;
+                    if (hot) InflateRect(&face, -1, 0), face.top += 1;
+                    // Usage: the used part is solid, the free part lighter.
                     const auto* vol = viewVolume(*s.view, p);
-                    if (vol && vol->hasUsage && vol->totalBytes) {
-                        RECT used = box;
-                        InflateRect(&used, -2, -2);
-                        used.top += bar;
+                    if (vol && vol->hasUsage && vol->totalBytes && !pal.highContrast) {
+                        fillRounded(dc, face, radius, blend(fc, pal.card, pal.dark ? 55 : 50), blend(fc, pal.card, pal.dark ? 55 : 50));
                         const double frac = static_cast<double>(vol->totalBytes - vol->freeBytes) / vol->totalBytes;
-                        used.right = used.left + static_cast<int>((used.right - used.left) * frac);
-                        fillRect(dc, used, blend(pal.card, fc, pal.dark ? 34 : 24));
+                        const int saved = SaveDC(dc);
+                        IntersectClipRect(dc, face.left, face.top, face.left + static_cast<int>((face.right - face.left) * frac), face.bottom);
+                        fillRounded(dc, face, radius, solid, solid);
+                        RestoreDC(dc, saved);
+                    } else {
+                        fillRounded(dc, face, radius, solid, solid);
                     }
-                    RECT top = box;
-                    InflateRect(&top, -1, -1);
-                    top.bottom = top.top + bar;
-                    fillRounded(dc, top, radius / 2, fc, fc);
+                    textColor = pal.highContrast ? pal.text : readableOn(fc);
+                    subColor = pal.highContrast ? pal.text : blend(fc, textColor, 82);
                 }
                 if (box.right - box.left < scale(48, dpi)) continue;
                 RECT t1 = box;
                 InflateRect(&t1, -scale(8, dpi), 0);
-                t1.top += bar + scale(4, dpi);
+                t1.top += scale(4, dpi);
                 t1.bottom = (box.top + box.bottom) / 2 + scale(3, dpi);
                 SelectObject(dc, s.body);
-                SetTextColor(dc, pal.text);
+                SetTextColor(dc, textColor);
                 const std::wstring title = rowTitle(*s.view, row);
                 DrawTextW(dc, title.c_str(), -1, &t1, DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
                 RECT t2 = t1;
                 t2.top = t1.bottom + scale(1, dpi);
-                t2.bottom = box.bottom - scale(4, dpi);
+                t2.bottom = box.bottom - lip;
                 std::wstring sub = win::widen(formatSize(row.sectorCount * s.view->layout->sectorSize));
                 if (row.kind == Segment::Kind::Partition) {
                     const auto& p = s.view->layout->partitions[static_cast<std::size_t>(row.partitionIndex)];
                     sub += L"  ·  " + win::widen(fsTypeName(p.fs.type));
                 }
                 SelectObject(dc, s.caption);
-                SetTextColor(dc, pal.mutedText);
+                SetTextColor(dc, subColor);
                 DrawTextW(dc, sub.c_str(), -1, &t2, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
             }
         }
         if (s.selected >= 0 && s.selected < static_cast<int>(s.rects.size())) {
             RECT r = s.rects[static_cast<std::size_t>(s.selected)];
-            HPEN pen = CreatePen(PS_SOLID, scale(2, dpi), pal.accent);
-            HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
-            RoundRect(dc, r.left, r.top, r.right, r.bottom, radius, radius);
-            SelectObject(dc, op);
-            SelectObject(dc, ob);
-            DeleteObject(pen);
+            strokeRounded(dc, r, radius, scale(3, dpi), pal.accent);
             if (s.focused) {
                 InflateRect(&r, -scale(4, dpi), -scale(4, dpi));
                 DrawFocusRect(dc, &r);
             }
         }
+    } else {
+        // Nothing to show yet: Parti and one calm sentence.
+        const int size = scale(64, dpi);
+        const int top = (card.bottom - scale(4, dpi) - size) / 2;
+        drawParti(dc, scale(24, dpi), top, size);
+        RECT t{scale(24, dpi) + size + scale(16, dpi), card.top, card.right - scale(16, dpi), card.bottom - scale(4, dpi)};
+        SelectObject(dc, s.body);
+        SetTextColor(dc, pal.mutedText);
+        DrawTextW(dc, tr(S::MapEmpty), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
     }
     BitBlt(wdc, 0, 0, rc.right, rc.bottom, dc, 0, 0, SRCCOPY);
     SelectObject(dc, oldFont);

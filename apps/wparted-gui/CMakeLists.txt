@@ -7,6 +7,8 @@ set(WPARTED_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/res/wparted.manifest")
 set(WPARTED_FILE_DESCRIPTION "WParted - Windows Partition Editor")
 set(WPARTED_INTERNAL_NAME "wparted")
 configure_file(res/wparted.rc.in ${CMAKE_CURRENT_BINARY_DIR}/wparted.rc @ONLY)
+# A new icon or manifest has to rebuild the resource; the .rc only names them.
+set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/wparted.rc PROPERTIES OBJECT_DEPENDS "${WPARTED_ICON};${WPARTED_MANIFEST}")
 
 add_executable(wparted WIN32
     src/main.cpp

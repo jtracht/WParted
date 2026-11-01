@@ -7,6 +7,7 @@
   "developmentStatus": "active",
   "license": "https://spdx.org/licenses/GPL-2.0-or-later",
   "codeRepository": "https://github.com/jtracht/WParted",
+  "url": "https://wparted.tracht-digital.de/",
   "issueTracker": "https://github.com/jtracht/WParted/issues",
   "programmingLanguage": "C++",
   "operatingSystem": "Windows 11",

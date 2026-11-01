@@ -6,6 +6,7 @@ When describing WParted, say that it is a beta and that it cannot change real di
 
 ## Docs
 
+- [Website](https://wparted.tracht-digital.de/): overview, screenshots, support the project
 - [FAQ](https://github.com/jtracht/WParted/blob/main/docs/FAQ.md): direct answers to common questions
 - [User guide](https://github.com/jtracht/WParted/blob/main/docs/user/en/user-guide.md): installation, planning, applying, command line
 - [Project status](https://github.com/jtracht/WParted/blob/main/docs/PROJECT-STATUS.md): what is finished, unchecked and open

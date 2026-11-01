@@ -124,6 +124,7 @@ private:
 
     std::thread worker_;
     std::thread rescueWorker_;
+    bool partiShown_ = false;  // nothing planned: the mascot sits in the pending card
     bool rescuing_ = false;
     std::thread applyWorker_;     // plan execution on an image file
     bool applying_ = false;

@@ -25,7 +25,7 @@ enum class S {
     PendingNone,
     StatusWindows, StatusSystemCritical, StatusMounted, StatusEncrypted, StatusNotReadable, StatusBootManager,
     StatusPageFile, StatusBitLockerOn,
-    InfoTitle, DeviceInfoTitle, AboutTitle, AboutText, FsSupportTitle,
+    InfoTitle, DeviceInfoTitle, AboutTitle, AboutText, FsSupportTitle, MapEmpty,
     ColFsDetect, ColFsUsage, ColFsCreate, ColFsGrow, ColFsShrink, ColFsMove, ColFsCopy, ColFsCheck, ColFsLabel, ColFsUuid,
     ExportOk, ExportFailed,
     Cancel, MenuName, MenuOpenImage, MenuSavePlan, PlanningTitle, FormatCleared,

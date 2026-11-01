@@ -6,6 +6,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed (design)
+
+- The GUI, the icon and the documentation take the look of the website (wparted.tracht-digital.de): violet and pastel
+  colours in light and dark, soft rounded cards, partitions as solid pastel blocks, free space striped, and Parti, the
+  mascot, as the application icon and in empty states. Corners are now anti-aliased.
+- The accent colour is the brand violet and no longer follows the Windows accent colour.
+- The selected list row uses the violet tint instead of the blue of the Windows theme; the list header follows the
+  theme colours. A changed icon or manifest now rebuilds the resource file.
+
 ### Added
 - **Writing to attached virtual disks (VHD/VHDX)** through the helper, started with UAC. Real disks stay
   locked by a build option until the human security review is done; the disk of the running Windows is

@@ -54,7 +54,7 @@ void paint(HWND h, InspectorState& s) {
     RECT card = rc;
     card.right -= 1;
     card.bottom -= 1;
-    fillRounded(dc, card, scale(8, dpi), pal.card, pal.border);
+    drawCard(dc, card, scale(16, dpi), pal, dpi);
     SetBkMode(dc, TRANSPARENT);
     HGDIOBJ oldFont = SelectObject(dc, s.body);
 
@@ -92,7 +92,7 @@ void paint(HWND h, InspectorState& s) {
             const int hh = textHeight(dc, s.body, d.hint, width - iconW - scale(20, dpi)) + scale(20, dpi);
             RECT box{pad, y, rc.right - pad, y + hh};
             const COLORREF fg = d.warnHint ? pal.caution : pal.accent;
-            fillRounded(dc, box, scale(6, dpi), blend(pal.card, fg, pal.dark ? 16 : 9), blend(pal.card, fg, 30));
+            fillRounded(dc, box, scale(10, dpi), blend(pal.card, fg, pal.dark ? 16 : 9), blend(pal.card, fg, 30));
             if (s.icon) {
                 const wchar_t g = d.warnHint ? glyph::Warning : glyph::Info;
                 RECT ir{box.left + scale(10, dpi), box.top + scale(10, dpi), box.left + scale(10, dpi) + iconW,

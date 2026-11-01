@@ -80,16 +80,36 @@ LRESULT CALLBACK buttonSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR
     return DefSubclassProc(h, msg, wp, lp);
 }
 
-// Colours the list view header text, which otherwise stays black in dark mode.
+// Paints the list view header in the card colour; the themes leave it grey or black.
 LRESULT CALLBACK listSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR ref) {
     if (msg == WM_NOTIFY) {
         auto* nm = reinterpret_cast<NMHDR*>(lp);
         if (nm->hwndFrom == ListView_GetHeader(h) && nm->code == NM_CUSTOMDRAW) {
             auto* cd = reinterpret_cast<NMCUSTOMDRAW*>(lp);
-            if (cd->dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+            const Palette& p = *reinterpret_cast<const Palette*>(ref);
+            if (cd->dwDrawStage == CDDS_PREPAINT) {
+                if (!p.highContrast) fillRect(cd->hdc, cd->rc, p.card);
+                return CDRF_NOTIFYITEMDRAW;
+            }
             if (cd->dwDrawStage == CDDS_ITEMPREPAINT) {
-                SetTextColor(cd->hdc, reinterpret_cast<const Palette*>(ref)->text);
-                return CDRF_DODEFAULT;
+                SetTextColor(cd->hdc, p.text);
+                if (p.highContrast) return CDRF_DODEFAULT;
+                wchar_t text[128] = L"";
+                HDITEMW item{};
+                item.mask = HDI_TEXT | HDI_FORMAT;
+                item.pszText = text;
+                item.cchTextMax = 128;
+                SendMessageW(nm->hwndFrom, HDM_GETITEMW, cd->dwItemSpec, reinterpret_cast<LPARAM>(&item));
+                fillRect(cd->hdc, cd->rc, p.card);
+                RECT line = cd->rc;
+                line.top = line.bottom - 1;
+                fillRect(cd->hdc, line, p.border);
+                RECT t = cd->rc;
+                InflateRect(&t, -8, 0);
+                SetBkMode(cd->hdc, TRANSPARENT);
+                const UINT align = (item.fmt & HDF_RIGHT) ? DT_RIGHT : DT_LEFT;
+                DrawTextW(cd->hdc, text, -1, &t, align | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                return CDRF_SKIPDEFAULT;
             }
         }
     } else if (msg == WM_NCDESTROY) {
@@ -98,8 +118,8 @@ LRESULT CALLBACK listSubclass(HWND h, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, 
     return DefSubclassProc(h, msg, wp, lp);
 }
 
-// Command bar button: Fluent "subtle" style (transparent until hovered),
-// the primary action (Apply) uses the accent colour.
+// Command bar button: a pill that shows only when hovered; the primary action
+// (Apply) is the violet button with a lip, as on the website.
 void drawButton(const DRAWITEMSTRUCT& di, const Palette& p, UINT dpi, HFONT textFont, HFONT iconFont) {
     const bool disabled = (di.itemState & ODS_DISABLED) != 0;
     const bool pressed = (di.itemState & ODS_SELECTED) != 0;
@@ -107,12 +127,10 @@ void drawButton(const DRAWITEMSTRUCT& di, const Palette& p, UINT dpi, HFONT text
     const int id = GetDlgCtrlID(di.hwndItem);
     const bool primary = id == IDM_APPLY_OPS;
     fillRect(di.hDC, di.rcItem, p.window);
-    const int radius = scale(8, dpi);
+    const int radius = di.rcItem.bottom - di.rcItem.top;
     COLORREF fg = disabled ? p.disabledText : p.text;
     if (primary) {
-        const COLORREF fill = disabled ? blend(p.window, p.border, 70) : pressed ? blend(p.accent, p.window, 25)
-                              : hot ? blend(p.accent, p.window, 12) : p.accent;
-        fillRounded(di.hDC, di.rcItem, radius, fill, fill);
+        drawPrimaryFill(di.hDC, di.rcItem, p, dpi, disabled, pressed, hot);
         fg = disabled ? p.disabledText : p.onAccent;
     } else if (pressed || hot) {
         fillRounded(di.hDC, di.rcItem, radius, pressed ? p.pressed : p.subtle, pressed ? p.pressed : p.subtle);
@@ -122,6 +140,7 @@ void drawButton(const DRAWITEMSTRUCT& di, const Palette& p, UINT dpi, HFONT text
     SetBkMode(di.hDC, TRANSPARENT);
     SetTextColor(di.hDC, fg);
     RECT r = di.rcItem;
+    if (primary && !disabled) r.bottom -= pressed ? 0 : scale(4, dpi);  // centred on the face, not on the lip
     const wchar_t g = commandGlyph(id);
     HGDIOBJ old = SelectObject(di.hDC, textFont);
     SIZE ts{};
@@ -176,7 +195,6 @@ bool MainWindow::create(HINSTANCE inst, int show) {
         log::error("RegisterClassExW(inspector) failed, error " + std::to_string(GetLastError()));
         return false;
     }
-    refreshAccentColor();
     refreshHighContrast();
     if (!registerDiskMapClass(inst)) {
         log::error("RegisterClassExW(disk map) failed, error " + std::to_string(GetLastError()));
@@ -224,7 +242,7 @@ void MainWindow::recreateFonts() {
     for (HFONT* f : {&font_, &sectionFont_, &iconFont_, &captionFont_})
         if (*f) DeleteObject(*f);
     font_ = createUiFont(dpi_, FontRole::Body);
-    sectionFont_ = createUiFont(dpi_, FontRole::BodyStrong);
+    sectionFont_ = createUiFont(dpi_, FontRole::Section);
     captionFont_ = createUiFont(dpi_, FontRole::Caption);
     iconFont_ = createIconFont(dpi_, 16);
     auto setFont = [this](HWND c) { if (c) SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE); };
@@ -265,7 +283,7 @@ void MainWindow::createChildren() {
     ListView_SetExtendedListViewStyle(list_, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
     const S cols[ColCount] = {S::ColPartition, S::ColName, S::ColFileSystem, S::ColMountPoint, S::ColLabel,
                               S::ColSize, S::ColUsed, S::ColUnused, S::ColFlags, S::ColStatus};
-    const int widths[ColCount] = {64, 130, 96, 80, 100, 84, 80, 80, 100, 130};
+    const int widths[ColCount] = {78, 130, 96, 80, 100, 84, 80, 80, 100, 130};
     for (int i = 0; i < ColCount; ++i) {
         LVCOLUMNW c{};
         c.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
@@ -466,13 +484,13 @@ void MainWindow::layout() {
         SetWindowPos(bannerBtn_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         y += bh + gap;
     }
-    const int mapH = scale(136, dpi_);
+    const int mapH = scale(148, dpi_);
     MoveWindow(map_, pad, y, rc.right - 2 * pad, mapH, TRUE);
     y += mapH + scale(12, dpi_);
 
     const int statusH = scale(24, dpi_);
     const bool pendingVisible = IsWindowVisible(pending_) != FALSE;
-    const int pendingH = pendingVisible ? scale(140, dpi_) : 0;
+    const int pendingH = pendingVisible ? scale(124, dpi_) : 0;
     const int bottom = rc.bottom - statusH - tight;
     const int sectionH = scale(36, dpi_);
     const int inspectorW = std::min<int>(scale(320, dpi_), (rc.right - 2 * pad) / 3);
@@ -489,9 +507,11 @@ void MainWindow::layout() {
     }
     if (pendingVisible) {
         pendingCard_ = RECT{pad, listBottom + scale(12, dpi_), rc.right - pad, bottom};
+        // With nothing planned Parti sits at the right end of the card.
+        const int partiRoom = partiShown_ ? scale(104, dpi_) : 0;
         MoveWindow(pending_, pendingCard_.left + scale(8, dpi_), pendingCard_.top + sectionH,
-                   pendingCard_.right - pendingCard_.left - scale(16, dpi_),
-                   std::max(0, static_cast<int>(pendingCard_.bottom - pendingCard_.top) - sectionH - scale(8, dpi_)), TRUE);
+                   pendingCard_.right - pendingCard_.left - scale(16, dpi_) - partiRoom,
+                   std::max(0, static_cast<int>(pendingCard_.bottom - pendingCard_.top) - sectionH - scale(10, dpi_)), TRUE);
     } else {
         pendingCard_ = RECT{};
     }
@@ -506,11 +526,11 @@ void MainWindow::paintBackground(HDC dc) {
     RECT rc;
     GetClientRect(hwnd_, &rc);
     fillRect(dc, rc, p.window);
-    const int radius = scale(8, dpi_);
+    const int radius = scale(16, dpi_);
     SetBkMode(dc, TRANSPARENT);
     auto section = [&](const RECT& card, const std::wstring& title) {
         if (card.right <= card.left) return;
-        fillRounded(dc, card, radius, p.card, p.border);
+        drawCard(dc, card, radius, p, dpi_);
         RECT t{card.left + scale(16, dpi_), card.top, card.right - scale(16, dpi_), card.top + scale(36, dpi_)};
         HGDIOBJ old = SelectObject(dc, sectionFont_);
         SetTextColor(dc, p.text);
@@ -523,6 +543,11 @@ void MainWindow::paintBackground(HDC dc) {
     auto it = d ? queues_.find(d->path) : queues_.end();
     if (it != queues_.end() && !it->second.empty()) pendingTitle += L"  (" + std::to_wstring(it->second.operations().size()) + L")";
     section(pendingCard_, pendingTitle);
+    if (partiShown_ && pendingCard_.right > pendingCard_.left) {
+        const int size = scale(80, dpi_);
+        const int y = pendingCard_.top + (pendingCard_.bottom - pendingCard_.top - scale(4, dpi_) - size) / 2;
+        if (y >= pendingCard_.top) drawParti(dc, pendingCard_.right - scale(12, dpi_) - size, y, size);
+    }
 }
 
 void MainWindow::drawPendingItem(const DRAWITEMSTRUCT& di) {
@@ -590,6 +615,28 @@ LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
             RECT cell{};
             ListView_GetSubItemRect(list_, item, ColFs, LVIR_BOUNDS, &cell);
             const bool selected = ListView_GetItemState(list_, item, LVIS_SELECTED) != 0;
+            if (selected && !p.highContrast) {
+                // The themes draw their own blue selection whatever the custom draw says,
+                // so the selected row is painted over in the violet tint.
+                RECT rowRect{};
+                ListView_GetItemRect(list_, item, &rowRect, LVIR_BOUNDS);
+                fillRect(cd->nmcd.hdc, rowRect, p.selection);
+                SetBkMode(cd->nmcd.hdc, TRANSPARENT);
+                HGDIOBJ oldFont = SelectObject(cd->nmcd.hdc, font_);
+                for (int col = 0; col < ColCount; ++col) {
+                    if (col == ColFs) continue;
+                    wchar_t text[256] = L"";
+                    ListView_GetItemText(list_, item, col, text, 256);
+                    RECT c{};
+                    ListView_GetSubItemRect(list_, item, col, col == 0 ? LVIR_LABEL : LVIR_BOUNDS, &c);
+                    InflateRect(&c, -scale(6, dpi_), 0);
+                    SetTextColor(cd->nmcd.hdc, (col == ColUsed || col == ColUnused || col == ColFlags || col == ColMount) ? p.mutedText : p.text);
+                    const UINT align = (col >= ColSize && col <= ColUnused) ? DT_RIGHT : DT_LEFT;
+                    DrawTextW(cd->nmcd.hdc, text, -1, &c, align | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                }
+                SelectObject(cd->nmcd.hdc, oldFont);
+                if (GetFocus() == list_) DrawFocusRect(cd->nmcd.hdc, &rowRect);
+            }
             RECT bg = cell;
             fillRect(cd->nmcd.hdc, bg, selected ? p.selection : p.card);
             std::wstring label;
@@ -605,8 +652,8 @@ LRESULT MainWindow::listCustomDraw(NMLVCUSTOMDRAW* cd) {
             pill.left += scale(6, dpi_);
             pill.right -= scale(4, dpi_);
             InflateRect(&pill, 0, -scale(5, dpi_));
-            drawPill(cd->nmcd.hdc, pill, blend(selected ? p.selection : p.card, color, p.dark ? 40 : 22), p.text,
-                     label.c_str(), captionFont_, dpi_);
+            const COLORREF pillFill = p.highContrast ? blend(p.card, color, 22) : color;
+            drawPill(cd->nmcd.hdc, pill, pillFill, p.highContrast ? p.text : readableOn(pillFill), label.c_str(), captionFont_, dpi_);
             return CDRF_DODEFAULT;
         }
         default:
@@ -647,6 +694,7 @@ void MainWindow::startDiscovery() {
     if (scanning_) return;
     if (worker_.joinable()) worker_.join();
     scanning_ = true;
+    updateCommandState();  // no commands look available before the first disk is there
     EnableWindow(buttons_[0], FALSE);
     EnableMenuItem(menu_, IDM_REFRESH, MF_BYCOMMAND | MF_GRAYED);
     SetWindowTextW(status_, tr(S::Scanning));
@@ -960,7 +1008,7 @@ void MainWindow::showAbout() {
     cfg.pszWindowTitle = tr(S::AboutTitle);
     cfg.pszMainInstruction = head.c_str();
     cfg.pszContent = tr(S::AboutText);
-    cfg.pszFooter = L"<a href=\"https://github.com/jtracht/WParted\">github.com/jtracht/WParted</a>";
+    cfg.pszFooter = L"<a href=\"https://wparted.tracht-digital.de\">wparted.tracht-digital.de</a>   ·   <a href=\"https://github.com/jtracht/WParted\">github.com/jtracht/WParted</a>";
     cfg.dwCommonButtons = TDCBF_CLOSE_BUTTON;
     cfg.pfCallback = aboutDialogCallback;
     TaskDialogIndirect(&cfg, nullptr, nullptr, nullptr);
@@ -1122,7 +1170,7 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             const RECT* r = reinterpret_cast<const RECT*>(lp);
             SetWindowPos(hwnd_, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
             for (int i = 0; i < ColCount; ++i) {
-                const int widths[ColCount] = {64, 130, 96, 80, 100, 84, 80, 80, 100, 130};
+                const int widths[ColCount] = {78, 130, 96, 80, 100, 84, 80, 80, 100, 130};
                 ListView_SetColumnWidth(list_, i, scale(widths[i], dpi_));
             }
             layout();
@@ -1130,7 +1178,7 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_SETTINGCHANGE:
             if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
-                refreshAccentColor();  // accent colour and light/dark preference
+                // light/dark preference
                 refreshHighContrast();
                 applyTheme();
             } else if (wp == SPI_SETHIGHCONTRAST) {
@@ -1156,7 +1204,7 @@ LRESULT MainWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 // Fluent InfoBar (caution): rounded, icon, message.
                 const Palette& p = palette(isDark());
                 fillRect(di->hDC, di->rcItem, p.window);
-                fillRounded(di->hDC, di->rcItem, scale(8, dpi_), p.warning, blend(p.warning, p.caution, 30));
+                fillRounded(di->hDC, di->rcItem, scale(14, dpi_), p.warning, blend(p.warning, p.caution, 30));
                 SetBkMode(di->hDC, TRANSPARENT);
                 RECT r = di->rcItem;
                 r.left += scale(16, dpi_);
