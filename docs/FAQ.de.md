@@ -53,7 +53,7 @@ virtuellen Datenträger, planen Sie die Änderungen und wählen Sie *Anwenden*. 
 
 ### Kann WParted NTFS-Partitionen verkleinern und vergrößern?
 Ja, auf Image-Dateien und angehängten virtuellen Datenträgern. Beim Verkleinern verschiebt es Daten aus dem wegfallenden
-Bereich. Eine stark fragmentierte `$MFT` bricht das Verkleinern vor jeder Änderung ab.
+Bereich. Auch eine `$MFT` mit Attributliste wird verschoben; eine beschädigte bricht das Verkleinern vor jeder Änderung ab.
 
 ### Kann WParted eine Partition verschieben?
 Ja, auf Image-Dateien und angehängten virtuellen Datenträgern. Die Daten werden blockweise kopiert, und eine unterbrochene Verschiebung lässt sich fortsetzen.

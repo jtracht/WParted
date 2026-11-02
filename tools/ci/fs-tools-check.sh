@@ -25,6 +25,7 @@ fsck_fat() { if fsck.fat -n "$1" >"$W/fsck.txt" 2>&1; then pass "$2: fsck.fat -n
 ours() { if "$TOOL" fs "$1" check "$2" >"$W/ours.txt"; then pass "$3: WParted check clean"; else bad "$3: WParted check"; cat "$W/ours.txt"; fi; }
 
 head -c 2M /dev/urandom >"$W/payload.bin"
+head -c 3000 /dev/urandom >"$W/payload-small.bin"
 sha=$(sha256sum "$W/payload.bin" | cut -d' ' -f1)
 payload_ok() {  # image, path, context
   rm -f "$W/out.bin"
@@ -152,6 +153,27 @@ truncate -s 64M "$img"
 ntfs_ok "ntfs move, after"
 ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs move: writable afterwards" || bad "ntfs move: write"
 ours "$img" ntfs "ntfs move, after"
+
+# Fragmented $MFT: enough records, then $DATA in three segments with an attribute list.
+# ntfs-3g has to accept the fixture before WParted touches it.
+img=$W/ntfs-frag.img
+truncate -s 512M "$img"
+mkfs.ntfs -q -Q -F -L FRAG "$img" >/dev/null
+for i in $(seq 1 240); do ntfscp -f "$img" "$W/payload-small.bin" "s$i.bin" >/dev/null 2>&1 || bad "ntfs frag: ntfscp $i"; done
+ntfscp -f "$img" "$W/payload.bin" payload.bin >/dev/null 2>&1 || bad "ntfs frag: ntfscp"
+if python3 "$(dirname "$0")/ntfs-fragment-mft.py" "$img"; then pass "ntfs frag: fixture written"; else bad "ntfs frag: fixture"; fi
+ntfs_ok "ntfs frag, before"
+ntfsinfo -i 0 "$img" 2>/dev/null | grep -qi 'ATTRIBUTE_LIST' && pass "ntfs frag: \$MFT has an attribute list" || bad "ntfs frag: no attribute list"
+ours "$img" ntfs "ntfs frag, before"
+"$TOOL" fs "$img" resize ntfs $((64 * 1024 * 1024)) && pass "ntfs frag: shrink 512 -> 64 MiB moves all segments" || bad "ntfs frag: shrink"
+truncate -s 64M "$img"
+ntfs_ok "ntfs frag, after"
+ours "$img" ntfs "ntfs frag, after"
+ntfsinfo -i 0 "$img" 2>/dev/null | grep -qi 'ATTRIBUTE_LIST' && pass "ntfs frag: attribute list kept" || bad "ntfs frag: attribute list lost"
+n=0; for i in 1 120 240; do [[ "$(ntfscat "$img" "s$i.bin" 2>/dev/null | cmp -s - "$W/payload-small.bin" && echo ok)" == ok ]] && n=$((n + 1)); done
+[[ $n == 3 ]] && pass "ntfs frag: files in moved records intact" || bad "ntfs frag: small files ($n of 3)"
+ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs frag: writable afterwards" || bad "ntfs frag: write"
+ntfs_ok "ntfs frag, after a write"
 
 # --- NTFS created by WParted ----------------------------------------------------
 img=$W/wp-ntfs.img

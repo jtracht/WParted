@@ -214,13 +214,13 @@ bool runsIo(BlockDevice* d, BlockReader& r, const Vol& v, const std::vector<Run>
             if (!write) std::memset(&data[done], 0, n);
         } else if (write ? !d->write(static_cast<std::uint64_t>(run.lcn) * v.cs, &data[done], n)
                          : !r.read(static_cast<std::uint64_t>(run.lcn) * v.cs, &data[done], n)) {
-            err = "the $Bitmap data cannot be accessed";
+            err = "the data of an NTFS system file cannot be accessed";
             return false;
         }
         done += n;
     }
     if (done < bytes) {
-        err = "$Bitmap runs are shorter than its size";
+        err = "the runs of an NTFS system file are shorter than its size";
         return false;
     }
     return true;
@@ -287,16 +287,20 @@ bool isClean(BlockReader& r, const Vol& v, std::string& err) {
 // All attributes of all MFT records are rewritten with new runs; the data is
 // copied and flushed before a record refers to it. $MFT itself comes last. A run
 // moves as a whole; it may be split over several free areas if the record has room.
+//
+// A fragmented $MFT continues its $DATA in extension records, named by its attribute list.
+// Those segments move last and from the back: an extension record lies in an earlier
+// segment, which therefore is still where the map says when the record is written.
 
-bool hasAttributeList(const std::vector<std::uint8_t>& rec) {
+std::size_t findAttr(const std::vector<std::uint8_t>& rec, std::uint32_t wanted) {
     const std::uint32_t inUse = std::min<std::uint32_t>(le32(&rec[0x18]), static_cast<std::uint32_t>(rec.size()));
     for (std::size_t a = le16(&rec[0x14]); a + 16 <= inUse;) {
         const std::uint32_t type = le32(&rec[a]), len = le32(&rec[a + 4]);
         if (type == 0xFFFFFFFFu || len < 16 || a + len > inUse) break;
-        if (type == 0x20) return true;
+        if (type == wanted) return a;
         a += len;
     }
-    return false;
+    return 0;
 }
 
 class NtfsMover {
@@ -406,13 +410,102 @@ bool mftOffset(const std::vector<Run>& runs, const Vol& v, std::uint64_t record,
     for (const Run& r : runs) {
         const std::uint64_t bytes = r.len * v.cs;
         if (pos < bytes) {
-            if (r.lcn < 0) return false;
+            if (r.lcn < 0 || pos + v.recSize > bytes) return false;  // a record is read in one piece
             offset = static_cast<std::uint64_t>(r.lcn) * v.cs + pos;
             return true;
         }
         pos -= bytes;
     }
     return false;
+}
+
+struct MftSegment {
+    std::uint64_t record = 0, lowVcn = 0;
+    std::vector<Run> runs;
+};
+
+bool attrRuns(const std::vector<std::uint8_t>& rec, std::size_t a, std::vector<Run>& runs) {
+    const std::uint32_t len = le32(&rec[a + 4]);
+    const std::size_t mp = le16(&rec[a + 0x20]);
+    runs.clear();
+    return mp < len && decodeRuns(&rec[a + mp], len - mp, runs) && !runs.empty();
+}
+
+std::vector<Run> mftPrefix(const std::vector<Run>& base, const std::vector<MftSegment>& segs, std::size_t count) {
+    std::vector<Run> all = base;
+    for (std::size_t i = 0; i < count; ++i) all.insert(all.end(), segs[i].runs.begin(), segs[i].runs.end());
+    return all;
+}
+
+// Reads the attribute list of record 0, if any, and the $DATA segments it names, in VCN order.
+bool loadMftSegments(BlockReader& r, const Vol& v, const std::vector<std::uint8_t>& mft, const std::vector<Run>& base,
+                     std::vector<MftSegment>& segs, std::string& err) {
+    const std::size_t la = findAttr(mft, 0x20);
+    if (!la) return true;
+    std::vector<std::uint8_t> list;
+    if (mft[la + 8] == 0) {
+        const std::size_t vo = le16(&mft[la + 0x14]), vl = le32(&mft[la + 0x10]);
+        if (vo + vl > le32(&mft[la + 4])) {
+            err = "the attribute list of the $MFT is invalid";
+            return false;
+        }
+        list.assign(mft.begin() + static_cast<std::ptrdiff_t>(la + vo), mft.begin() + static_cast<std::ptrdiff_t>(la + vo + vl));
+    } else {
+        std::vector<Run> runs;
+        const std::uint64_t size = le64(&mft[la + 0x30]);
+        if (!attrRuns(mft, la, runs) || size > 16u * 1024 * 1024) {
+            err = "the attribute list of the $MFT is invalid";
+            return false;
+        }
+        list.assign(static_cast<std::size_t>(size), 0);
+        if (!runsIo(nullptr, r, v, runs, list, list.size(), false, err)) return false;
+    }
+    for (std::size_t e = 0; e + 0x1A <= list.size();) {
+        const std::size_t len = le16(&list[e + 4]);
+        if (len < 0x1A || e + len > list.size()) {
+            err = "the attribute list of the $MFT is invalid";
+            return false;
+        }
+        if (le32(&list[e]) == 0x80 && list[e + 6] == 0) {
+            const std::uint64_t low = le64(&list[e + 8]), record = le64(&list[e + 16]) & 0xFFFFFFFFFFFFull;
+            if ((low == 0) != (record == 0)) {
+                err = "$MFT has an unexpected layout";
+                return false;
+            }
+            if (low) {
+                MftSegment s;
+                s.record = record;
+                s.lowVcn = low;
+                segs.push_back(s);
+            }
+        }
+        e += len;
+    }
+    std::sort(segs.begin(), segs.end(), [](const MftSegment& a, const MftSegment& b) { return a.lowVcn < b.lowVcn; });
+    std::uint64_t vcn = 0;
+    for (const Run& run : base) vcn += run.len;
+    for (std::size_t i = 0; i < segs.size(); ++i) {
+        for (std::size_t k = 0; k < i; ++k)
+            if (segs[k].record == segs[i].record) {
+                err = "$MFT has an unexpected layout";
+                return false;
+            }
+        std::uint64_t at = 0;
+        std::vector<std::uint8_t> rec(static_cast<std::size_t>(v.recSize));
+        // Must lie in the segments before it; otherwise the $MFT could not be read at all.
+        if (segs[i].lowVcn != vcn || !mftOffset(mftPrefix(base, segs, i), v, segs[i].record, at) || !r.read(at, rec.data(), rec.size()) ||
+            std::memcmp(rec.data(), "FILE", 4) != 0 || !fixups(rec, false) || (le64(&rec[0x20]) & 0xFFFFFFFFFFFFull) != 0 || le64(&rec[0x20]) == 0) {
+            err = "an extension record of the $MFT is invalid; run chkdsk in Windows first";
+            return false;
+        }
+        const std::size_t a = findData(rec, "");
+        if (!a || rec[a + 8] != 1 || le64(&rec[a + 0x10]) != vcn || !attrRuns(rec, a, segs[i].runs)) {
+            err = "an extension record of the $MFT is invalid; run chkdsk in Windows first";
+            return false;
+        }
+        for (const Run& run : segs[i].runs) vcn += run.len;
+    }
+    return true;
 }
 
 bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint64_t limit, std::string& err) {
@@ -423,26 +516,34 @@ bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint
     if (!behind) return true;
     std::vector<std::uint8_t> mft;
     if (!readRecord(d, v, 0, mft, err)) return false;
-    if (hasAttributeList(mft)) {
-        err = "the $MFT is too fragmented to be moved (it has an attribute list); defragment the volume in Windows first";
-        return false;
-    }
     const std::size_t md = findData(mft, "");
-    if (!md || mft[md + 8] != 1) {
+    if (!md || mft[md + 8] != 1 || le64(&mft[md + 0x10]) != 0) {
         err = "$MFT has an unexpected layout";
         return false;
     }
     const std::size_t mp = le16(&mft[md + 0x20]);
-    std::vector<Run> mftRuns;
-    if (!decodeRuns(&mft[md + mp], le32(&mft[md + 4]) - mp, mftRuns) || mftRuns.empty() || mftRuns[0].lcn < 0) {
+    std::vector<Run> baseRuns;
+    if (!decodeRuns(&mft[md + mp], le32(&mft[md + 4]) - mp, baseRuns) || baseRuns.empty() || baseRuns[0].lcn < 0) {
         err = "$MFT runlist is invalid";
         return false;
     }
+    std::vector<MftSegment> segs;
+    if (!loadMftSegments(d, v, mft, baseRuns, segs, err)) return false;
+    const std::vector<Run> mftRuns = mftPrefix(baseRuns, segs, segs.size());
     const std::uint64_t records = le64(&mft[md + 0x30]) / v.recSize;
+    {
+        std::uint64_t clustersOfMft = 0;
+        for (const Run& run : mftRuns) clustersOfMft += run.len;
+        if (clustersOfMft * v.cs < records * v.recSize) {
+            err = "$MFT runs are shorter than its size";
+            return false;
+        }
+    }
     NtfsMover mover(d, v, bm.bits, limit);
     std::vector<std::uint8_t> rec(static_cast<std::size_t>(v.recSize));
     std::uint64_t newMirr = le64(&boot[0x38]);
     for (std::uint64_t n = 1; n < records; ++n) {
+        if (std::any_of(segs.begin(), segs.end(), [n](const MftSegment& s) { return s.record == n; })) continue;  // below
         std::uint64_t at = 0;
         if (!mftOffset(mftRuns, v, n, at) || !d.read(at, rec.data(), rec.size())) {
             err = "MFT record " + std::to_string(n) + " cannot be read";
@@ -477,9 +578,25 @@ bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint
         err = "flushing failed";
         return false;
     }
+    for (std::size_t i = segs.size(); i-- > 0;) {
+        std::uint64_t at = 0;
+        if (!mftOffset(mftPrefix(baseRuns, segs, i), v, segs[i].record, at) || !d.read(at, rec.data(), rec.size()) || !fixups(rec, false)) {
+            err = "MFT record " + std::to_string(segs[i].record) + " cannot be read";
+            return false;
+        }
+        bool moved = false;
+        if (!mover.moveRecord(rec, moved, err)) return false;
+        if (!moved) continue;
+        const std::size_t a = findData(rec, "");
+        std::vector<std::uint8_t> packed = rec;
+        if (!a || !attrRuns(rec, a, segs[i].runs) || !fixups(packed, true) || !d.write(at, packed.data(), packed.size()) || !d.flush()) {
+            err = "writing MFT record " + std::to_string(segs[i].record) + " failed";
+            return false;
+        }
+    }
     bool changed = false;
     if (!mover.moveRecord(mft, changed, err)) return false;
-    std::vector<Run> finalRuns = mftRuns;
+    std::vector<Run> finalRuns = baseRuns;
     if (changed) {
         const std::size_t md2 = findData(mft, "");
         const std::size_t mp2 = le16(&mft[md2 + 0x20]);
@@ -489,6 +606,9 @@ bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint
             err = "not enough contiguous free space for the start of the $MFT";
             return false;
         }
+    }
+    finalRuns = mftPrefix(finalRuns, segs, segs.size());
+    if (changed) {
         std::vector<std::uint8_t> packed = mft;
         std::uint64_t at = 0;
         if (!mftOffset(finalRuns, v, 0, at) || !fixups(packed, true) || !d.write(at, packed.data(), packed.size())) {

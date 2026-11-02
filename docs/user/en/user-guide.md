@@ -104,7 +104,7 @@ Possible on images:
 Also: new partition tables, new or deleted partitions, flags and names. Moves and copies are raw block
 operations of the same size; a copy into a larger FAT partition grows the copied file system. Plans
 with steps WParted cannot do are refused before anything is written, as are shrinks of NTFS volumes
-that do not fit and file systems with errors. Shrinking moves data from behind the new end. A heavily fragmented `$MFT` or ext extent tree stops the
+that do not fit and file systems with errors. Shrinking moves data from behind the new end. A full ext extent tree stops the
 shrink before anything changes. btrfs and XFS can grow, not shrink; XFS needs a clean log, so unmount it properly on Linux first. Repairs are left to the file
 system's own tools (`chkdsk`, `e2fsck`).
 Real disks stay locked in this build.

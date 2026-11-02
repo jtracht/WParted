@@ -53,7 +53,7 @@ and choose *Apply*. Your real disks are not touched.
 
 ### Can WParted resize NTFS partitions?
 Yes, on image files and attached virtual disks. It grows and shrinks NTFS and moves data out of the removed area when
-shrinking. A heavily fragmented `$MFT` stops the shrink before anything changes.
+shrinking. A `$MFT` with an attribute list is moved too; a damaged one stops the shrink before anything changes.
 
 ### Can WParted move a partition?
 Yes, on image files and attached virtual disks. It copies the data block by block, and an interrupted move can be resumed.

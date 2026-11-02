@@ -682,6 +682,37 @@ bool check(BlockReader& r, CheckReport& rep, std::string& err) {
         err = "the $MFT record has no usable $DATA or $BITMAP";
         return false;
     }
+    // A fragmented $MFT continues its $DATA in extension records named by its attribute list.
+    struct Segment { std::uint64_t vcn, record; };
+    std::vector<Segment> segments;
+    attrs(rec, [&](std::size_t a, std::uint32_t type, std::uint32_t len) {
+        if (type != 0x20) return;
+        std::vector<std::uint8_t> list;
+        if (rec[a + 8] == 0) {
+            const std::size_t vo = le16(&rec[a + 0x14]), vl = le32(&rec[a + 0x10]);
+            if (vo + vl <= len) list.assign(rec.begin() + static_cast<std::ptrdiff_t>(a + vo), rec.begin() + static_cast<std::ptrdiff_t>(a + vo + vl));
+        } else {
+            std::vector<Run> runs;
+            const std::size_t mp = le16(&rec[a + 0x20]);
+            if (mp >= len || !decode(&rec[a + mp], len - mp, runs)) return;
+            list.assign(static_cast<std::size_t>(std::min<std::uint64_t>(le64(&rec[a + 0x30]), 16ull << 20)), 0);
+            std::size_t done = 0;
+            for (const Run& run : runs)
+                for (std::uint64_t c = 0; c < run.len && done < list.size() && run.lcn >= 0; ++c) {
+                    const std::size_t n = static_cast<std::size_t>(std::min<std::uint64_t>(cs, list.size() - done));
+                    r.read((static_cast<std::uint64_t>(run.lcn) + c) * cs, &list[done], n);
+                    done += n;
+                }
+        }
+        for (std::size_t e = 0; e + 0x1A <= list.size();) {
+            const std::size_t el = le16(&list[e + 4]);
+            if (el < 0x1A || e + el > list.size()) break;
+            if (le32(&list[e]) == 0x80 && list[e + 6] == 0 && le64(&list[e + 8]) != 0)
+                segments.push_back({le64(&list[e + 8]), le64(&list[e + 16]) & 0xFFFFFFFFFFFFull});
+            e += el;
+        }
+    });
+    std::sort(segments.begin(), segments.end(), [](const Segment& a, const Segment& b) { return a.vcn < b.vcn; });
     auto recordOffset = [&](std::uint64_t n, std::uint64_t& off) {
         std::uint64_t vcnByte = n * recSize;
         for (const Run& run : mftRuns) {
@@ -694,6 +725,24 @@ bool check(BlockReader& r, CheckReport& rep, std::string& err) {
         }
         return false;
     };
+    for (const Segment& s : segments) {
+        std::uint64_t off = 0;
+        std::vector<std::uint8_t> m(static_cast<std::size_t>(recSize));
+        if (!recordOffset(s.record, off) || !r.read(off, m.data(), m.size()) || std::memcmp(m.data(), "FILE", 4) != 0 || !unprotect(m)) {
+            err = "an extension record of the $MFT cannot be read";
+            return false;
+        }
+        bool found = false;
+        attrs(m, [&](std::size_t a, std::uint32_t type, std::uint32_t len) {
+            if (type != 0x80 || m[a + 9] != 0 || m[a + 8] != 1 || le64(&m[a + 0x10]) != s.vcn) return;
+            const std::size_t mp = le16(&m[a + 0x20]);
+            found = mp < len && decode(&m[a + mp], len - mp, mftRuns);
+        });
+        if (!found) {
+            err = "an extension record of the $MFT is invalid";
+            return false;
+        }
+    }
     // $Bitmap (record 6) and the clusters every in-use record references.
     std::vector<std::uint8_t> used(static_cast<std::size_t>((clusters + 7) / 8), 0);
     std::vector<std::uint8_t> volBitmap;

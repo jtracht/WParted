@@ -108,7 +108,7 @@ Außerdem: neue Partitionstabellen, neue oder gelöschte Partitionen, Flags und 
 Kopieren arbeiten blockweise bei gleicher Größe; eine Kopie in eine größere FAT-Partition wird
 vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, bevor etwas geschrieben
 wird – ebenso Verkleinerungen, in die die Daten nicht passen, und Dateisysteme mit Fehlern. Beim Verkleinern
-werden Daten hinter dem neuen Ende verschoben. Eine stark fragmentierte `$MFT` oder ein voller ext-Extent-Baum
+werden Daten hinter dem neuen Ende verschoben. Ein voller ext-Extent-Baum
 bricht vor jeder Änderung ab. btrfs und XFS lassen sich vergrößern, nicht verkleinern; XFS braucht ein sauberes Log, also vorher unter Linux ordentlich aushängen. Reparaturen
 bleiben den Werkzeugen des Dateisystems überlassen (`chkdsk`, `e2fsck`). Echte Datenträger bleiben in diesem Build gesperrt.
 
