@@ -472,6 +472,8 @@ void initLanguage() {
     wchar_t forced[8] = L"";
     GetEnvironmentVariableW(L"WPARTED_LANG", forced, 8);
     const bool german = forced[0] ? (forced[0] == L'd' && forced[1] == L'e') : PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_GERMAN;
+    // Task dialogs take their system texts ("Close", "Hide details") from the thread language.
+    SetThreadUILanguage(MAKELANGID(german ? LANG_GERMAN : LANG_ENGLISH, german ? SUBLANG_GERMAN : SUBLANG_ENGLISH_US));
     for (const auto& e : kStrings) g_lookup[static_cast<int>(e.id)] = german ? e.de : e.en;
 }
 

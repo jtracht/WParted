@@ -7,7 +7,8 @@ $root = (Resolve-Path "$PSScriptRoot\..\..").Path
 $Build = (Resolve-Path $Build).Path
 $Out = Join-Path $root 'docs\images'
 New-Item -ItemType Directory -Force $Out | Out-Null
-$work = Join-Path $Build 'shots'
+# A neutral folder: the details pane shows the image's full path in the picture.
+$work = Join-Path $env:SystemDrive 'WParted-Beispiel'
 New-Item -ItemType Directory -Force $work | Out-Null
 $img = Join-Path $work 'beispiel.img'
 Add-Type -AssemblyName System.Drawing

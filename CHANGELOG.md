@@ -32,6 +32,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Screenshots in the user guides, made from a synthetic image by `tools/verify/make_screenshots.ps1`.
 
 ### Fixed
+- GUI: the device list no longer says "Image  Image <file>" for an image file.
+- GUI: the system texts of task dialogs (*Close*, *Hide details*) follow WParted's language instead of the Windows language.
 - ext: a shrink that freed a group descriptor block left an invalid resize inode (e2fsck complained).
 - GUI: with long labels the device list covered the *Undo* button; it now gets its own row. The status bar no
   longer says that disks are only read.

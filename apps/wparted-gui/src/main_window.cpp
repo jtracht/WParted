@@ -416,7 +416,10 @@ void MainWindow::rebuildDeviceMenu() {
     if (!result_) return;
     for (std::size_t i = 0; i < result_->disks.size(); ++i) {
         const auto& d = result_->disks[i];
-        std::wstring text = w(d.displayName()) + L"  " + w(d.modelName()) + L"  (" + sizeText(d.sizeBytes) + L")";
+        // Images are named "Image <file>" already; avoid "Image  Image <file>".
+        const std::string model = d.modelName(), name = d.displayName();
+        std::wstring text = (model.compare(0, name.size(), name) == 0 ? w(model) : w(name) + L"  " + w(model)) + L"  (" +
+                            sizeText(d.sizeBytes) + L")";
         if (d.containsWindows()) text += L"  [Windows]";
         AppendMenuW(devicesMenu_, MF_STRING, IDM_DEVICE_BASE + i, text.c_str());
         SendMessageW(combo_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(text.c_str()));
