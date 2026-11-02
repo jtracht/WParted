@@ -344,7 +344,7 @@ TEST("capability table claims only what is implemented") {
         CHECK(c.type == t);
         CHECK(available(c.create) == fstools::canCreate(t));
         CHECK(available(c.grow) == fstools::canResize(t));
-        CHECK(available(c.shrink) == (fstools::canResize(t) && t != FsType::Btrfs));
+        CHECK(available(c.shrink) == (fstools::canResize(t) && t != FsType::Btrfs && t != FsType::Xfs));
         CHECK(available(c.check) == fstools::canCheck(t));
         CHECK(available(c.label) == fstools::canLabel(t));
         CHECK(available(c.uuid) == fstools::canSetUuid(t));

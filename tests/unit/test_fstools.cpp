@@ -406,6 +406,17 @@ TEST("fstools: labels and serials for FAT, exFAT, NTFS, ext4 and swap") {
             CHECK((im.b(o + 219) & 0x04) != 0);
         }
     }
+    {  // XFS grow refuses what it cannot prove safe (the real cases run against xfs_repair in CI)
+        Image im(16 * MiB, 512);
+        MemoryBlockDevice dev(im.data, 512);
+        CHECK(!fstools::resizeProblem(dev, FsType::Xfs, 16 * MiB).empty());  // no superblock
+        CHECK(!fstools::resize(dev, FsType::Xfs, 16 * MiB, err));
+        im.putStr(0, "XFSB", 4);
+        im.b(101) = 4;  // version 4
+        CHECK(!fstools::resizeProblem(dev, FsType::Xfs, 16 * MiB).empty());
+        im.b(101) = 5;  // version 5, but no valid geometry or checksum
+        CHECK(!fstools::resizeProblem(dev, FsType::Xfs, 16 * MiB).empty());
+    }
     {  // btrfs: csum over [0x20, 4096), metadata_uuid keeps the old fsid
         Image im(8 * MiB, 512);
         const std::uint64_t o = 0x10000;

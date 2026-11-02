@@ -397,7 +397,7 @@ const FsCapabilities& capabilitiesFor(FsType t) {
         {FsType::Ext3, S::Supported, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Supported, S::Limited},
         {FsType::Ext4, S::Supported, S::Supported, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Limited, S::Supported, S::Limited},
         {FsType::Btrfs, S::Supported, S::Planned, S::Planned, S::Supported, S::Planned, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
-        {FsType::Xfs, S::Supported, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
+        {FsType::Xfs, S::Supported, S::Planned, S::Planned, S::Supported, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Supported, S::Supported},
         {FsType::F2fs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Unsupported, S::Unsupported},
         {FsType::Jfs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Unsupported, S::Limited, S::Limited, S::Planned, S::Planned, S::Planned},
         {FsType::ReiserFs, S::Experimental, S::Planned, S::Planned, S::Planned, S::Planned, S::Limited, S::Limited, S::Planned, S::Planned, S::Planned},

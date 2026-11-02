@@ -105,7 +105,7 @@ Also: new partition tables, new or deleted partitions, flags and names. Moves an
 operations of the same size; a copy into a larger FAT partition grows the copied file system. Plans
 with steps WParted cannot do are refused before anything is written, as are shrinks of NTFS volumes
 that do not fit and file systems with errors. Shrinking moves data from behind the new end. A heavily fragmented `$MFT` or ext extent tree stops the
-shrink before anything changes. btrfs can grow, not shrink; XFS keeps its size. Repairs are left to the file
+shrink before anything changes. btrfs and XFS can grow, not shrink; XFS needs a clean log, so unmount it properly on Linux first. Repairs are left to the file
 system's own tools (`chkdsk`, `e2fsck`).
 Real disks stay locked in this build.
 
@@ -189,7 +189,7 @@ table has errors.
 validates, but does not execute: that needs a human security review first.
 **Which Windows does WParted support?** Windows 11. Windows 7–10 are no longer supported.
 **Can WParted read Linux partitions?** It detects ext2/3/4, btrfs, XFS, swap, LUKS, LVM and more, and
-shows their labels. On image files and virtual disks it can change ext2/3/4, grow btrfs and change the labels and UUIDs of XFS, btrfs and swap.
+shows their labels. On image files and virtual disks it can change ext2/3/4, grow btrfs and XFS and change the labels and UUIDs of XFS, btrfs and swap.
 **Is it related to GParted?** No. WParted follows GParted's workflow but is an independent project.
 **Where do I report bugs?** https://github.com/jtracht/WParted/issues — attach the
 exported report if possible. Security problems: see `SECURITY.md`.

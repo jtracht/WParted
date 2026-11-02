@@ -21,7 +21,7 @@ and attached virtual disks (VHD/VHDX). It runs natively on Windows, without a Li
 | **Platform** | Windows 11; x64, x86 build for 64-bit Windows, ARM64 built but not yet run |
 | **Licence** | GNU GPL v2.0 or later, free of charge |
 | **Partition tables** | GPT and MBR, including extended and logical partitions |
-| **File systems changed** | NTFS, FAT16/32, exFAT, ext2/3/4; btrfs can grow; XFS, btrfs and swap labels and UUIDs |
+| **File systems changed** | NTFS, FAT16/32, exFAT, ext2/3/4; btrfs and XFS can grow; XFS, btrfs and swap labels and UUIDs |
 | **File systems detected** | 31 types, including ReFS, BitLocker, F2FS, LUKS, LVM, HFS+, APFS and ZFS |
 | **Interfaces** | Desktop app (English and German, light and dark) and command line (`wparted-cli`) |
 | **Privacy** | No telemetry, no automatic update checks, no network use |

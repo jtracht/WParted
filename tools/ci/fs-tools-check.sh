@@ -321,6 +321,75 @@ same "btrfs grow: blkid label" "$(blk "$img" LABEL)" "grow"
 set +e; "$TOOL" fs "$img" resize btrfs $((300 * 1048576)) >/dev/null 2>&1; rc=$?; set -e
 [[ $rc != 0 ]] && pass "btrfs: shrink refused" || bad "btrfs: shrink not refused"
 
+# XFS grow: new groups, a shorter last group, all optional B-trees, real files through the kernel.
+xfs_val() { xfs_db -r -c "sb 0" -c "print $2" "$1" | sed 's/.*= *//'; }
+xfs_grow() {  # name, mkfs size MiB, new size MiB, mkfs options...
+  local name=$1 from=$2 to=$3 img="$W/xfs-$1.img"
+  shift 3
+  truncate -s "${from}M" "$img"
+  mkfs.xfs -q -f -L grow "$@" "$img"
+  truncate -s "${to}M" "$img"
+  "$TOOL" fs "$img" resize xfs $((to * 1048576)) && pass "xfs $name: grow $from -> $to MiB" || { bad "xfs $name: grow"; return; }
+  if xfs_repair -n "$img" >"$W/xr.txt" 2>&1; then pass "xfs $name: xfs_repair -n clean"; else bad "xfs $name: xfs_repair"; cat "$W/xr.txt"; fi
+  local bs dblocks
+  bs=$(xfs_val "$img" blocksize); dblocks=$(xfs_val "$img" dblocks)
+  [[ $((dblocks * bs)) -gt $(((to - 1) * 1048576)) ]] && pass "xfs $name: new size in the superblock" || bad "xfs $name: size $((dblocks * bs))"
+  same "xfs $name: blkid label" "$(blk "$img" LABEL)" "grow"
+}
+xfs_grow plain 320 1500                                       # whole new groups
+xfs_grow short 300 330 -d agsize=64m                          # only the short last group gets longer
+xfs_grow shortnew 300 900 -d agsize=64m                       # short last group and new groups
+xfs_grow rmap 320 1100 -m rmapbt=1,reflink=1                  # all B-trees
+xfs_grow nofeat 320 1100 -m reflink=0,rmapbt=0,finobt=0,inobtcount=0,bigtime=0
+xfs_grow sect4k 320 1100 -s size=4096
+xfs_grow block1k 320 1100 -b size=1024
+img=$W/xfs-shrink.img
+truncate -s 320M "$img"
+mkfs.xfs -q -f "$img"
+set +e; "$TOOL" fs "$img" resize xfs $((300 * 1048576)) >/dev/null 2>&1; rc=$?; set -e
+[[ $rc != 0 ]] && pass "xfs: shrink refused" || bad "xfs: shrink not refused"
+img=$W/xfs-v4.img
+truncate -s 320M "$img"
+if mkfs.xfs -q -f -m crc=0 "$img" 2>/dev/null; then
+  truncate -s 800M "$img"
+  set +e; "$TOOL" fs "$img" resize xfs $((800 * 1048576)) >/dev/null 2>&1; rc=$?; set -e
+  [[ $rc != 0 ]] && pass "xfs: version 4 refused" || bad "xfs: version 4 not refused"
+fi
+# A throwaway image through the kernel: files stay unchanged, the new space is usable.
+if sudo -n true 2>/dev/null; then
+  img=$W/xfs-mount.img; mnt=$W/xfs-mnt
+  truncate -s 320M "$img"
+  mkfs.xfs -q -f "$img"
+  mkdir -p "$mnt"
+  if sudo mount -o loop "$img" "$mnt"; then
+    sudo cp "$W/payload.bin" "$mnt/before.bin"
+    sudo umount "$mnt"
+    truncate -s 1100M "$img"
+    "$TOOL" fs "$img" resize xfs $((1100 * 1048576)) && pass "xfs mounted: grow after a real unmount" || bad "xfs mounted: grow"
+    sudo mount -o loop "$img" "$mnt"
+    [[ "$(sha256sum "$mnt/before.bin" | cut -d' ' -f1)" == "$sha" ]] && pass "xfs mounted: file unchanged" || bad "xfs mounted: file changed"
+    if sudo dd if=/dev/zero of="$mnt/fill.bin" bs=1M count=700 status=none; then pass "xfs mounted: new space usable"; else bad "xfs mounted: new space not usable"; fi
+    sudo umount "$mnt"
+    if xfs_repair -n "$img" >"$W/xr.txt" 2>&1; then pass "xfs mounted: xfs_repair -n clean after use"; else bad "xfs mounted: xfs_repair"; cat "$W/xr.txt"; fi
+    # A dirty log has to be refused: the shutdown skips the clean unmount record.
+    sudo mount -o loop "$img" "$mnt"
+    sudo cp "$W/payload.bin" "$mnt/dirty.bin"; sync
+    if sudo xfs_io -x -c "shutdown -f" "$mnt" 2>/dev/null; then
+      sudo umount "$mnt"
+      truncate -s 1500M "$img"
+      set +e; "$TOOL" fs "$img" resize xfs $((1500 * 1048576)) >"$W/d.txt" 2>&1; rc=$?; set -e
+      [[ $rc != 0 ]] && pass "xfs: dirty log refused" || bad "xfs: dirty log not refused"
+    else
+      sudo umount "$mnt"
+      echo "SKIP xfs dirty log: shutdown not available"
+    fi
+  else
+    echo "SKIP xfs mounted: loop mount not available"
+  fi
+else
+  echo "SKIP xfs mounted: no sudo"
+fi
+
 # --- Linux swap ----------------------------------------------------------------
 img=$W/swap.img
 truncate -s 16M "$img"

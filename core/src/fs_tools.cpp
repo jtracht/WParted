@@ -975,6 +975,407 @@ bool xfsSetUuid(BlockDevice& d, const Guid& rfc, std::string& err) {
     }, err);
 }
 
+// Growing XFS (v5 only, what xfs_growfs does): the last allocation group is extended and new
+// groups get their headers and empty B-tree roots. Offline, so the log has to be clean.
+std::uint16_t be16v(const std::uint8_t* p) { return static_cast<std::uint16_t>(p[0] << 8 | p[1]); }
+std::uint64_t be64v(const std::uint8_t* p) { return std::uint64_t{be32v(p)} << 32 | be32v(p + 4); }
+void putBe16(std::uint8_t* p, std::uint16_t v) {
+    p[0] = static_cast<std::uint8_t>(v >> 8);
+    p[1] = static_cast<std::uint8_t>(v);
+}
+void putBe64(std::uint8_t* p, std::uint64_t v) {
+    putBe32(p, static_cast<std::uint32_t>(v >> 32));
+    putBe32(p + 4, static_cast<std::uint32_t>(v));
+}
+
+constexpr std::uint32_t kXfsNullAg = 0xFFFFFFFFu;
+constexpr std::uint32_t kXfsRoFinobt = 1, kXfsRoRmap = 2, kXfsRoReflink = 4, kXfsRoInobtCount = 8;
+constexpr std::uint32_t kXfsIncKnown = 0x01 /*ftype*/ | 0x02 /*sparse inodes*/ | kXfsMetaUuid | 0x08 /*bigtime*/ |
+                                       0x20 /*nrext64*/ | 0x40 /*exchange*/ | 0x80 /*parent*/;
+constexpr std::uint64_t kXfsMinAgBlocks = 64;  // XFS_MIN_AG_BLOCKS, also what xfs_growfs drops
+
+struct XfsGeo {
+    std::vector<std::uint8_t> sb;
+    std::uint32_t bs = 0, agblocks = 0, agcount = 0, sect = 0, ro = 0;
+    std::uint64_t dblocks = 0;
+    std::uint8_t agblklog = 0;
+    const std::uint8_t* uuid = nullptr;  // the UUID embedded in metadata
+
+    std::uint64_t agOff(std::uint32_t ag) const { return std::uint64_t{ag} * agblocks * bs; }
+    bool finobt() const { return (ro & kXfsRoFinobt) != 0; }
+    bool rmap() const { return (ro & kXfsRoRmap) != 0; }
+    bool reflink() const { return (ro & kXfsRoReflink) != 0; }
+    std::uint32_t bnoBlock() const { return 3 * sect / bs + 1; }
+    std::uint32_t ibtBlock() const { return bnoBlock() + 2; }
+    std::uint32_t fibtBlock() const { return ibtBlock() + 1; }
+    std::uint32_t rmapBlock() const { return ibtBlock() + (finobt() ? 2 : 1); }
+    std::uint32_t refcBlock() const { return rmapBlock() + (rmap() ? 1 : 0); }
+    std::uint32_t firstFree() const { return refcBlock() + (reflink() ? 1 : 0); }
+};
+
+bool xfsCrcOk(const std::vector<std::uint8_t>& block, std::size_t at) {
+    std::vector<std::uint8_t> c(block);
+    put32(&c[at], 0);
+    return le32(&block[at]) == ~crc32c(0xFFFFFFFFu, c.data(), c.size());
+}
+void xfsSeal(std::uint8_t* block, std::size_t size, std::size_t at) {
+    put32(block + at, 0);
+    put32(block + at, ~crc32c(0xFFFFFFFFu, block, size));
+}
+
+std::string xfsLoad(BlockReader& r, XfsGeo& g) {
+    std::uint8_t head[512];
+    if (r.size() < sizeof head || !r.read(0, head, sizeof head) || std::memcmp(head, "XFSB", 4) != 0) return "no XFS superblock";
+    if ((be16v(head + 100) & 0x000F) != 5) return "only XFS version 5 can be resized";
+    g.bs = be32v(head + 4);
+    g.dblocks = be64v(head + 8);
+    g.agblocks = be32v(head + 84);
+    g.agcount = be32v(head + 88);
+    g.sect = be16v(head + 102);
+    g.agblklog = head[124];
+    if (g.bs < 512 || g.bs > 65536 || (g.bs & (g.bs - 1)) || g.sect < 512 || g.sect > 32768 || (g.sect & (g.sect - 1)) ||
+        g.sect > g.bs || g.agblocks < kXfsMinAgBlocks || g.agblklog > 31 || (std::uint64_t{g.agblocks} >> g.agblklog) > 1 ||
+        g.agcount == 0 || g.dblocks <= std::uint64_t{g.agcount - 1} * g.agblocks ||
+        g.dblocks > std::uint64_t{g.agcount} * g.agblocks) {
+        return "invalid XFS superblock";
+    }
+    g.sb.resize(g.sect);
+    if (!r.read(0, g.sb.data(), g.sb.size())) return "the XFS superblock cannot be read";
+    if (!xfsCrcOk(g.sb, 224)) return "the XFS superblock checksum is wrong";
+    if (g.sb[126] != 0) return "the XFS file system was never completely created";
+    g.ro = be32v(&g.sb[212]);
+    const std::uint32_t inc = be32v(&g.sb[216]);
+    if (g.ro & ~(kXfsRoFinobt | kXfsRoRmap | kXfsRoReflink | kXfsRoInobtCount)) return "this XFS file system uses features that cannot be resized yet";
+    if (inc & ~kXfsIncKnown) return "this XFS file system needs repair or uses features that cannot be resized yet";
+    if (be32v(&g.sb[208]) != 0 || be32v(&g.sb[220]) != 0) return "this XFS file system uses features that cannot be resized yet";
+    if (be64v(&g.sb[16]) != 0 || be64v(&g.sb[24]) != 0) return "XFS with a realtime section cannot be resized";
+    g.uuid = (inc & kXfsMetaUuid) ? &g.sb[248] : &g.sb[32];
+    return {};
+}
+
+// The log is clean when its newest record is exactly one unmount record. Everything else,
+// even a log that cannot be understood, is refused: only the kernel can replay it.
+std::string xfsLogProblem(BlockReader& r, const XfsGeo& g) {
+    static const char* const kDirty = "the XFS log is not clean; mount and unmount the file system on Linux first";
+    const std::uint64_t logStart = be64v(&g.sb[48]);
+    if (logStart == 0) return "XFS with an external log cannot be resized";
+    const std::uint64_t agBlock = logStart & ((std::uint64_t{1} << g.agblklog) - 1);
+    const std::uint64_t base = ((logStart >> g.agblklog) * g.agblocks + agBlock) * g.bs;
+    const std::uint64_t logBB = std::uint64_t{be32v(&g.sb[96])} * g.bs / 512;
+    if (logBB < 8 || base + logBB * 512 > r.size()) return "invalid XFS log";
+
+    const auto cycleOf = [](const std::uint8_t* bb) { return be32v(bb) == 0xFEEDBABEu ? be32v(bb + 4) : be32v(bb); };
+    std::vector<std::uint8_t> chunk(1024 * 1024);
+    std::uint64_t head = 0;
+    std::uint32_t first = 0;
+    bool found = false;
+    for (std::uint64_t i = 0; i < logBB && !found;) {
+        const std::uint64_t n = std::min<std::uint64_t>(logBB - i, chunk.size() / 512);
+        if (!r.read(base + i * 512, chunk.data(), static_cast<std::size_t>(n * 512))) return "the XFS log cannot be read";
+        if (i == 0) first = cycleOf(chunk.data());
+        for (std::uint64_t k = 0; k < n; ++k) {
+            if (cycleOf(&chunk[static_cast<std::size_t>(k * 512)]) != first) {
+                head = i + k;
+                found = true;
+                break;
+            }
+        }
+        i += n;
+    }
+    std::uint8_t bb[512];
+    const std::uint64_t limit = std::min<std::uint64_t>(logBB, 2048);  // larger than any record
+    for (std::uint64_t back = 1; back <= limit; ++back) {
+        const std::uint64_t blk = (head + logBB - back) % logBB;
+        if (!r.read(base + blk * 512, bb, sizeof bb)) return "the XFS log cannot be read";
+        if (be32v(bb) != 0xFEEDBABEu) continue;
+        if (be32v(bb + 40) != 1) return kDirty;  // h_num_logops
+        const std::uint32_t hSize = be32v(bb + 320);
+        const std::uint64_t hblks = (be32v(bb + 8) & 2) ? std::max<std::uint64_t>(1, (std::uint64_t{hSize} + 32767) / 32768) : 1;
+        if (!r.read(base + (blk + hblks) % logBB * 512, bb, sizeof bb)) return "the XFS log cannot be read";
+        return (bb[9] & 0x20) ? std::string() : kDirty;  // oh_flags: XLOG_UNMOUNT_TRANS
+    }
+    return kDirty;
+}
+
+// The free-space trees of the last group, when that group has to get longer.
+struct XfsTail {
+    std::vector<std::uint8_t> agf, agi, bno, cnt;
+    std::uint32_t agfLen = 0;
+};
+
+std::string xfsLoadTail(BlockReader& r, const XfsGeo& g, XfsTail& t) {
+    const std::uint32_t ag = g.agcount - 1;
+    const std::uint64_t off = g.agOff(ag);
+    t.agf.resize(g.sect);
+    t.agi.resize(g.sect);
+    t.bno.resize(g.bs);
+    t.cnt.resize(g.bs);
+    if (!r.read(off + g.sect, t.agf.data(), g.sect) || !r.read(off + 2ull * g.sect, t.agi.data(), g.sect)) return "the last XFS group cannot be read";
+    if (std::memcmp(t.agf.data(), "XAGF", 4) != 0 || !xfsCrcOk(t.agf, 216) || be32v(&t.agf[8]) != ag) return "the last XFS group is damaged";
+    if (std::memcmp(t.agi.data(), "XAGI", 4) != 0 || !xfsCrcOk(t.agi, 312) || be32v(&t.agi[8]) != ag) return "the last XFS group is damaged";
+    t.agfLen = be32v(&t.agf[12]);
+    if (t.agfLen != g.dblocks - std::uint64_t{ag} * g.agblocks || be32v(&t.agi[12]) != t.agfLen) return "the last XFS group is damaged";
+    if (be32v(&t.agf[28]) != 1 || be32v(&t.agf[32]) != 1) return "the free-space trees of the last XFS group are too large to extend yet";
+    const std::uint32_t bnoRoot = be32v(&t.agf[16]), cntRoot = be32v(&t.agf[20]);
+    if (bnoRoot >= t.agfLen || cntRoot >= t.agfLen) return "the last XFS group is damaged";
+    if (!r.read(off + std::uint64_t{bnoRoot} * g.bs, t.bno.data(), g.bs) || !r.read(off + std::uint64_t{cntRoot} * g.bs, t.cnt.data(), g.bs)) return "the last XFS group cannot be read";
+    if (std::memcmp(t.bno.data(), "AB3B", 4) != 0 || !xfsCrcOk(t.bno, 52) || std::memcmp(t.cnt.data(), "AB3C", 4) != 0 || !xfsCrcOk(t.cnt, 52)) return "the last XFS group is damaged";
+    const std::uint32_t nb = be16v(&t.bno[6]), nc = be16v(&t.cnt[6]), maxRecs = (g.bs - 56) / 8;
+    if (nb != nc || nb > maxRecs) return "the last XFS group is damaged";
+    if (nb == maxRecs) return "the free-space trees of the last XFS group are too large to extend yet";
+    return {};
+}
+
+// New size in blocks; like xfs_growfs it leaves out a tail too small to be a group.
+std::uint64_t xfsTargetBlocks(const XfsGeo& g, std::uint64_t newBytes) {
+    std::uint64_t blocks = newBytes / g.bs;
+    const std::uint64_t mod = blocks % g.agblocks;
+    if (blocks > std::uint64_t{g.agcount} * g.agblocks && mod != 0 && mod < kXfsMinAgBlocks) blocks -= mod;
+    return blocks;
+}
+
+std::string xfsGrowProblem(BlockReader& r, std::uint64_t newBytes) {
+    XfsGeo g;
+    if (std::string p = xfsLoad(r, g); !p.empty()) return p;
+    const std::uint64_t target = xfsTargetBlocks(g, newBytes);
+    if (target < g.dblocks) return "shrinking XFS is not supported";
+    if ((target + g.agblocks - 1) / g.agblocks > 0x7FFFFFFFull) return "the XFS file system would get too many groups";
+    if (std::string p = xfsLogProblem(r, g); !p.empty()) return p;
+    if (target > g.dblocks && g.dblocks < std::uint64_t{g.agcount} * g.agblocks) {
+        XfsTail t;
+        if (std::string p = xfsLoadTail(r, g, t); !p.empty()) return p;
+    }
+    return {};
+}
+
+void xfsBtreeHeader(std::uint8_t* b, const XfsGeo& g, const char* magic, std::uint32_t ag, std::uint32_t block, std::uint16_t recs) {
+    std::memcpy(b, magic, 4);
+    putBe16(b + 6, recs);
+    putBe32(b + 8, kXfsNullAg);
+    putBe32(b + 12, kXfsNullAg);
+    putBe64(b + 16, (std::uint64_t{ag} * g.agblocks + block) * (g.bs / 512));  // bb_blkno
+    std::memcpy(b + 32, g.uuid, 16);
+    putBe32(b + 48, ag);
+}
+
+// All headers of a new group: superblock copy, AGF, AGI, AGFL and the B-tree roots.
+std::vector<std::uint8_t> xfsNewGroup(const XfsGeo& g, const std::vector<std::uint8_t>& sb, std::uint32_t ag, std::uint32_t len) {
+    const std::uint32_t freeStart = g.firstFree(), freeLen = len - freeStart, sect = g.sect, bs = g.bs;
+    std::vector<std::uint8_t> out(std::size_t{freeStart} * bs);
+    std::uint8_t* const p = out.data();
+
+    std::memcpy(p, sb.data(), sect);
+    xfsSeal(p, sect, 224);
+
+    std::uint8_t* const agf = p + sect;
+    std::memcpy(agf, "XAGF", 4);
+    putBe32(agf + 4, 1);
+    putBe32(agf + 8, ag);
+    putBe32(agf + 12, len);
+    putBe32(agf + 16, g.bnoBlock());
+    putBe32(agf + 20, g.bnoBlock() + 1);
+    putBe32(agf + 28, 1);
+    putBe32(agf + 32, 1);
+    if (g.rmap()) {
+        putBe32(agf + 24, g.rmapBlock());
+        putBe32(agf + 36, 1);
+        putBe32(agf + 80, 1);
+    }
+    const std::uint32_t agflSize = (sect - 36) / 4;
+    putBe32(agf + 44, agflSize - 1);  // agf_fllast; first 0, count 0
+    putBe32(agf + 52, freeLen);
+    putBe32(agf + 56, freeLen);
+    std::memcpy(agf + 64, g.uuid, 16);
+    if (g.reflink()) {
+        putBe32(agf + 84, 1);
+        putBe32(agf + 88, g.refcBlock());
+        putBe32(agf + 92, 1);
+    }
+    xfsSeal(agf, sect, 216);
+
+    std::uint8_t* const agi = p + 2 * sect;
+    std::memcpy(agi, "XAGI", 4);
+    putBe32(agi + 4, 1);
+    putBe32(agi + 8, ag);
+    putBe32(agi + 12, len);
+    putBe32(agi + 20, g.ibtBlock());
+    putBe32(agi + 24, 1);
+    putBe32(agi + 32, kXfsNullAg);
+    putBe32(agi + 36, kXfsNullAg);
+    std::memset(agi + 40, 0xFF, 256);
+    std::memcpy(agi + 296, g.uuid, 16);
+    if (g.finobt()) {
+        putBe32(agi + 328, g.fibtBlock());
+        putBe32(agi + 332, 1);
+    }
+    if (g.ro & kXfsRoInobtCount) {
+        putBe32(agi + 336, 1);
+        if (g.finobt()) putBe32(agi + 340, 1);
+    }
+    xfsSeal(agi, sect, 312);
+
+    std::uint8_t* const agfl = p + 3 * sect;
+    std::memcpy(agfl, "XAFL", 4);
+    putBe32(agfl + 4, ag);
+    std::memcpy(agfl + 8, g.uuid, 16);
+    std::memset(agfl + 36, 0xFF, std::size_t{agflSize} * 4);
+    xfsSeal(agfl, sect, 32);
+
+    const auto block = [&](std::uint32_t b) { return p + std::size_t{b} * bs; };
+    const auto freeRoot = [&](std::uint32_t b, const char* magic) {
+        std::uint8_t* q = block(b);
+        xfsBtreeHeader(q, g, magic, ag, b, 1);
+        putBe32(q + 56, freeStart);
+        putBe32(q + 60, freeLen);
+        xfsSeal(q, bs, 52);
+    };
+    freeRoot(g.bnoBlock(), "AB3B");
+    freeRoot(g.bnoBlock() + 1, "AB3C");
+    const auto emptyRoot = [&](std::uint32_t b, const char* magic) {
+        xfsBtreeHeader(block(b), g, magic, ag, b, 0);
+        xfsSeal(block(b), bs, 52);
+    };
+    emptyRoot(g.ibtBlock(), "IAB3");
+    if (g.finobt()) emptyRoot(g.fibtBlock(), "FIB3");
+    if (g.rmap()) {
+        // Owners: XFS_RMAP_OWN_FS -3, OWN_AG -5, OWN_INOBT -6, OWN_REFC -8.
+        struct Rec { std::uint32_t start, count; std::int64_t owner; };
+        std::vector<Rec> recs = {{0, g.bnoBlock(), -3}, {g.bnoBlock(), 2, -5}, {g.ibtBlock(), g.rmapBlock() - g.ibtBlock(), -6}, {g.rmapBlock(), 1, -5}};
+        if (g.reflink()) recs.push_back({g.refcBlock(), 1, -8});
+        std::uint8_t* q = block(g.rmapBlock());
+        xfsBtreeHeader(q, g, "RMB3", ag, g.rmapBlock(), static_cast<std::uint16_t>(recs.size()));
+        std::size_t at = 56;
+        for (const Rec& rec : recs) {
+            putBe32(q + at, rec.start);
+            putBe32(q + at + 4, rec.count);
+            putBe64(q + at + 8, static_cast<std::uint64_t>(rec.owner));
+            at += 24;  // the offset field stays zero
+        }
+        xfsSeal(q, bs, 52);
+    }
+    if (g.reflink()) emptyRoot(g.refcBlock(), "R3FC");
+    return out;
+}
+
+// Adds `extra` free blocks to the end of the last group, in both free-space trees.
+void xfsExtendTail(const XfsGeo& g, XfsTail& t, std::uint32_t extra) {
+    struct Ext { std::uint32_t start, count; };
+    const std::uint32_t n = be16v(&t.bno[6]);
+    std::vector<Ext> ext;
+    for (std::uint32_t i = 0; i < n; ++i) ext.push_back({be32v(&t.bno[56 + i * 8]), be32v(&t.bno[60 + i * 8])});
+    if (!ext.empty() && ext.back().start + ext.back().count == t.agfLen) ext.back().count += extra;
+    else ext.push_back({t.agfLen, extra});
+
+    const auto store = [&](std::vector<std::uint8_t>& leaf, const std::vector<Ext>& recs) {
+        putBe16(&leaf[6], static_cast<std::uint16_t>(recs.size()));
+        for (std::size_t i = 0; i < recs.size(); ++i) {
+            putBe32(&leaf[56 + i * 8], recs[i].start);
+            putBe32(&leaf[60 + i * 8], recs[i].count);
+        }
+        xfsSeal(leaf.data(), g.bs, 52);
+    };
+    store(t.bno, ext);
+    std::sort(ext.begin(), ext.end(), [](const Ext& a, const Ext& b) { return a.count != b.count ? a.count < b.count : a.start < b.start; });
+    store(t.cnt, ext);
+
+    const std::uint32_t newLen = t.agfLen + extra;
+    putBe32(&t.agf[12], newLen);
+    putBe32(&t.agf[52], be32v(&t.agf[52]) + extra);
+    putBe32(&t.agf[56], ext.back().count);
+    xfsSeal(t.agf.data(), g.sect, 216);
+    putBe32(&t.agi[12], newLen);
+    xfsSeal(t.agi.data(), g.sect, 312);
+}
+
+bool xfsGrow(BlockDevice& d, std::uint64_t newBytes, std::string& err) {
+    if (std::string p = xfsGrowProblem(d, newBytes); !p.empty()) {
+        err = p;
+        return false;
+    }
+    XfsGeo g;
+    if (std::string p = xfsLoad(d, g); !p.empty()) {
+        err = p;
+        return false;
+    }
+    const std::uint64_t target = xfsTargetBlocks(g, newBytes);
+    if (target == g.dblocks) return true;
+    if (target * g.bs > d.size()) {
+        err = "the XFS file system does not fit into the partition";
+        return false;
+    }
+    const std::uint32_t oldCount = g.agcount;
+    const std::uint32_t newCount = static_cast<std::uint32_t>((target + g.agblocks - 1) / g.agblocks);
+    const std::uint64_t oldLast = g.dblocks - std::uint64_t{oldCount - 1} * g.agblocks;
+    const std::uint64_t newLast = newCount == oldCount ? target - std::uint64_t{oldCount - 1} * g.agblocks : g.agblocks;
+    const std::uint64_t added = target - g.dblocks;
+
+    XfsTail tail;
+    if (newLast > oldLast) {
+        if (std::string p = xfsLoadTail(d, g, tail); !p.empty()) {
+            err = p;
+            return false;
+        }
+    }
+
+    // Free space: everything added, minus the headers of the new groups.
+    std::uint64_t headers = 0;
+    for (std::uint32_t ag = oldCount; ag < newCount; ++ag) headers += g.firstFree();
+    std::vector<std::uint8_t> sb(g.sb);
+    putBe64(&sb[8], target);
+    putBe32(&sb[88], newCount);
+    putBe64(&sb[144], be64v(&sb[144]) + added - headers);
+
+    // Order: new groups first, the primary superblock last. Until then the file system is
+    // still the old one and only unused space has changed.
+    for (std::uint32_t ag = oldCount; ag < newCount; ++ag) {
+        const std::uint64_t len = ag + 1 == newCount ? target - std::uint64_t{ag} * g.agblocks : g.agblocks;
+        const std::vector<std::uint8_t> group = xfsNewGroup(g, sb, ag, static_cast<std::uint32_t>(len));
+        if (!d.write(g.agOff(ag), group.data(), group.size())) {
+            err = "writing a new XFS group failed";
+            return false;
+        }
+    }
+    if (!d.flush()) {
+        err = "flush failed";
+        return false;
+    }
+    if (newLast > oldLast) {
+        const std::uint32_t bnoRoot = be32v(&tail.agf[16]), cntRoot = be32v(&tail.agf[20]);
+        xfsExtendTail(g, tail, static_cast<std::uint32_t>(newLast - oldLast));
+        const std::uint64_t off = g.agOff(oldCount - 1);
+        if (!d.write(off + std::uint64_t{bnoRoot} * g.bs, tail.bno.data(), g.bs) ||
+            !d.write(off + std::uint64_t{cntRoot} * g.bs, tail.cnt.data(), g.bs) ||
+            !d.write(off + g.sect, tail.agf.data(), g.sect) || !d.write(off + 2ull * g.sect, tail.agi.data(), g.sect) || !d.flush()) {
+            err = "extending the last XFS group failed";
+            return false;
+        }
+    }
+    for (std::uint32_t ag = oldCount; ag-- > 1;) {
+        std::vector<std::uint8_t> s(g.sect);
+        if (!d.read(g.agOff(ag), s.data(), s.size()) || std::memcmp(s.data(), "XFSB", 4) != 0) {
+            err = "an XFS superblock copy is damaged";
+            return false;
+        }
+        putBe64(&s[8], target);
+        putBe32(&s[88], newCount);
+        xfsSeal(s.data(), s.size(), 224);
+        if (!d.write(g.agOff(ag), s.data(), s.size())) {
+            err = "writing an XFS superblock failed";
+            return false;
+        }
+    }
+    if (!d.flush()) {
+        err = "flush failed";
+        return false;
+    }
+    xfsSeal(sb.data(), sb.size(), 224);
+    if (!d.write(0, sb.data(), sb.size()) || !d.flush()) {
+        err = "writing the XFS superblock failed";
+        return false;
+    }
+    return true;
+}
+
 // --- btrfs (superblock at 64 KiB, mirrors at 64 MiB and 256 GiB) ---------------------
 
 constexpr std::uint64_t kBtrfsMetadataUuid = 1ull << 10;  // incompat METADATA_UUID
@@ -1197,7 +1598,8 @@ bool canLabel(FsType t) noexcept {
 bool canSetUuid(FsType t) noexcept { return canLabel(t); }
 bool canCheck(FsType t) noexcept { return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || isExt(t); }
 bool canResize(FsType t) noexcept {
-    return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || t == FsType::ExFat || t == FsType::Btrfs || isExt(t);
+    return t == FsType::Fat16 || t == FsType::Fat32 || t == FsType::Ntfs || t == FsType::ExFat || t == FsType::Btrfs ||
+           t == FsType::Xfs || isExt(t);
 }
 
 std::string labelProblem(FsType t, const std::string& label) {
@@ -1309,6 +1711,7 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
     }
     if (isExt(t)) return ext::resize(part, newBytes, error);
     if (t == FsType::Btrfs) return btrfsGrow(part, newBytes, error);
+    if (t == FsType::Xfs) return xfsGrow(part, newBytes, error);
     if (t == FsType::ExFat) return exfatResize(part, newBytes, error);
     return t == FsType::Ntfs ? ntfs::resize(part, newBytes, error) : fat::resize(part, newBytes, error);
 }
@@ -1316,6 +1719,7 @@ bool resize(BlockDevice& part, FsType t, std::uint64_t newBytes, std::string& er
 std::string resizeProblem(BlockReader& part, FsType t, std::uint64_t newBytes) {
     if (!canResize(t)) return std::string("resizing ") + fsTypeName(t) + " is not supported";
     if (t == FsType::Btrfs) return btrfsGrowProblem(part, newBytes);
+    if (t == FsType::Xfs) return xfsGrowProblem(part, newBytes);
     if (newBytes < part.size()) return shrinkProblem(part, t, newBytes);
     if (t == FsType::ExFat) return exfatResizeProblem(part, newBytes);
     return isExt(t) ? ext::growProblem(part, newBytes) : std::string();

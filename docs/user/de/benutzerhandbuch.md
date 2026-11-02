@@ -109,7 +109,7 @@ Kopieren arbeiten blockweise bei gleicher Größe; eine Kopie in eine größere 
 vergrößert. Pläne mit Schritten, die WParted nicht kann, werden abgelehnt, bevor etwas geschrieben
 wird – ebenso Verkleinerungen, in die die Daten nicht passen, und Dateisysteme mit Fehlern. Beim Verkleinern
 werden Daten hinter dem neuen Ende verschoben. Eine stark fragmentierte `$MFT` oder ein voller ext-Extent-Baum
-bricht vor jeder Änderung ab. btrfs lässt sich vergrößern, nicht verkleinern; XFS behält seine Größe. Reparaturen
+bricht vor jeder Änderung ab. btrfs und XFS lassen sich vergrößern, nicht verkleinern; XFS braucht ein sauberes Log, also vorher unter Linux ordentlich aushängen. Reparaturen
 bleiben den Werkzeugen des Dateisystems überlassen (`chkdsk`, `e2fsck`). Echte Datenträger bleiben in diesem Build gesperrt.
 
 **Virtuelle Datenträger.** Hängen Sie eine VHD/VHDX in Windows an, starten Sie WParted als Administrator neu,
@@ -194,6 +194,6 @@ Für Partitionstabellen aus einer Administrator-Eingabeaufforderung starten.
 echten Datenträgern plant und prüft es, führt aber nicht aus: Dafür fehlt ein menschliches Sicherheitsreview.
 **Welche Windows-Version unterstützt WParted?** Windows 11. Windows 7–10 werden nicht mehr unterstützt.
 **Kann WParted Linux-Partitionen lesen?** Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS, LVM u. a. und zeigt
-Bezeichnungen. Auf Image-Dateien und virtuellen Datenträgern kann es ext2/3/4 ändern, btrfs vergrößern sowie Bezeichnung und UUID von XFS, btrfs und Swap.
+Bezeichnungen. Auf Image-Dateien und virtuellen Datenträgern kann es ext2/3/4 ändern, btrfs und XFS vergrößern sowie Bezeichnung und UUID von XFS, btrfs und Swap.
 **Gehört WParted zu GParted?** Nein. WParted folgt dem GParted-Bedienkonzept, ist aber ein unabhängiges Projekt.
 **Wo melde ich Fehler?** https://github.com/jtracht/WParted/issues – möglichst mit exportiertem Bericht. Sicherheitsprobleme: siehe `SECURITY.md`.

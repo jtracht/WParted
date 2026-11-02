@@ -6,6 +6,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- XFS (version 5) can grow on image files and virtual disks: new allocation groups with all B-tree roots, extension of a shorter last group. Refused: dirty log, external log, realtime section, version 4, large free-space trees in a short last group. Checked with `xfs_repair -n`.
+
 ### Changed (design)
 
 - The GUI, the icon and the documentation take the look of the website (wparted.tracht-digital.de): violet and pastel
