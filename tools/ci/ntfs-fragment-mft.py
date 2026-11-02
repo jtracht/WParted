@@ -138,8 +138,8 @@ def main(path):
             else:
                 s0.append((1, c))
 
-        # Extension records: reserved records without attributes in the first run.
-        # mkntfs marks them in use in the MFT bitmap, so nothing else can take them.
+        # Extension records: the records mkntfs reserves (16-23) and no directory names.
+        # It marks them in use in the MFT bitmap, so nothing else can take them.
         ma = next(a for a, t, _ in attrs(rec0) if t == 0xB0)
         if rec0[ma + 8] == 0:
             mft_bits = rec0[ma + u16(rec0, ma + 0x14):ma + u16(rec0, ma + 0x14) + u32(rec0, ma + 0x10)]
@@ -150,12 +150,12 @@ def main(path):
         ext = []
         for n in range(16, keep * cs // rs):
             r = read(mft_lcn * cs + n * rs, rs)
-            if r[:4] == b'FILE' and mft_bits[n // 8] >> (n % 8) & 1 and u32(r, u16(r, 0x14)) == 0xFFFFFFFF:
+            if r[:4] == b'FILE' and mft_bits[n // 8] >> (n % 8) & 1:
                 ext.append((n, r))
             if len(ext) == 2:
                 break
         if len(ext) != 2:
-            sys.exit('no reserved records without attributes')
+            sys.exit(f'no reserved records in use: first bitmap bytes {bytes(mft_bits[:4]).hex()}')
         vcn = keep
         entries = []
         for (n, r), runs in zip(ext, (seg1, seg2)):
