@@ -139,7 +139,7 @@ def main(path):
                 s0.append((1, c))
 
         # Extension records: the records mkntfs reserves (16-23) and no directory names.
-        # It marks them in use in the MFT bitmap, so nothing else can take them.
+        # Their bits are clear in the MFT bitmap until the fixture takes them.
         ma = next(a for a, t, _ in attrs(rec0) if t == 0xB0)
         if rec0[ma + 8] == 0:
             mft_bits = rec0[ma + u16(rec0, ma + 0x14):ma + u16(rec0, ma + 0x14) + u32(rec0, ma + 0x10)]
@@ -150,12 +150,17 @@ def main(path):
         ext = []
         for n in range(16, keep * cs // rs):
             r = read(mft_lcn * cs + n * rs, rs)
-            if r[:4] == b'FILE' and mft_bits[n // 8] >> (n % 8) & 1:
+            if r[:4] == b'FILE' and not mft_bits[n // 8] >> (n % 8) & 1:
+                mft_bits[n // 8] |= 1 << (n % 8)
                 ext.append((n, r))
             if len(ext) == 2:
                 break
         if len(ext) != 2:
-            sys.exit(f'no reserved records in use: first bitmap bytes {bytes(mft_bits[:4]).hex()}')
+            sys.exit(f'no free reserved records: first bitmap bytes {bytes(mft_bits[:4]).hex()}')
+        if rec0[ma + 8] == 0:
+            rec0[ma + u16(rec0, ma + 0x14):ma + u16(rec0, ma + 0x14) + len(mft_bits)] = mft_bits
+        else:
+            write(mb_runs[0][1] * cs, mft_bits)
         vcn = keep
         entries = []
         for (n, r), runs in zip(ext, (seg1, seg2)):
