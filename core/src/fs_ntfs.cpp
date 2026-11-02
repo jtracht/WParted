@@ -305,8 +305,9 @@ std::size_t findAttr(const std::vector<std::uint8_t>& rec, std::uint32_t wanted)
 
 class NtfsMover {
 public:
-    NtfsMover(BlockDevice& d, const Vol& v, std::vector<std::uint8_t>& bits, std::uint64_t limit)
-        : d_(d), v_(v), bits_(bits), limit_(limit), buf_(1024 * 1024) {}
+    // Without a device nothing is copied: the same decisions, as a dry run on a copy of the bits.
+    NtfsMover(BlockDevice* d, const Vol& v, std::vector<std::uint8_t>& bits, std::uint64_t limit)
+        : d_(d), v_(v), bits_(bits), limit_(limit), buf_(d ? 1024 * 1024 : 0) {}
 
     // Moves the runs of all non-resident attributes of `rec`.
     bool moveRecord(std::vector<std::uint8_t>& rec, bool& changed, std::string& err) {
@@ -334,7 +335,7 @@ public:
                     if (!moveRun(r, out, err)) return false;
                 }
                 if (any) {
-                    if (!d_.flush()) {
+                    if (d_ && !d_->flush()) {
                         err = "flushing moved NTFS data failed";
                         return false;
                     }
@@ -380,9 +381,9 @@ private:
                 setBit(bits_, bestAt + i, true);
                 setBit(bits_, from + i, false);
             }
-            for (std::uint64_t done = 0; done < n * v_.cs;) {
+            for (std::uint64_t done = 0; d_ && done < n * v_.cs;) {
                 const std::size_t step = static_cast<std::size_t>(std::min<std::uint64_t>(buf_.size(), n * v_.cs - done));
-                if (!d_.read(from * v_.cs + done, buf_.data(), step) || !d_.write(bestAt * v_.cs + done, buf_.data(), step)) {
+                if (!d_->read(from * v_.cs + done, buf_.data(), step) || !d_->write(bestAt * v_.cs + done, buf_.data(), step)) {
                     err = "copying NTFS data failed";
                     return false;
                 }
@@ -398,7 +399,7 @@ private:
         return true;
     }
 
-    BlockDevice& d_;
+    BlockDevice* d_;
     const Vol& v_;
     std::vector<std::uint8_t>& bits_;
     std::uint64_t limit_;
@@ -508,38 +509,109 @@ bool loadMftSegments(BlockReader& r, const Vol& v, const std::vector<std::uint8_
     return true;
 }
 
-bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint64_t limit, std::string& err) {
-    Bitmap bm;
-    if (!loadBitmap(d, v, bm, err)) return false;
-    bool behind = false;
-    for (std::uint64_t c = limit; c < v.clusters; ++c) behind = behind || getBit(bm.bits, c);
-    if (!behind) return true;
-    std::vector<std::uint8_t> mft;
-    if (!readRecord(d, v, 0, mft, err)) return false;
+struct MftMap {
+    std::vector<std::uint8_t> rec0;
+    std::vector<Run> baseRuns, runs;
+    std::vector<MftSegment> segs;
+    std::uint64_t records = 0;
+};
+
+bool loadMftMap(BlockReader& r, const Vol& v, MftMap& m, std::string& err) {
+    if (!readRecord(r, v, 0, m.rec0, err)) return false;
+    const std::vector<std::uint8_t>& mft = m.rec0;
     const std::size_t md = findData(mft, "");
     if (!md || mft[md + 8] != 1 || le64(&mft[md + 0x10]) != 0) {
         err = "$MFT has an unexpected layout";
         return false;
     }
     const std::size_t mp = le16(&mft[md + 0x20]);
-    std::vector<Run> baseRuns;
-    if (!decodeRuns(&mft[md + mp], le32(&mft[md + 4]) - mp, baseRuns) || baseRuns.empty() || baseRuns[0].lcn < 0) {
+    if (!decodeRuns(&mft[md + mp], le32(&mft[md + 4]) - mp, m.baseRuns) || m.baseRuns.empty() || m.baseRuns[0].lcn < 0) {
         err = "$MFT runlist is invalid";
         return false;
     }
-    std::vector<MftSegment> segs;
-    if (!loadMftSegments(d, v, mft, baseRuns, segs, err)) return false;
-    const std::vector<Run> mftRuns = mftPrefix(baseRuns, segs, segs.size());
-    const std::uint64_t records = le64(&mft[md + 0x30]) / v.recSize;
-    {
-        std::uint64_t clustersOfMft = 0;
-        for (const Run& run : mftRuns) clustersOfMft += run.len;
-        if (clustersOfMft * v.cs < records * v.recSize) {
-            err = "$MFT runs are shorter than its size";
+    if (!loadMftSegments(r, v, mft, m.baseRuns, m.segs, err)) return false;
+    m.runs = mftPrefix(m.baseRuns, m.segs, m.segs.size());
+    m.records = le64(&mft[md + 0x30]) / v.recSize;
+    std::uint64_t clustersOfMft = 0;
+    for (const Run& run : m.runs) clustersOfMft += run.len;
+    if (clustersOfMft * v.cs < m.records * v.recSize) {
+        err = "$MFT runs are shorter than its size";
+        return false;
+    }
+    return true;
+}
+
+// The whole relocation as a dry run: same order, same allocation, nothing is written. What
+// cannot work (damaged records, runlists that outgrow their record, too little free space)
+// is found here, while the volume is still untouched.
+bool relocationFits(BlockReader& r, const Vol& v, std::uint64_t limit, std::string& err) {
+    Bitmap bm;
+    if (!loadBitmap(r, v, bm, err)) return false;
+    bool behind = false;
+    for (std::uint64_t c = limit; c < v.clusters; ++c) behind = behind || getBit(bm.bits, c);
+    if (!behind) return true;
+    MftMap m;
+    if (!loadMftMap(r, v, m, err)) return false;
+    NtfsMover mover(nullptr, v, bm.bits, limit);
+    std::vector<std::uint8_t> rec(static_cast<std::size_t>(v.recSize));
+    bool changed = false;
+    for (std::uint64_t n = 1; n < m.records; ++n) {
+        if (std::any_of(m.segs.begin(), m.segs.end(), [n](const MftSegment& s) { return s.record == n; })) continue;
+        std::uint64_t at = 0;
+        if (!mftOffset(m.runs, v, n, at) || !r.read(at, rec.data(), rec.size())) {
+            err = "MFT record " + std::to_string(n) + " cannot be read";
+            return false;
+        }
+        if (std::memcmp(rec.data(), "FILE", 4) != 0 || !(le16(&rec[0x16]) & 1)) continue;
+        if (!fixups(rec, false)) {
+            err = "MFT record " + std::to_string(n) + " is damaged; run chkdsk in Windows first";
+            return false;
+        }
+        if (!mover.moveRecord(rec, changed, err)) return false;
+        if (n == 1 && changed) {  // the mirror is written in one piece
+            const std::size_t ma = findData(rec, "");
+            std::vector<Run> runs;
+            if (!ma || !attrRuns(rec, ma, runs) || runs[0].lcn < 0 || runs[0].len * v.cs < 4 * v.recSize) {
+                err = "not enough contiguous free space for the $MFTMirr";
+                return false;
+            }
+        }
+    }
+    for (std::size_t i = m.segs.size(); i-- > 0;) {
+        std::uint64_t at = 0;
+        if (!mftOffset(m.runs, v, m.segs[i].record, at) || !r.read(at, rec.data(), rec.size()) || !fixups(rec, false)) {
+            err = "MFT record " + std::to_string(m.segs[i].record) + " cannot be read";
+            return false;
+        }
+        if (!mover.moveRecord(rec, changed, err)) return false;
+    }
+    if (!mover.moveRecord(m.rec0, changed, err)) return false;
+    if (changed) {
+        std::vector<Run> runs;
+        const std::size_t md = findData(m.rec0, "");
+        if (!md || !attrRuns(m.rec0, md, runs) || runs[0].lcn < 0 || runs[0].len * v.cs < 16 * v.recSize) {
+            err = "not enough contiguous free space for the start of the $MFT";
             return false;
         }
     }
-    NtfsMover mover(d, v, bm.bits, limit);
+    return true;
+}
+
+bool relocate(BlockDevice& d, Vol& v, std::vector<std::uint8_t>& boot, std::uint64_t limit, std::string& err) {
+    Bitmap bm;
+    if (!loadBitmap(d, v, bm, err)) return false;
+    bool behind = false;
+    for (std::uint64_t c = limit; c < v.clusters; ++c) behind = behind || getBit(bm.bits, c);
+    if (!behind) return true;
+    if (!relocationFits(d, v, limit, err)) return false;
+    MftMap map;
+    if (!loadMftMap(d, v, map, err)) return false;
+    std::vector<std::uint8_t>& mft = map.rec0;
+    const std::vector<Run>& baseRuns = map.baseRuns;
+    const std::vector<Run>& mftRuns = map.runs;
+    std::vector<MftSegment>& segs = map.segs;
+    const std::uint64_t records = map.records;
+    NtfsMover mover(&d, v, bm.bits, limit);
     std::vector<std::uint8_t> rec(static_cast<std::size_t>(v.recSize));
     std::uint64_t newMirr = le64(&boot[0x38]);
     for (std::uint64_t n = 1; n < records; ++n) {
@@ -655,6 +727,7 @@ std::string shrinkProblem(BlockReader& r, std::uint64_t newBytes) {
     for (std::uint64_t c = 0; c < v.clusters; ++c) used += getBit(bm.bits, c);
     if (used + 16 > newClusters) return "the data does not fit into the new size";
     if (!isClean(r, v, err)) return err;
+    if (newClusters < v.clusters && !relocationFits(r, v, newClusters, err)) return err;
     return {};
 }
 

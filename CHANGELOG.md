@@ -6,6 +6,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- NTFS shrink first runs the whole relocation as a dry run. Runlists that outgrow their record, too little contiguous free space for `$MFT` or `$MFTMirr`, and damaged records now stop it before the first write, and already when the plan is validated.
 - Shrinking NTFS also moves a fragmented `$MFT` with an attribute list. The read-only check reads all its segments. Checked with `ntfsresize --check` and ntfs-3g on a constructed image; chkdsk not yet.
 - XFS (version 5) can grow on image files and virtual disks: new allocation groups with all B-tree roots, extension of a shorter last group. Refused: dirty log, external log, realtime section, version 4, large free-space trees in a short last group. Checked with `xfs_repair -n`.
 

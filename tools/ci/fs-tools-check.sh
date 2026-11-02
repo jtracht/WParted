@@ -175,6 +175,19 @@ n=0; for i in 1 120 240; do [[ "$(ntfscat "$img" "s$i.bin" 2>/dev/null | cmp -s 
 ntfscp -f "$img" "$W/payload.bin" second.bin >/dev/null 2>&1 && pass "ntfs frag: writable afterwards" || bad "ntfs frag: write"
 ntfs_ok "ntfs frag, after a write"
 
+# A shrink that cannot work has to stop before the first write: free space in single
+# clusters makes the runlists outgrow their records.
+img=$W/ntfs-tight.img
+truncate -s 512M "$img"
+mkfs.ntfs -q -Q -F -L TIGHT "$img" >/dev/null
+ntfscp -f "$img" "$W/payload.bin" payload.bin >/dev/null 2>&1 || bad "ntfs tight: ntfscp"
+python3 "$(dirname "$0")/ntfs-fragment-mft.py" "$img" --checker-free 128 || bad "ntfs tight: fixture"
+before=$(sha256sum "$img" | cut -d' ' -f1)
+set +e; "$TOOL" fs "$img" resize ntfs $((128 * 1024 * 1024)) >"$W/t.txt" 2>&1; rc=$?; set -e
+[[ $rc != 0 ]] && pass "ntfs tight: shrink refused" || bad "ntfs tight: shrink not refused"
+grep -q "does not fit" "$W/t.txt" && pass "ntfs tight: the runlist is the reason" || { bad "ntfs tight: reason"; cat "$W/t.txt"; }
+same "ntfs tight: image unchanged" "$(sha256sum "$img" | cut -d' ' -f1)" "$before"
+
 # --- NTFS created by WParted ----------------------------------------------------
 img=$W/wp-ntfs.img
 truncate -s 96M "$img"

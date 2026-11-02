@@ -7,7 +7,10 @@
 # does for a fragmented $MFT. The later clusters move to scattered free clusters
 # near the end of the volume. Two reserved records hold the extension segments.
 #
-# Usage: ntfs-fragment-mft.py <image>
+# With --checker-free <MiB> it instead marks every second cluster below that size as used:
+# moved runs then split so often that their runlists no longer fit into their records.
+#
+# Usage: ntfs-fragment-mft.py <image> [--checker-free <MiB>]
 import struct
 import sys
 
@@ -76,6 +79,29 @@ def segment_attr(runs, low, instance):
 
 def list_entry(type_, low, record, seq, instance):
     return struct.pack('<IHBBQQH', type_, 0x20, 0, 0x1A, low, record | seq << 48, instance) + bytes(6)
+
+
+def checker_free(path, mib):
+    with open(path, 'r+b') as f:
+        boot = f.read(512)
+        cs = u16(boot, 11) * boot[13]
+        raw = struct.unpack_from('<b', boot, 0x40)[0]
+        rs = raw * cs if raw > 0 else 1 << -raw
+        f.seek(u64(boot, 0x30) * cs + 6 * rs)
+        rec = bytearray(f.read(rs))
+        unfix(rec)
+        a = next(a for a, t, _ in attrs(rec) if t == 0x80)
+        runs = decode(rec[a + u16(rec, a + 0x20):a + u32(rec, a + 4)])
+        limit = mib * 1048576 // cs
+        done = 0
+        for length, lcn in runs:
+            f.seek(lcn * cs)
+            data = bytearray(f.read(length * cs))
+            for i in range(0, min(len(data), max(0, limit // 8 - done))):
+                data[i] |= 0x55
+            f.seek(lcn * cs)
+            f.write(data)
+            done += len(data)
 
 
 def main(path):
@@ -225,4 +251,7 @@ def main(path):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1])
+    if len(sys.argv) == 4 and sys.argv[2] == '--checker-free':
+        checker_free(sys.argv[1], int(sys.argv[3]))
+    else:
+        main(sys.argv[1])
