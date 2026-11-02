@@ -11,7 +11,7 @@ from the requirements and are not tested; the older tables below are history.
 | Windows | Arch | Builds | Tests | GUI | Writes | Evidence / open check |
 |---|---|---|---|---|---|---|
 | Windows 11 Pro (26300) | x64, x86 | ✔ MSVC + MinGW | ✔ unit + CLI E2E on image files | ✔ started, screenshots taken | image files ✔; VHD/VHDX ☐ not run yet | Local runs 2026-11-01, unelevated; the VHDX check is the [maintainer checklist](../verification/WParted-Pruefcheckliste.pdf) |
-| Linux CI (reference tools) | – | ✔ GCC (core) | ✔ data moved on shrink checked with ntfsresize, fsck.exfat, e2fsck; btrfs grow with btrfs check | – | image files | Every CI run |
+| Linux CI (reference tools) | – | ✔ GCC (core) | ✔ data moved on shrink checked with ntfsresize, fsck.exfat, e2fsck; btrfs grow with btrfs check; XFS grow with xfs_repair -n | – | image files | Every CI run |
 | Windows 11 | ARM64 | ✔ llvm-mingw cross build | ☐ not run | ☐ | ☐ | No ARM64 device yet |
 
 ## v0.3.0-alpha to v0.5.0-alpha (execution on image files only)

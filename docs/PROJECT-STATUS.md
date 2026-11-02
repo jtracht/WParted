@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Project status
 
-State of the `main` branch on 2026-11-01, version 0.8.0-beta.1 (beta by maintainer decision; it does not mean every item below has passed). Windows 11 is the only target. The percentage in
+State of the `main` branch on 2026-11-02, version 0.8.0-beta.1 (beta by maintainer decision; it does not mean every item below has passed). Windows 11 is the only target. The percentage in
 `status/progress.json` counts work packages; it says nothing about GParted parity on real disks.
 
 ## Finished
@@ -10,8 +10,9 @@ State of the `main` branch on 2026-11-01, version 0.8.0-beta.1 (beta by maintain
   hardware against Windows' own view.
 - **Plan:** every GParted-style operation, future layout, undo, validation, plan files.
 - **Execute on disk image files** (raw, fixed-size VHD) through the helper: tables, partitions, moves, copies,
-  FAT, exFAT, NTFS, ext2/3/4 including moving data when shrinking; resume; recreating lost partitions. Results
-  are checked in CI with independent tools.
+  FAT, exFAT, NTFS, ext2/3/4 including moving data when shrinking; growing btrfs and XFS; a fragmented NTFS `$MFT`;
+  resume; recreating lost partitions. Results are checked in CI with independent tools. An NTFS shrink is simulated
+  completely before its first write.
 
 ## Built, not yet checked by a person
 
@@ -21,6 +22,7 @@ State of the `main` branch on 2026-11-01, version 0.8.0-beta.1 (beta by maintain
 | Mount and unmount | same |
 | High contrast and other display scaling with the new design | same |
 | `chkdsk` on NTFS that WParted created, shrank or moved | same |
+| `chkdsk` after shrinking a fragmented `$MFT` | So far only on a constructed image with `ntfsresize --check` and ntfs-3g |
 
 ## Not finished
 

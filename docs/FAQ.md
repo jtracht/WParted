@@ -53,14 +53,14 @@ and choose *Apply*. Your real disks are not touched.
 
 ### Can WParted resize NTFS partitions?
 Yes, on image files and attached virtual disks. It grows and shrinks NTFS and moves data out of the removed area when
-shrinking. A `$MFT` with an attribute list is moved too; a damaged one stops the shrink before anything changes.
+shrinking. A `$MFT` with an attribute list is moved too. WParted first simulates the whole move, so damaged records or runlists that no longer fit stop the shrink before anything changes.
 
 ### Can WParted move a partition?
 Yes, on image files and attached virtual disks. It copies the data block by block, and an interrupted move can be resumed.
 
 ### Can WParted read ext4 and other Linux partitions on Windows?
-It detects ext2/3/4, btrfs, XFS, swap, LUKS and LVM and shows their labels. It can create, resize and check ext2/3/4 on
-image files and virtual disks, but it does not let you open the files on them.
+It detects ext2/3/4, btrfs, XFS, swap, LUKS and LVM and shows their labels. It can create, resize and check ext2/3/4 and grow
+btrfs and XFS on image files and virtual disks, but it does not let you open the files on them.
 
 ### Can WParted recover a deleted partition?
 It can search free space for lost file systems and plan recreating the partitions. Scanning real disks is read-only and

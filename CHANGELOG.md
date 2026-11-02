@@ -25,7 +25,7 @@ versions follow [Semantic Versioning](https://semver.org/).
   never written. New CLI forms: `apply-plan \\.\PhysicalDriveN ...`, `resume \\.\PhysicalDriveN ...`.
 - **Mount and unmount** (GUI *Partition* menu, CLI `mount`, `unmount`), not for volumes of the running Windows.
 - **Shrinking moves data** behind the new end on NTFS, exFAT and ext2/3/4, including ext inodes (they get new
-  numbers) and extents split over free areas. Limits: a `$MFT` with an attribute list, an ext extent tree without
+  numbers) and extents split over free areas. Limits: an ext extent tree without
   room for more entries, ext with inline data or EA inodes when inodes must move: these stop the shrink before
   anything changes.
 - **Growing btrfs** on one device (superblocks and chunk tree). Shrinking btrfs stays refused.

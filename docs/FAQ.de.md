@@ -53,14 +53,14 @@ virtuellen Datenträger, planen Sie die Änderungen und wählen Sie *Anwenden*. 
 
 ### Kann WParted NTFS-Partitionen verkleinern und vergrößern?
 Ja, auf Image-Dateien und angehängten virtuellen Datenträgern. Beim Verkleinern verschiebt es Daten aus dem wegfallenden
-Bereich. Auch eine `$MFT` mit Attributliste wird verschoben; eine beschädigte bricht das Verkleinern vor jeder Änderung ab.
+Bereich. Auch eine `$MFT` mit Attributliste wird verschoben. WParted simuliert das Verschieben zuerst vollständig: Beschädigte Datensätze oder Lauflisten, die nicht mehr passen, stoppen das Verkleinern vor jeder Änderung.
 
 ### Kann WParted eine Partition verschieben?
 Ja, auf Image-Dateien und angehängten virtuellen Datenträgern. Die Daten werden blockweise kopiert, und eine unterbrochene Verschiebung lässt sich fortsetzen.
 
 ### Kann WParted ext4 und andere Linux-Partitionen unter Windows lesen?
 Es erkennt ext2/3/4, btrfs, XFS, Swap, LUKS und LVM und zeigt ihre Bezeichnungen. ext2/3/4 kann es auf Image-Dateien und
-virtuellen Datenträgern anlegen, in der Größe ändern und prüfen, aber Sie können die Dateien darauf nicht öffnen.
+virtuellen Datenträgern anlegen, in der Größe ändern und prüfen, btrfs und XFS vergrößern, aber Sie können die Dateien darauf nicht öffnen.
 
 ### Kann WParted eine gelöschte Partition wiederherstellen?
 Es kann freien Platz nach verlorenen Dateisystemen durchsuchen und das Neuanlegen planen. Der Scan echter Datenträger ist

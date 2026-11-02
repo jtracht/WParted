@@ -34,7 +34,7 @@ and attached virtual disks (VHD/VHDX). It runs natively on Windows, without a Li
 | Inspect disks | Model, serial, bus (NVMe, SATA, USB, SD), size, sector sizes, SSD, write protection, drive letters, used and free space, BitLocker state |
 | Plan changes | Create, delete, resize, move, copy, format, label, name, set flags, new partition table; future layout, undo, safety checks, saved plans |
 | Apply changes | On raw images, fixed-size VHD files and attached VHD/VHDX disks, each step read back and verified |
-| Resize file systems | NTFS, exFAT, FAT16/32 and ext2/3/4 grow and shrink, and shrinking moves the data behind the new end; btrfs grows |
+| Resize file systems | NTFS, exFAT, FAT16/32 and ext2/3/4 grow and shrink, and shrinking moves the data behind the new end; btrfs and XFS grow |
 | Create and check | NTFS, FAT16/32, exFAT and ext2/3/4; read-only checks for NTFS, FAT and ext |
 | Recover | Search free space for lost partitions and plan recreating them; resume an interrupted move |
 | Drive letters | Mount and unmount volumes, except those of the running Windows |

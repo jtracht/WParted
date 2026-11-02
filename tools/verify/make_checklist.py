@@ -53,7 +53,7 @@ def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.grey)
-    canvas.drawString(20 * mm, 10 * mm, "WParted - Pruefcheckliste, Stand 2026-11-01")
+    canvas.drawString(20 * mm, 10 * mm, "WParted - Pruefcheckliste, Stand 2026-11-02")
     canvas.drawRightString(190 * mm, 10 * mm, f"Seite {doc.page}")
     canvas.restoreState()
 
