@@ -327,7 +327,7 @@ xfs_grow() {  # name, mkfs size MiB, new size MiB, mkfs options...
   local name=$1 from=$2 to=$3 img="$W/xfs-$1.img"
   shift 3
   truncate -s "${from}M" "$img"
-  mkfs.xfs -q -f -L grow "$@" "$img"
+  mkfs.xfs -q -f -L grow "$@" "$img" || { bad "xfs $name: mkfs.xfs $*"; return; }
   truncate -s "${to}M" "$img"
   "$TOOL" fs "$img" resize xfs $((to * 1048576)) && pass "xfs $name: grow $from -> $to MiB" || { bad "xfs $name: grow"; return; }
   if xfs_repair -n "$img" >"$W/xr.txt" 2>&1; then pass "xfs $name: xfs_repair -n clean"; else bad "xfs $name: xfs_repair"; cat "$W/xr.txt"; fi
@@ -337,8 +337,8 @@ xfs_grow() {  # name, mkfs size MiB, new size MiB, mkfs options...
   same "xfs $name: blkid label" "$(blk "$img" LABEL)" "grow"
 }
 xfs_grow plain 320 1500                                       # whole new groups
-xfs_grow short 300 330 -d agsize=64m                          # only the short last group gets longer
-xfs_grow shortnew 300 900 -d agsize=64m                       # short last group and new groups
+xfs_grow short 600 630 -d agsize=128m                         # only the short last group gets longer
+xfs_grow shortnew 600 1500 -d agsize=128m                     # short last group and new groups
 xfs_grow rmap 320 1100 -m rmapbt=1,reflink=1                  # all B-trees
 xfs_grow nofeat 320 1100 -m reflink=0,rmapbt=0,finobt=0,inobtcount=0,bigtime=0
 xfs_grow sect4k 320 1100 -s size=4096
