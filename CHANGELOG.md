@@ -6,6 +6,20 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0-beta.1] – 2026-11-03
+
+First beta: writing to image files and attached virtual disks (VHD/VHDX) through the helper. Real disks stay
+locked; the disk of the running Windows is never written. It contains everything of the unpublished 0.5.0-alpha.
+
+### Known limitations
+- Published by maintainer decision on 2026-11-03 before the checks of WParted-PM #40 to #43. Not done yet:
+  the elevated check of this version on real hardware (mandatory for a beta by the release process), locks and
+  mount/unmount, writing to a VHDX with chkdsk afterwards, exFAT and FAT32 on a VHDX, high contrast and language
+  (maintainer checklist A to F).
+- See [docs/PROJECT-STATUS.md](docs/PROJECT-STATUS.md) for what is checked.
+
+### Changed (file systems)
+
 - NTFS shrink first runs the whole relocation as a dry run. Runlists that outgrow their record, too little contiguous free space for `$MFT` or `$MFTMirr`, and damaged records now stop it before the first write, and already when the plan is validated.
 - Shrinking NTFS also moves a fragmented `$MFT` with an attribute list. The read-only check reads all its segments. Checked with `ntfsresize --check` and ntfs-3g on a constructed image; chkdsk not yet.
 - XFS (version 5) can grow on image files and virtual disks: new allocation groups with all B-tree roots, extension of a shorter last group. Refused: dirty log, external log, realtime section, version 4, large free-space trees in a short last group. Checked with `xfs_repair -n`.
