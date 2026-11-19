@@ -1,0 +1,110 @@
+name: Prune old releases
+
+# Keeps the newest 3 stable releases and the newest 3 pre-releases per tag
+# series (e.g. "v*" and "plugins-v*" count separately) and deletes all older
+# releases including their assets and git tags. Runs after every published
+# release and daily, because releases created by other workflows with the
+# built-in token do not trigger this workflow on GitHub.
+# The same file works on GitHub and on Gitea.
+
+on:
+  release:
+    types: [published]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only list what would be deleted
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prune-releases
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete releases beyond the newest 3 per series
+        env:
+          API_URL: ${{ github.api_url }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KEEP: "3"
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: |
+          if [ "${GITEA_ACTIONS:-}" = "true" ]; then export PLATFORM=gitea; else export PLATFORM=github; fi
+          node --input-type=module <<'SCRIPT'
+          // Keeps the newest KEEP stable releases and the newest KEEP pre-releases per
+          // tag series (e.g. "v*" and "plugins-v*" are separate series) and deletes all
+          // older releases together with their assets and git tags. Drafts are ignored.
+          // Works against the GitHub API and the Gitea API.
+          //
+          // Env: API_URL (https://api.github.com or https://<gitea>/api/v1), TOKEN,
+          //      REPO (owner/name), PLATFORM (github|gitea), KEEP (default 3),
+          //      DRY_RUN ("true" only lists what would be deleted)
+          const { API_URL, TOKEN, REPO, PLATFORM } = process.env;
+          const KEEP = Number(process.env.KEEP || 3);
+          const DRY_RUN = process.env.DRY_RUN === "true";
+          if (!API_URL || !TOKEN || !REPO || !["github", "gitea"].includes(PLATFORM)) {
+            console.error("API_URL, TOKEN, REPO and PLATFORM (github|gitea) are required");
+            process.exit(2);
+          }
+          const headers = {
+            Authorization: `token ${TOKEN}`,
+            Accept: "application/json",
+            "User-Agent": "prune-releases",
+          };
+          
+          async function api(method, path) {
+            const res = await fetch(`${API_URL}/repos/${REPO}${path}`, { method, headers });
+            if (method === "DELETE" && (res.status === 204 || res.status === 404)) return null;
+            if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
+            return method === "GET" ? res.json() : null;
+          }
+          
+          async function listReleases() {
+            const all = [];
+            for (let page = 1; ; page++) {
+              const q = PLATFORM === "github" ? `per_page=100&page=${page}` : `limit=50&page=${page}`;
+              const batch = await api("GET", `/releases?${q}`);
+              all.push(...batch);
+              if (batch.length === 0 || batch.length < (PLATFORM === "github" ? 100 : 50)) break;
+            }
+            return all;
+          }
+          
+          const series = (tag) => tag.replace(/\d.*$/, "");
+          const isPre = (r) => r.prerelease || /^\D*\d+\.\d+\.\d+-/.test(r.tag_name);
+          const date = (r) => Date.parse(r.published_at || r.created_at);
+          
+          const releases = (await listReleases()).filter((r) => !r.draft);
+          const groups = new Map();
+          for (const r of releases) {
+            const key = `${series(r.tag_name)}|${isPre(r) ? "pre" : "stable"}`;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(r);
+          }
+          
+          let deleted = 0;
+          for (const [key, list] of groups) {
+            list.sort((a, b) => date(b) - date(a));
+            const [prefix, kind] = key.split("|");
+            console.log(`${REPO} series "${prefix || "(none)"}*" ${kind}: keep ${list.slice(0, KEEP).map((r) => r.tag_name).join(", ")}`);
+            for (const r of list.slice(KEEP)) {
+              console.log(`  ${DRY_RUN ? "would delete" : "delete"} ${r.tag_name} (${r.assets?.length ?? 0} assets)`);
+              if (DRY_RUN) continue;
+              await api("DELETE", `/releases/${r.id}`);
+              const tag = encodeURIComponent(r.tag_name);
+              await api("DELETE", PLATFORM === "github" ? `/git/refs/tags/${tag}` : `/tags/${tag}`);
+              deleted++;
+            }
+          }
+          console.log(`${REPO}: ${DRY_RUN ? "dry run, nothing deleted" : `${deleted} release(s) and tag(s) deleted`}`);
+          SCRIPT
