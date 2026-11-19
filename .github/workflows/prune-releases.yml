@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
 name: Prune old releases
 
 # Keeps the newest 3 stable releases and the newest 3 pre-releases per tag
