@@ -61,14 +61,14 @@ jobs:
             Accept: "application/json",
             "User-Agent": "prune-releases",
           };
-          
+
           async function api(method, path) {
             const res = await fetch(`${API_URL}/repos/${REPO}${path}`, { method, headers });
             if (method === "DELETE" && (res.status === 204 || res.status === 404)) return null;
             if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
             return method === "GET" ? res.json() : null;
           }
-          
+
           async function listReleases() {
             const all = [];
             for (let page = 1; ; page++) {
@@ -79,11 +79,11 @@ jobs:
             }
             return all;
           }
-          
+
           const series = (tag) => tag.replace(/\d.*$/, "");
           const isPre = (r) => r.prerelease || /^\D*\d+\.\d+\.\d+-/.test(r.tag_name);
           const date = (r) => Date.parse(r.published_at || r.created_at);
-          
+
           const releases = (await listReleases()).filter((r) => !r.draft);
           const groups = new Map();
           for (const r of releases) {
@@ -91,8 +91,9 @@ jobs:
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(r);
           }
-          
+
           let deleted = 0;
+          const keptTags = [];
           for (const [key, list] of groups) {
             list.sort((a, b) => date(b) - date(a));
             const [prefix, kind] = key.split("|");
@@ -101,10 +102,16 @@ jobs:
               console.log(`  ${DRY_RUN ? "would delete" : "delete"} ${r.tag_name} (${r.assets?.length ?? 0} assets)`);
               if (DRY_RUN) continue;
               await api("DELETE", `/releases/${r.id}`);
-              const tag = encodeURIComponent(r.tag_name);
-              await api("DELETE", PLATFORM === "github" ? `/git/refs/tags/${tag}` : `/tags/${tag}`);
               deleted++;
+              const tag = encodeURIComponent(r.tag_name);
+              try {
+                await api("DELETE", PLATFORM === "github" ? `/git/refs/tags/${tag}` : `/tags/${tag}`);
+              } catch (err) {
+                // A tag protection rule may forbid deleting the tag; keep the tag then.
+                keptTags.push(r.tag_name);
+                console.log(`::warning::release ${r.tag_name} deleted, tag kept (${err.message.split("\n")[0]})`);
+              }
             }
           }
-          console.log(`${REPO}: ${DRY_RUN ? "dry run, nothing deleted" : `${deleted} release(s) and tag(s) deleted`}`);
+          console.log(`${REPO}: ${DRY_RUN ? "dry run, nothing deleted" : `${deleted} release(s) deleted${keptTags.length ? `, protected tags kept: ${keptTags.join(", ")}` : ", tags removed with them"}`}`);
           SCRIPT
